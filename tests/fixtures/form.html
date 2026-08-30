@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Form Fixture Page</title>
+  </head>
+  <body>
+    <h1>Form fixture</h1>
+
+    <form id="theform" action="/submitted" method="post">
+      <input type="text" id="name" name="name" />
+      <input type="password" id="password" name="password" />
+      <button type="submit" id="submitBtn">Apply now</button>
+    </form>
+
+    <!-- a safe control outside any form -->
+    <button type="button" id="safeBtn" onclick="document.getElementById('revealed').hidden = false">
+      Show more
+    </button>
+    <div id="revealed" hidden>revealed extra content</div>
+
+    <!-- a link labelled with external-act wording -->
+    <a href="/connect" id="connectLink">Connect</a>
+
+    <!-- a Save button outside any form -->
+    <button type="button" id="saveBtn">Save changes</button>
+
+    <!-- a consent checkbox with its label outside any form -->
+    <input type="checkbox" id="tos" />
+    <label for="tos">I accept the Terms of Service</label>
+
+    <!-- a plain filter checkbox, should stay allowed -->
+    <input type="checkbox" id="remoteOnly" />
+    <label for="remoteOnly">Show only remote roles</label>
+  </body>
+</html>

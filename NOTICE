@@ -1,0 +1,19 @@
+HyppoVisor
+Copyright 2026 Iuliia Iliukhina (https://github.com/juliaviluhina)
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+---
+
+The distributable application bundles third-party software, each under its own
+license. A generated inventory ships as THIRD-PARTY-LICENSES with any binary
+release. Notable components:
+
+  - Electron (MIT) — https://github.com/electron/electron
+      bundles Chromium (BSD-3-Clause and other permissive licenses; see the
+      LICENSES.chromium.html shipped inside the Electron distribution) and a
+      dynamically-loaded ffmpeg library (libffmpeg) under the GNU LGPL 2.1+.
+      The LGPL ffmpeg library is shipped as a separate, replaceable shared
+      library; its license text is included in THIRD-PARTY-LICENSES.
+  - @modelcontextprotocol/sdk (MIT)
+  - zod (MIT)

@@ -1,0 +1,20 @@
+# Local Claude Code state (not shared) — settings.local.json can hold
+# machine-specific permission overrides; skills/ and other shared config stay tracked.
+.claude/settings.local.json
+
+# Node / Electron
+node_modules/
+dist/
+out/
+*.log
+.vitest/
+test-results/
+playwright-report/
+.env
+.env.*
+
+# OS
+.DS_Store
+
+# design-phase reference material — kept locally, not published
+specs/initial/

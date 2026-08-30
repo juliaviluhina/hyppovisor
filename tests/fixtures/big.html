@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Oversized Fixture Page</title>
+  </head>
+  <body>
+    <h1>Oversized text fixture</h1>
+    <div id="filler"></div>
+    <script>
+      // Generate well over 100 KB of visible text.
+      const line = "The quick brown fox jumps over the lazy dog. ".repeat(20) + "\n";
+      let out = "";
+      for (let i = 0; i < 4000; i++) out += line;
+      const p = document.createElement("pre");
+      p.textContent = out;
+      document.getElementById("filler").appendChild(p);
+    </script>
+  </body>
+</html>

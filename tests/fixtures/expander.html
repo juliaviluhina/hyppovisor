@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Expander Fixture Page</title>
+  </head>
+  <body>
+    <h1>Expander fixture</h1>
+    <button type="button" id="showMore" onclick="reveal()">Show more results</button>
+    <ul id="results">
+      <li>result one</li>
+    </ul>
+    <script>
+      function reveal() {
+        const ul = document.getElementById("results");
+        ul.insertAdjacentHTML("beforeend", "<li>result two REVEALED_SENTINEL</li>");
+      }
+      // late-appearing element, for wait_for_selector tests
+      setTimeout(() => {
+        const d = document.createElement("div");
+        d.id = "late";
+        d.textContent = "late element";
+        document.body.appendChild(d);
+      }, 500);
+    </script>
+  </body>
+</html>
