@@ -200,6 +200,21 @@
           <li role="option" data-value="green">Green</li>
         </ul>
       </div>
+
+      <!-- a multi-value combobox — refused multi-select -->
+      <div id="multiCombo" role="combobox" aria-multiselectable="true" aria-owns="multiListbox">
+        <span id="multiComboValue"></span>
+      </div>
+      <ul role="listbox" id="multiListbox">
+        <li role="option" data-value="a">Alpha</li>
+        <li role="option" data-value="b">Beta</li>
+      </ul>
+
+      <!-- a combobox that removes itself when opened — control removed mid-operation -->
+      <div id="vanishCombo" role="combobox" aria-expanded="false" aria-controls="vanishListbox" tabindex="0">
+        <span id="vanishComboValue"></span>
+      </div>
+      <ul role="listbox" id="vanishListbox"></ul>
     </div>
 
     <script>
@@ -361,6 +376,14 @@
           li.addEventListener("click", function () {
             window.__chosen006["creatableCombo"] = li.getAttribute("data-value");
           });
+        });
+      })();
+
+      // a combobox that deletes itself the moment it is opened
+      (function () {
+        var combo = document.getElementById("vanishCombo");
+        combo.addEventListener("click", function () {
+          combo.remove();
         });
       })();
     </script>

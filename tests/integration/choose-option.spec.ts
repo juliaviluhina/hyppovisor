@@ -329,6 +329,113 @@ test("US4/T023: a widget that swallows the option click fails read-back, control
   expect(added[0].reason).toBe("option-not-appeared");
 });
 
+// ─── Additional coverage: contradiction, mid-op removal, no-selector, multi-combo ──
+
+test("both label and value that disagree → no-option-match, control unchanged", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const n = readLog(lp).length;
+
+  const err = await callHandle(app, "interact", [
+    tabId,
+    "choose_option",
+    "#country",
+    "us",
+    "Germany",
+  ]).catch((e: Error) => e.message);
+  expect(String(err)).toContain("no-option-match");
+  expect(await probe<string>(tabId, `document.querySelector("#country").value`)).toBe("");
+
+  const added = readLog(lp).slice(n);
+  expect(added.length).toBe(1);
+  expect(added[0].reason).toBe("no-option-match");
+});
+
+test("value-only selection on a custom combobox (no filter typing)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const r = await choose(tabId, "#locationCombobox", { value: "locationOptionBerlin" });
+  expect(r.outcome).toBe("permitted");
+  expect(r.chosenOption?.value).toBe("locationOptionBerlin");
+  expect(await probe<string | null>(tabId, "window.__chosenOption")).toBe("locationOptionBerlin");
+});
+
+test("a control removed mid-operation errors TARGET_NOT_FOUND with one log line", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  // resolves at descriptor time, then #vanishCombo deletes itself on the open click
+  const n = readLog(lp).length;
+  const err = await callHandle(app, "interact", [
+    tabId,
+    "choose_option",
+    "#vanishCombo",
+    undefined,
+    "anything",
+  ]).catch((e: Error) => e.message);
+  expect(String(err)).toContain("TARGET_NOT_FOUND");
+  const added = readLog(lp).slice(n);
+  expect(added.length).toBe(1);
+  expect(added[0].outcome).toBe("error");
+});
+
+test("choose_option with no selector is refused, one log line", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const n = readLog(lp).length;
+
+  const err = await callHandle(app, "interact", [
+    tabId,
+    "choose_option",
+    undefined,
+    undefined,
+    "x",
+  ]).catch((e: Error) => e.message);
+  expect(String(err)).toContain("TARGET_NOT_FOUND");
+  expect(String(err).toLowerCase()).toContain("selector");
+  const added = readLog(lp).slice(n);
+  expect(added.length).toBe(1);
+  expect(added[0].outcome).toBe("error");
+  expect(added[0].target).toBeNull();
+});
+
+test("an aria-multiselectable combobox is refused multi-select (not just <select multiple>)", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const n = readLog(lp).length;
+
+  const err = await callHandle(app, "interact", [
+    tabId,
+    "choose_option",
+    "#multiCombo",
+    undefined,
+    "Alpha",
+  ]).catch((e: Error) => e.message);
+  expect(String(err)).toContain("multi-select");
+  const added = readLog(lp).slice(n);
+  expect(added.length).toBe(1);
+  expect(added[0].reason).toBe("multi-select");
+});
+
+test("a consent-worded checkbox chooser is refused consent-toggle before classification", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const n = readLog(lp).length;
+
+  // #tos is a checkbox with an "I accept the Terms of Service" label — the
+  // blocklist gate runs before "not-a-dropdown", so consent-toggle wins.
+  const err = await callHandle(app, "interact", [
+    tabId,
+    "choose_option",
+    "#tos",
+    undefined,
+    "x",
+  ]).catch((e: Error) => e.message);
+  expect(String(err)).toContain("REFUSED_EXTERNAL_ACT");
+  const added = readLog(lp).slice(n);
+  expect(added.length).toBe(1);
+  expect(added[0].ruleId).toBe("consent-toggle");
+});
+
 test("SC-007: read_form_fields → choose_option → batch fill produces a draft, nothing submitted", async () => {
   const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
 
