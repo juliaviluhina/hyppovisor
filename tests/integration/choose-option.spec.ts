@@ -169,3 +169,108 @@ test("US2: an async list that never renders in budget is refused option-not-appe
     small.server.close();
   }
 });
+
+// ─── US3: wrong / dangerous targets refuse, control unchanged (T021) ──────────
+
+test("US3: every wrong or dangerous target refuses with its own code/reason, changes nothing", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const expectRefusal = async (
+    args: (string | undefined)[],
+    contains: string,
+    logCheck: (e: Record<string, unknown>) => void,
+  ) => {
+    const n = readLog(lp).length;
+    const msg = await callHandle(app, "interact", args).catch((e: Error) => e.message);
+    expect(String(msg), args.join(" ")).toContain(contains);
+    const after = readLog(lp);
+    expect(after.length, `one log line for ${args.join(" ")}`).toBe(n + 1);
+    const last = after.at(-1)!;
+    expect(last.operation).toBe("choose_option");
+    expect(last.outcome).toBe("refused");
+    logCheck(last);
+  };
+
+  // not a chooser
+  await expectRefusal(
+    [tabId, "choose_option", "#first_name", undefined, "x"],
+    "not-a-dropdown",
+    (e) => expect(e.reason).toBe("not-a-dropdown"),
+  );
+  // submit control
+  await expectRefusal(
+    [tabId, "choose_option", "#submitBtn", undefined, "x"],
+    "REFUSED_EXTERNAL_ACT",
+    (e) => expect(e.ruleId).toBe("submit-control"),
+  );
+  // consent-worded <select>
+  await expectRefusal(
+    [tabId, "choose_option", "#marketingSelect", undefined, "Daily"],
+    "REFUSED_EXTERNAL_ACT",
+    (e) => expect(e.ruleId).toBe("external-act-label"),
+  );
+  // credential field
+  await expectRefusal(
+    [tabId, "choose_option", "#password", undefined, "x"],
+    "REFUSED_EXTERNAL_ACT",
+    (e) => expect(e.ruleId).toBe("credential-field"),
+  );
+  // no option match — control unchanged
+  await expectRefusal(
+    [tabId, "choose_option", "#country", undefined, "Atlantis"],
+    "no-option-match",
+    (e) => expect(e.reason).toBe("no-option-match"),
+  );
+  expect(await probe<string>(tabId, `document.querySelector("#country").value`)).toBe("");
+  // ambiguous label — candidates, control unchanged
+  await expectRefusal(
+    [tabId, "choose_option", "#otherSelect", undefined, "Other"],
+    "ambiguous-option",
+    (e) => expect(e.reason).toBe("ambiguous-option"),
+  );
+  expect(await probe<string>(tabId, `document.querySelector("#otherSelect").value`)).toBe("");
+  // disabled option
+  await expectRefusal(
+    [tabId, "choose_option", "#pronounSelect", undefined, "Prefer not to say"],
+    "option-disabled",
+    (e) => expect(e.reason).toBe("option-disabled"),
+  );
+  // multi-select
+  await expectRefusal(
+    [tabId, "choose_option", "#skillsSelect", undefined, "JavaScript"],
+    "multi-select",
+    (e) => expect(e.reason).toBe("multi-select"),
+  );
+  // creatable combobox, unknown label — no option created
+  await expectRefusal(
+    [tabId, "choose_option", "#creatableCombo", undefined, "Purple"],
+    "no-option-match",
+    (e) => expect(e.reason).toBe("no-option-match"),
+  );
+  expect(await probe<number>(tabId, `document.querySelectorAll("#creatableComboListbox [role='option']").length`)).toBe(2);
+
+  // the disambiguating value makes the ambiguous case permitted
+  const ok = await choose(tabId, "#otherSelect", { value: "other-a" });
+  expect(ok.outcome).toBe("permitted");
+  expect(ok.chosenOption).toEqual({ label: "Other", value: "other-a" });
+  expect(await probe<string>(tabId, `document.querySelector("#otherSelect").value`)).toBe("other-a");
+});
+
+test("US3 SC-004: in-form does not gate choose_option, but still gates a raw click on the option", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  // #country is inside #theform — choose_option proceeds
+  const ok = await choose(tabId, "#country", { label: "Germany" });
+  expect(ok.outcome).toBe("permitted");
+
+  // a raw click on an option element inside the same form is still refused by in-form
+  const clickErr = await callHandle(app, "interact", [
+    tabId,
+    "click",
+    "#locationOptionBerlin",
+  ]).catch((e: Error) => e.message);
+  expect(String(clickErr)).toContain("REFUSED_EXTERNAL_ACT");
+  const lp = await logPath();
+  expect(readLog(lp).at(-1)!.ruleId).toBe("in-form");
+});

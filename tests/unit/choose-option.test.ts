@@ -14,6 +14,8 @@ import {
   matchBlocklist,
   type TargetDescriptor,
 } from "../../src/main/safety/blocklist.js";
+import { HyppoError } from "../../src/main/errors.js";
+import type { ChooseOptionReason } from "../../src/shared/types.js";
 
 const opt = (label: string, value: string, disabled = false) => ({ label, value, disabled });
 
@@ -142,5 +144,44 @@ describe("blocklist coverage for choose_option (research.md R4)", () => {
     expect(
       matchBlocklist(d({ name: "country", hasFormAncestor: true }), "choose_option").blocked,
     ).toBe(false);
+  });
+});
+
+describe("refusal payload shape (data-model.md §8, R11)", () => {
+  const reasons: ChooseOptionReason[] = [
+    "not-a-dropdown",
+    "no-option-match",
+    "ambiguous-option",
+    "option-disabled",
+    "option-not-appeared",
+    "multi-select",
+  ];
+
+  it("every non-rule reason serialises under code CHOOSE_OPTION_FAILED with the reason", () => {
+    for (const reason of reasons) {
+      const { error } = new HyppoError("CHOOSE_OPTION_FAILED", `msg (reason: ${reason})`, {
+        reason,
+      }).toResult();
+      expect(error.code).toBe("CHOOSE_OPTION_FAILED");
+      expect(error.reason).toBe(reason);
+    }
+  });
+
+  it("ambiguous-option carries candidates: string[]", () => {
+    const { error } = new HyppoError("CHOOSE_OPTION_FAILED", "msg", {
+      reason: "ambiguous-option",
+      candidates: ["Other", "Other"],
+    }).toResult();
+    expect(error.reason).toBe("ambiguous-option");
+    expect(error.candidates).toEqual(["Other", "Other"]);
+  });
+
+  it("a rule match serialises under REFUSED_EXTERNAL_ACT with ruleId + ruleDescription", () => {
+    const { error } = new HyppoError("REFUSED_EXTERNAL_ACT", "refused", {
+      ruleId: "submit-control",
+      ruleDescription: "…",
+    }).toResult();
+    expect(error.code).toBe("REFUSED_EXTERNAL_ACT");
+    expect(error.ruleId).toBe("submit-control");
   });
 });
