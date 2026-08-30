@@ -32,3 +32,18 @@ later launch without the override.
 
 Port and token set in the panel persist to `settings.json` in the app's
 user-data directory. Plain JSON, safe to delete.
+
+## Recent URLs
+
+The address bar offers a dropdown of the last 20 URLs **you** opened from it
+(newest first, no duplicates). Agent opens and failed loads are not recorded.
+It persists to `recent-urls.json` in the user-data directory — a plain JSON
+array of strings, safe to hand-edit or delete. The **Connection & MCP** panel
+has a **Clear recent URLs** button. Cap override for tests only:
+`HYPPO_RECENT_URLS_CAP`.
+
+## What the app writes to the user-data directory
+
+`settings.json` (panel settings), `recent-urls.json` (address-bar history),
+`interaction-log.jsonl` (every MCP interaction, permitted or refused). Nothing
+else; no page content is ever persisted.

@@ -20,6 +20,9 @@ interface HyppoApi {
   onTabsChanged: (cb: (tabs: TabSummary[]) => void) => void;
   onActivity: (cb: (a: { tabId: string; description: string }) => void) => void;
   onBlockedAction: (cb: (a: { kind: string; detail: string }) => void) => void;
+  recentUrls: () => Promise<string[]>;
+  clearRecentUrls: () => Promise<void>;
+  onRecentUrlsChanged: (cb: (list: string[]) => void) => void;
 }
 
 declare global {
@@ -118,6 +121,19 @@ $("go").addEventListener("click", open);
 address.addEventListener("keydown", (e) => {
   if (e.key === "Enter") open();
 });
+
+// ── recent-URLs dropdown (feature 009) ──────────────────────────────────────
+const recentDatalist = $("recent-urls") as HTMLDataListElement;
+function fillDatalist(list: string[]): void {
+  recentDatalist.innerHTML = "";
+  for (const url of list) {
+    const opt = document.createElement("option");
+    opt.value = url;
+    recentDatalist.appendChild(opt);
+  }
+}
+hyppo.recentUrls().then(fillDatalist);
+hyppo.onRecentUrlsChanged(fillDatalist);
 
 // ── live updates ────────────────────────────────────────────────────────────
 hyppo.onTabsChanged((tabs) => {

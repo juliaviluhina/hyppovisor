@@ -23,6 +23,12 @@ export interface TabEvents {
   onBlockedAction: (kind: "popup" | "download", detail: string) => void;
   /** Fired when the orchestrator drives a tab, so the renderer can show activity (FR-024). */
   onActivity: (tabId: string, description: string) => void;
+  /**
+   * Fired when a tab the *person* opened reaches a successfully-loaded state
+   * (feature 009). `url` is the `validateUrl`-normalized address they entered,
+   * not the redirect landing URL. Agent opens and failed loads never fire it.
+   */
+  onPersonOpen: (url: string) => void;
 }
 
 export class TabManager {
@@ -64,6 +70,12 @@ export class TabManager {
     this.layout();
 
     await this.load(tab, url);
+    // Reaching here means load() resolved without throwing, i.e. loadState is
+    // "loaded". Record the person's own successful opens for the address-bar
+    // dropdown (feature 009, FR-003); never the agent's, never a failed load.
+    if (openedBy === "person" && tab.loadState === "loaded") {
+      this.events.onPersonOpen(url);
+    }
     return this.summary(tab);
   }
 

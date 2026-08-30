@@ -58,6 +58,9 @@ interface HyppoConnectionApi {
   regenerateToken(): Promise<Mutated | Failed>;
   setPanelOpen(open: boolean): Promise<void>;
   onConnectionChanged(cb: (c: EffectiveConnection) => void): void;
+  recentUrls(): Promise<string[]>;
+  clearRecentUrls(): Promise<void>;
+  onRecentUrlsChanged(cb: (list: string[]) => void): void;
 }
 
 const MASK = "••••••••••••";
@@ -70,6 +73,7 @@ export function mountConnectionPanel(): void {
 
   let lastConn: EffectiveConnection | null = null;
   let extras: Pick<GetConnectionReply, "stdioLaunch" | "appVersion" | "license"> | null = null;
+  let recentUrlCount = 0;
   let revealed = false;
   // Transient inline notices — kept here so a re-render (triggered by the
   // connection:changed push a mutation causes) does not wipe them.
@@ -80,6 +84,7 @@ export function mountConnectionPanel(): void {
   async function open(): Promise<void> {
     await hyppo.setPanelOpen(true);
     panel.hidden = false;
+    recentUrlCount = (await hyppo.recentUrls()).length;
     const reply = await hyppo.getConnection();
     extras = {
       stdioLaunch: reply.stdioLaunch,
@@ -185,7 +190,27 @@ export function mountConnectionPanel(): void {
     } else {
       renderHttp(c);
     }
+    renderRecentUrls();
     renderLastRequest(c);
+  }
+
+  /** Feature 009 — a "Clear recent URLs" action for the address-bar dropdown.
+   *  The dropdown itself lives in the top bar; this is only its clear affordance. */
+  function renderRecentUrls(): void {
+    const s = el("div", { className: "section" });
+    s.append(el("h3", { textContent: "Recent URLs" }));
+    const btn = el("button", {
+      id: "clear-recent-urls",
+      textContent: "Clear recent URLs",
+      disabled: recentUrlCount === 0,
+    });
+    btn.addEventListener("click", () => void hyppo.clearRecentUrls());
+    const count =
+      recentUrlCount === 0
+        ? "The address bar has no remembered URLs yet."
+        : `${recentUrlCount} URL${recentUrlCount === 1 ? "" : "s"} offered in the address-bar dropdown.`;
+    s.append(el("div", { className: "row" }, btn), el("div", { className: "notice", textContent: count }));
+    body.append(s);
   }
 
   function renderHttp(c: EffectiveConnection): void {
@@ -424,5 +449,10 @@ export function mountConnectionPanel(): void {
   hyppo.onConnectionChanged((c) => {
     lastConn = c;
     if (!panel.hidden) render(c);
+  });
+
+  hyppo.onRecentUrlsChanged((list) => {
+    recentUrlCount = list.length;
+    if (!panel.hidden && lastConn) render(lastConn);
   });
 }

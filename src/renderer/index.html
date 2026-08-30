@@ -316,7 +316,8 @@
       <div id="bar-main">
         <div id="bar-row">
           <select id="tabselect" title="Switch tab" aria-label="Switch tab" hidden></select>
-          <input id="address" placeholder="https://…  — Enter opens a new tab" />
+          <input id="address" list="recent-urls" placeholder="https://…  — Enter opens a new tab" />
+          <datalist id="recent-urls"></datalist>
           <button id="go" title="Open" aria-label="Open">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
           </button>

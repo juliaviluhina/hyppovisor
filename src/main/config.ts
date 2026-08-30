@@ -36,6 +36,8 @@ export const config = {
   screenshotJpegQualityStart: numFromEnv("HYPPO_SCREENSHOT_JPEG_QUALITY_START", 80),
   /** Lowest JPEG quality the screenshot compress loop will drop to before downscaling (feature 008, R10). */
   screenshotJpegQualityFloor: numFromEnv("HYPPO_SCREENSHOT_JPEG_QUALITY_FLOOR", 30),
+  /** Max recent-URL history entries kept for the address-bar dropdown (feature 009, FR-006). */
+  recentUrlsCap: numFromEnv("HYPPO_RECENT_URLS_CAP", 20),
   /** Chrome height reserved at the top of the window for the renderer UI. */
   chromeHeight: 104,
 };

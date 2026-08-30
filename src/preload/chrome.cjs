@@ -9,6 +9,13 @@ contextBridge.exposeInMainWorld("hyppo", {
   closeTab: (tabId) => ipcRenderer.invoke("chrome:close-tab", tabId),
   listTabs: () => ipcRenderer.invoke("chrome:list-tabs"),
   onTabsChanged: (cb) => ipcRenderer.on("tabs:changed", (_e, tabs) => cb(tabs)),
+
+  // Recent-URLs dropdown (feature 009).
+  recentUrls: () => ipcRenderer.invoke("chrome:recent-urls"),
+  clearRecentUrls: () => ipcRenderer.invoke("chrome:clear-recent-urls"),
+  onRecentUrlsChanged: (cb) =>
+    ipcRenderer.on("recent-urls:changed", (_e, list) => cb(list)),
+
   onActivity: (cb) => ipcRenderer.on("tabs:activity", (_e, a) => cb(a)),
   onBlockedAction: (cb) => ipcRenderer.on("tabs:blocked-action", (_e, a) => cb(a)),
 

@@ -4,6 +4,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { config } from "./config.js";
 import { ActionQueue } from "./queue/action-queue.js";
 import { InteractionLog } from "./safety/interaction-log.js";
 import { TabManager } from "./tabs/tab-manager.js";
@@ -19,6 +20,11 @@ import {
   readEnvOverrides,
   resolveEffective,
 } from "./settings.js";
+import {
+  loadRecentUrls,
+  saveRecentUrls,
+  addRecentUrl,
+} from "./recent-urls.js";
 import { readPage } from "./page/read.js";
 import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { readFormFields } from "./page/form-fields.js";
@@ -76,10 +82,21 @@ async function main(): Promise<void> {
 
   const queue = new ActionQueue();
   const log = new InteractionLog(app.getPath("userData"));
+
+  // Recent-URLs history for the address-bar dropdown (feature 009). Loaded once
+  // at startup; the only writer is a person-initiated open that reached
+  // "loaded", plus the panel's "Clear recent URLs" action.
+  let recentUrls = loadRecentUrls(app.getPath("userData"));
+
   const tabs = new TabManager(win, {
     onChange: () => send("tabs:changed", tabs.list()),
     onBlockedAction: (kind, detail) => send("tabs:blocked-action", { kind, detail }),
     onActivity: (tabId, description) => send("tabs:activity", { tabId, description }),
+    onPersonOpen: (url) => {
+      recentUrls = addRecentUrl(recentUrls, url, config.recentUrlsCap);
+      saveRecentUrls(app.getPath("userData"), recentUrls);
+      send("recent-urls:changed", recentUrls);
+    },
   });
 
   // MCP connection state (feature 007): persisted settings + the environment,
@@ -110,6 +127,15 @@ async function main(): Promise<void> {
   ipcMain.handle("chrome:activate-tab", (_e, tabId: string) => tabs.setActive(tabId));
   ipcMain.handle("chrome:close-tab", (_e, tabId: string) => tabs.close(tabId));
   ipcMain.handle("chrome:list-tabs", () => tabs.list());
+
+  // Recent-URLs dropdown (feature 009). Registered before win.loadFile so the
+  // renderer's first read can't race them (feature-007 lesson).
+  ipcMain.handle("chrome:recent-urls", () => recentUrls);
+  ipcMain.handle("chrome:clear-recent-urls", () => {
+    recentUrls = [];
+    saveRecentUrls(app.getPath("userData"), []);
+    send("recent-urls:changed", []);
+  });
 
   // ── Connection panel IPC (feature 007, contracts/ipc-connection.md) ──────────
   ipcMain.handle("chrome:get-connection", () => ({
