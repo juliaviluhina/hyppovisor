@@ -6,6 +6,8 @@
 node_modules/
 dist/
 out/
+# @electron/packager output — HyppoVisor-<platform>-<arch>/
+HyppoVisor-*/
 *.log
 .vitest/
 test-results/

@@ -54,6 +54,46 @@ export function stdioJsonConfig(launch: StdioLaunchLike): string {
 }
 
 /**
+ * Plain-language "how it works" content for the connection panel, shown right
+ * under the About section. DOM-free so it stays testable; panel.ts turns the
+ * arrays into a diagram + two lists.
+ */
+export const HOW_IT_WORKS_INTRO =
+  "You drive an AI agent app (Claude Code and the like) and want it to do small " +
+  "jobs on web pages you are signed in to — read what is there, fill fields in. " +
+  "HyppoVisor is the pair of hands it borrows.";
+
+export const HOW_IT_WORKS_STEPS: readonly string[] = [
+  "Start HyppoVisor.",
+  "Open the page's URL in a tab.",
+  "Sign in yourself if the site asks — HyppoVisor never does.",
+  "Copy this panel's MCP config into your AI agent app.",
+  "Ask the agent to read or fill the page; it calls HyppoVisor's tools.",
+];
+
+export const HYPPO_CAN: readonly string[] = [
+  "open a URL in a new tab, or point a tab at another address",
+  "list the open tabs and their state",
+  "read a page's visible text (and its DOM only when asked)",
+  "list a page's form fields, read-only",
+  "do one bounded action at a time: click, fill, scroll, space, choose_option, list_options",
+  "wait for an element to appear",
+  "take a screenshot to check what rendered",
+];
+
+export const HYPPO_FORBIDDEN: readonly string[] = [
+  "submit a form, or press Enter",
+  "send a message, or apply for anything",
+  "connect anywhere else, or call other services",
+  "sign in or authenticate on your behalf",
+  "upload, attach, or download a file",
+];
+
+export const HOW_IT_WORKS_CLOSING =
+  "A human performs every step that acts on the outside world. Every action the " +
+  "assistant takes is logged locally on this machine.";
+
+/**
  * Static, copyable plain-language description of HyppoVisor and its MCP tools.
  * Test-enforced (connection-snippets.test.ts §8): names the app, lists every
  * tool in TOOL_NAMES, states the never-does guarantees, and carries no secret

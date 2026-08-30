@@ -10,6 +10,11 @@
 
 import {
   ABOUT_TEXT,
+  HOW_IT_WORKS_INTRO,
+  HOW_IT_WORKS_STEPS,
+  HYPPO_CAN,
+  HYPPO_FORBIDDEN,
+  HOW_IT_WORKS_CLOSING,
   endpointUrl,
   mcpAddCommand,
   mcpJsonConfig,
@@ -173,6 +178,8 @@ export function mountConnectionPanel(): void {
     body.innerHTML = "";
 
     renderAbout(c);
+    renderHowItWorks();
+    renderAgentText();
     if (c.transport === "stdio") {
       renderStdio(c);
     } else {
@@ -361,14 +368,55 @@ export function mountConnectionPanel(): void {
           textContent: extras.license,
         }),
       );
-      ver.append(document.createTextNode(" · by juliaviluhina"));
+      ver.append(document.createTextNode(" · by "));
+      ver.append(
+        el("a", {
+          href: "https://github.com/juliaviluhina",
+          textContent: "juliaviluhina",
+        }),
+      );
       titles.append(ver);
     }
     s.append(el("div", { className: "about-heading" }, img, titles));
+    body.append(s);
+  }
 
+  /** The copy-ready blurb a person pastes into their AI agent app. Sits after
+   *  "How it works" so the walkthrough is what a reader meets first. */
+  function renderAgentText(): void {
+    const s = el("div", { className: "section" });
+    s.append(el("h3", { textContent: "Tell your AI agent app" }));
     const head = el("div", { className: "row" });
     head.append(copyButton("about", () => ABOUT_TEXT));
     s.append(head, el("pre", { className: "snippet", textContent: ABOUT_TEXT }));
+    body.append(s);
+  }
+
+  function renderHowItWorks(): void {
+    const s = el("div", { className: "section" });
+    s.append(el("h3", { textContent: "How it works" }));
+    s.append(el("p", { className: "how-intro", textContent: HOW_IT_WORKS_INTRO }));
+
+    const steps = el("ol", { className: "how-list" });
+    for (const step of HOW_IT_WORKS_STEPS) steps.append(el("li", { textContent: step }));
+    s.append(steps);
+
+    s.append(el("div", { className: "how-label", textContent: "HyppoVisor can" }));
+    const can = el("ul", { className: "how-list" });
+    for (const item of HYPPO_CAN) can.append(el("li", { textContent: item }));
+    s.append(can);
+
+    s.append(
+      el("div", {
+        className: "how-label forbidden",
+        textContent: "Fully forbidden for HyppoVisor",
+      }),
+    );
+    const no = el("ul", { className: "how-list" });
+    for (const item of HYPPO_FORBIDDEN) no.append(el("li", { textContent: item }));
+    s.append(no);
+
+    s.append(el("p", { className: "how-closing", textContent: HOW_IT_WORKS_CLOSING }));
     body.append(s);
   }
 
