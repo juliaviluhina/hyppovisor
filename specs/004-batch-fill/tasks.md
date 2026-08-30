@@ -109,10 +109,10 @@ Single-project Electron layout: `src/main/`, `src/shared/`, `tests/` at reposito
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T020 [P] Update the `interact` tool description in `src/main/mcp/tools.ts` per FR-015: document the batch form of `fill` (ordered `(target, value)` list applied in one call), whole-batch refusal when any target is forbidden or unresolved, best-effort completion for write-time errors, and the 50-pair cap.
-- [ ] T021 [P] Update `README.md`: in the "What the app will not do" / interaction section, note the batch form of `fill` if operations are enumerated there; confirm the batch adds no new permission.
-- [ ] T022 Run the full gate from quickstart §7: `npm run build`, `npm run lint`, `npm run test`, `npm run test:e2e` — all clean. Spot-check new `interaction-log.jsonl` lines: `target` is a selector or `null`, never page text; every batch has exactly one `fill_batch` line.
-- [ ] T023 Walk quickstart.md §1–§6 end to end against the built app and confirm each "Expected" holds; mark this feature's `checklists/requirements.md` items still satisfied.
+- [x] T020 [P] Update the `interact` tool description in `src/main/mcp/tools.ts` per FR-015: document the batch form of `fill` (ordered `(target, value)` list applied in one call), whole-batch refusal when any target is forbidden or unresolved, best-effort completion for write-time errors, and the 50-pair cap.
+- [x] T021 [P] Update `README.md`: in the "What the app will not do" / interaction section, note the batch form of `fill` if operations are enumerated there; confirm the batch adds no new permission.
+- [x] T022 Run the full gate from quickstart §7: `npm run build`, `npm run lint`, `npm run test`, `npm run test:e2e` — all clean. Spot-check new `interaction-log.jsonl` lines: `target` is a selector or `null`, never page text; every batch has exactly one `fill_batch` line.
+- [x] T023 Walk quickstart.md §1–§6 end to end against the built app and confirm each "Expected" holds; mark this feature's `checklists/requirements.md` items still satisfied.
 
 ---
 

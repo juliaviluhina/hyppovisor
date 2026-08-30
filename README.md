@@ -115,7 +115,7 @@ In a session, the agent can call:
 | `list_open_tabs` | List open tabs (id, URL, title, load state) |
 | `read_page` | Return one tab's verbatim visible text; DOM only when asked. Nothing is stored. |
 | `navigate` | Point an existing tab at a new URL |
-| `interact` | `click` / `fill` / `scroll` / `space` — reveal content and prepare a draft; never submit, send, apply, or press Enter |
+| `interact` | `click` / `fill` / `scroll` / `space` — reveal content and prepare a draft; never submit, send, apply, or press Enter. `fill` also takes a batch form (an ordered `fields` list, max 50) that drafts a whole form in one call |
 | `wait_for_selector` | Wait for an element, up to a timeout |
 
 Full contract: [`specs/001-open-any-url/contracts/mcp-tools.md`](specs/001-open-any-url/contracts/mcp-tools.md).
@@ -142,9 +142,14 @@ named rule (`REFUSED_EXTERNAL_ACT`), any target that would perform an external a
 (`text` / `email` / `tel` / `url` / `search` / `number`, `<textarea>`, `contenteditable`),
 including one inside a `<form>` and the filter input of a combobox — this prepares a draft
 the human reviews and submits. It stays refused on `<input type="file">`, `<select>`, a
-listbox, and a combobox container. `space` activates the focused element (a plain checkbox, a
-highlighted listbox option, a non-submit button) under exactly the rules above; it inserts a
-single space when a text field has focus and can never submit.
+listbox, and a combobox container. `fill` can also carry an ordered `fields` list (up to 50
+`{ selector, value }` pairs) applied in one call, under the **same** rules — every target is
+checked first and one forbidden or unresolved target refuses the whole batch with nothing
+written; after that check writing is best-effort, so a field whose element vanished mid-write
+is reported and the rest still fill. The batch adds no new permission and never submits.
+`space` activates the focused element (a plain checkbox, a highlighted listbox option, a
+non-submit button) under exactly the rules above; it inserts a single space when a text field
+has focus and can never submit.
 
 The blocklist is defined in one file (`src/main/safety/blocklist.ts`) and is enumerable. It
 permits by default, so every interaction — permitted or refused — is appended to

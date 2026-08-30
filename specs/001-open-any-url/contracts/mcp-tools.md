@@ -77,18 +77,24 @@ Points an existing tab at a new URL.
 Bounded interaction to reveal content. **Cannot** submit, send, or apply.
 
 **Input**:
-`{ tabId: string, operation: "click" | "fill" | "scroll", selector?: string, value?: string }`
+`{ tabId: string, operation: "click" | "fill" | "scroll" | "space", selector?: string, value?: string, fields?: Array<{ selector: string, value: string }> }`
 
-- `selector` required for `click` and `fill`.
-- `value` required for `fill`.
+- `selector` required for `click` and `fill` (single form); `space` acts on the focused element.
+- `value` required for `fill` (single form).
+- `fields` (feature 004) — `fill` only, an alternative to `selector` + `value`: an ordered
+  list of up to 50 `{ selector, value }` pairs applied in one call. Supply exactly one of the
+  two forms.
 
-**Returns**: `{ tabId, operation, outcome: "permitted", queueDepth }`
+**Returns**: `{ tabId, operation, outcome: "permitted", queueDepth }`. A batch `fill`
+returns `{ tabId, operation: "fill", outcome: "permitted" | "partial", fields: Array<{ selector, outcome, message? }>, summary: { requested, written, errored }, queueDepth }`.
 
-**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND`, `REFUSED_EXTERNAL_ACT`.
+**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND`, `REFUSED_EXTERNAL_ACT`, `BATCH_REJECTED`.
 
 **Refusal**: when the target matches a blocklist rule, returns `REFUSED_EXTERNAL_ACT` with
 `{ ruleId, description }` and a message referencing the no-external-act rule (FR-012, FR-012a).
-`fill` additionally refuses credential inputs (FR-018).
+`fill` additionally refuses credential inputs (FR-018). A batch `fill` with any forbidden or
+unresolved target returns `BATCH_REJECTED` with a `targets[]` breakdown and writes nothing;
+cap / empty / malformed-call refusals use `BATCH_REJECTED` without `targets` (feature 004).
 
 ---
 
