@@ -13,7 +13,9 @@ import { config } from "../config.js";
 import { HyppoError } from "../errors.js";
 import { InteractionLog } from "../safety/interaction-log.js";
 import { matchBlocklist, targetDescriptorScript, type TargetDescriptor } from "../safety/blocklist.js";
-import type { ChooseOptionReason, ChosenOption } from "../../shared/types.js";
+import { capList } from "./form-fields.js";
+import { SELECTOR_SYNTAX_HELPER, assertSelectorValid } from "./selector-syntax.js";
+import type { ChooseOptionReason, ChosenOption, ListedOption } from "../../shared/types.js";
 
 /** Internal — never crosses the MCP boundary. */
 type ChooserKind = "native-select" | "custom-combobox" | "listbox";
@@ -154,8 +156,9 @@ const OPTION_SOURCES_FN = `
 
 function probeScript(selector: string): string {
   const SEL = JSON.stringify(selector);
-  return `(() => {${OPTION_SOURCES_FN}
-    const el = document.querySelector(${SEL});
+  return `(() => {${SELECTOR_SYNTAX_HELPER}${OPTION_SOURCES_FN}
+   try {
+    const el = __querySafe(document, ${SEL});
     if (!el) return null;
     const tag = el.tagName.toLowerCase();
     const role = (el.getAttribute("role") || "").toLowerCase() || null;
@@ -200,6 +203,10 @@ function probeScript(selector: string): string {
       hasFilterInput: !!filterInput,
       preCallValue,
     };
+   } catch (e) {
+     if (e && e.__invalidSelector) return { __invalidSelector: true };
+     throw e;
+   }
   })()`;
 }
 
@@ -349,6 +356,103 @@ function closeReadbackScript(selector: string, revertFilterTo: string | null): s
   })()`;
 }
 
+// ─── Shared probe + gather ───────────────────────────────────────────────────
+
+/** Run the in-page probe; throws INVALID_SELECTOR on a non-CSS selector. */
+async function probeChooser(
+  wc: WebContents,
+  selector: string,
+): Promise<ChooserProbe | null> {
+  const probe = (await wc.executeJavaScript(probeScript(selector), true)) as
+    | ChooserProbe
+    | { __invalidSelector: true }
+    | null;
+  assertSelectorValid(probe);
+  return (probe as ChooserProbe | null) ?? null;
+}
+
+/**
+ * Custom-widget open (only if the options are not already in the DOM) → one
+ * MutationObserver-bounded gather. Shared by `listOptions` and `chooseOption`.
+ */
+async function openAndGather(
+  wc: WebContents,
+  selector: string,
+  probe: ChooserProbe,
+): Promise<{ gone?: boolean; options?: OptionRecord[] }> {
+  if (!probe.optionsPresent) {
+    const opened = (await wc.executeJavaScript(openScript(selector), true)) as { gone?: boolean };
+    if (opened.gone) return { gone: true };
+  }
+  return (await wc.executeJavaScript(
+    gatherScript(selector, config.chooseOptionWaitMs),
+    true,
+  )) as { gone?: boolean; options?: OptionRecord[] };
+}
+
+/**
+ * Read-only enumeration of a chooser's options (feature 008, US1). Reuses the
+ * `choose_option` probe → open → gather → close machinery but selects nothing,
+ * types nothing, and writes no audit entry (the caller in `interact.ts` also
+ * writes none). A scripted menu that never populates within `chooseOptionWaitMs`
+ * yields `{ options: [], optionsPresent: false }` — not an error (FR-007).
+ *
+ * Throws `HyppoError`:
+ * - `INVALID_SELECTOR` — selector is not valid CSS
+ * - `TARGET_NOT_FOUND` — selector matches nothing / control removed mid-probe
+ * - `CHOOSE_OPTION_FAILED` (`reason: "not-a-dropdown"`) — not a `<select>` /
+ *   `role=combobox|listbox` / listbox-owner, or a `<select multiple>`
+ */
+export async function listOptions(
+  wc: WebContents,
+  selector: string,
+): Promise<{ options: ListedOption[]; optionsPresent: boolean; optionsTruncated: boolean }> {
+  const probe = await probeChooser(wc, selector);
+  if (!probe) {
+    throw new HyppoError(
+      "TARGET_NOT_FOUND",
+      `No element matches selector ${JSON.stringify(selector)}.`,
+    );
+  }
+
+  const notADropdown = (): never => {
+    throw new HyppoError(
+      "CHOOSE_OPTION_FAILED",
+      `${REASON_MESSAGE["not-a-dropdown"]} (reason: not-a-dropdown)`,
+      { reason: "not-a-dropdown" },
+    );
+  };
+
+  // A `<select multiple>` / multiselectable widget is not a dropdown for this op.
+  if (probe.multiple) return notADropdown();
+  const kind = chooserKindFor(probe);
+  if (kind === null) return notADropdown();
+
+  if (kind === "native-select") {
+    const capped = capList(probe.optionsInDom, config.formFieldOptionCap);
+    return { options: capped.items, optionsPresent: true, optionsTruncated: capped.truncated };
+  }
+
+  // custom-combobox / listbox — open, gather, then close + revert so the control
+  // is left exactly as it was found.
+  const gathered = await openAndGather(wc, selector, probe);
+  if (gathered.gone) {
+    throw new HyppoError(
+      "TARGET_NOT_FOUND",
+      `Control ${JSON.stringify(selector)} was removed mid-operation.`,
+    );
+  }
+  await wc.executeJavaScript(closeReadbackScript(selector, probe.preCallValue || ""), true);
+
+  const options = gathered.options ?? [];
+  const capped = capList(options, config.formFieldOptionCap);
+  return {
+    options: capped.items,
+    optionsPresent: options.length > 0,
+    optionsTruncated: capped.truncated,
+  };
+}
+
 // ─── Orchestration ───────────────────────────────────────────────────────────
 
 const REASON_MESSAGE: Record<ChooseOptionReason, string> = {
@@ -479,24 +583,13 @@ export async function chooseOption(
     return { chosenOption: { label: chosen.label, value: chosen.value } };
   }
 
-  // custom-combobox / listbox
-  if (!probe.optionsPresent) {
-    const opened = (await wc.executeJavaScript(openScript(selector), true)) as { gone?: boolean };
-    if (opened.gone) {
-      record("error", { error: "control removed mid-operation" });
-      throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
-    }
-  }
-
+  // custom-combobox / listbox — shared open + gather (also used by listOptions).
   const closeAndThrow = async (reason: ChooseOptionReason, candidates?: string[]): Promise<never> => {
     await wc.executeJavaScript(closeReadbackScript(selector, probe.preCallValue || ""), true);
     return refuseReason(reason, candidates);
   };
 
-  let gathered = (await wc.executeJavaScript(
-    gatherScript(selector, config.chooseOptionWaitMs),
-    true,
-  )) as { gone?: boolean; options?: Array<{ label: string; value: string; disabled: boolean }> };
+  let gathered = await openAndGather(wc, selector, probe);
   if (gathered.gone) {
     record("error", { error: "control removed mid-operation" });
     throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);

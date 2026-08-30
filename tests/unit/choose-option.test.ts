@@ -3,12 +3,15 @@
 // change (R4). End-to-end mechanics are in tests/integration/choose-option.spec.ts.
 
 import { describe, it, expect } from "vitest";
+import type { WebContents } from "electron";
 import {
   matchOption,
   chooserKindFor,
+  listOptions,
   norm,
   type ChooserShape,
 } from "../../src/main/page/choose-option.js";
+import { config } from "../../src/main/config.js";
 import {
   ruleCovers,
   matchBlocklist,
@@ -144,6 +147,165 @@ describe("blocklist coverage for choose_option (research.md R4)", () => {
     expect(
       matchBlocklist(d({ name: "country", hasFormAncestor: true }), "choose_option").blocked,
     ).toBe(false);
+  });
+});
+
+// ─── feature 008 US1: listOptions() — probe → open → gather → close ───────────
+
+/**
+ * A WebContents stub that routes each injected script to a handler keyed by a
+ * fragment unique to that script. Records the call order so a test can assert a
+ * native <select> takes no open/close.
+ */
+function fakeWc(handlers: {
+  probe: unknown;
+  open?: unknown;
+  gather?: unknown;
+  close?: unknown;
+}): { wc: WebContents; calls: string[] } {
+  const calls: string[] = [];
+  const wc = {
+    getURL: () => "http://fixture.test/combobox.html",
+    executeJavaScript: async (src: string) => {
+      if (src.includes("optionsInDom")) {
+        calls.push("probe");
+        return handlers.probe;
+      }
+      if (src.includes("new MutationObserver") && src.includes("resolve({ options")) {
+        calls.push("gather");
+        return handlers.gather ?? { options: [] };
+      }
+      if (src.includes('aria-expanded') && src.includes("shown")) {
+        calls.push("close");
+        return handlers.close ?? { shown: "", expanded: "false" };
+      }
+      if (src.includes('typeof el.click === "function"') && src.includes("return { ok: true }")) {
+        calls.push("open");
+        return handlers.open ?? { ok: true };
+      }
+      calls.push("other");
+      return null;
+    },
+  } as unknown as WebContents;
+  return { wc, calls };
+}
+
+const orec = (label: string, value: string, disabled = false) => ({ label, value, disabled });
+
+describe("listOptions — read-only option enumeration (feature 008 US1)", () => {
+  it("native <select>: returns optionsInDom with optionsPresent:true and no open/close", async () => {
+    const { wc, calls } = fakeWc({
+      probe: {
+        tagName: "select",
+        role: null,
+        multiple: false,
+        ownsListbox: false,
+        optionsInDom: [orec("Engineering", "eng"), orec("Design", "design"), orec("Ops", "ops", true)],
+        optionsPresent: true,
+        hasFilterInput: false,
+        preCallValue: "",
+      },
+    });
+    const r = await listOptions(wc, "#plainSelect");
+    expect(r).toEqual({
+      options: [orec("Engineering", "eng"), orec("Design", "design"), orec("Ops", "ops", true)],
+      optionsPresent: true,
+      optionsTruncated: false,
+    });
+    expect(calls).toEqual(["probe"]);
+  });
+
+  it("scripted widget: drives probe → open → gather → close, returns the gathered options", async () => {
+    const { wc, calls } = fakeWc({
+      probe: {
+        tagName: "div",
+        role: "combobox",
+        multiple: false,
+        ownsListbox: false,
+        optionsInDom: [],
+        optionsPresent: false,
+        hasFilterInput: false,
+        preCallValue: "",
+      },
+      open: { ok: true },
+      gather: { options: [orec("Frontend Engineer", "fe"), orec("Backend Engineer", "be")] },
+      close: { shown: "", expanded: "false" },
+    });
+    const r = await listOptions(wc, "#roleCombo");
+    expect(r.options.map((o) => o.value)).toEqual(["fe", "be"]);
+    expect(r.optionsPresent).toBe(true);
+    expect(r.optionsTruncated).toBe(false);
+    expect(calls).toEqual(["probe", "open", "gather", "close"]);
+  });
+
+  it("a widget that never populates: options: [], optionsPresent: false, no error", async () => {
+    const { wc } = fakeWc({
+      probe: {
+        tagName: "div",
+        role: "combobox",
+        multiple: false,
+        ownsListbox: false,
+        optionsInDom: [],
+        optionsPresent: false,
+        hasFilterInput: false,
+        preCallValue: "",
+      },
+      gather: { options: [] },
+    });
+    const r = await listOptions(wc, "#deadCombo");
+    expect(r).toEqual({ options: [], optionsPresent: false, optionsTruncated: false });
+  });
+
+  it("<select multiple> → CHOOSE_OPTION_FAILED reason not-a-dropdown", async () => {
+    const { wc } = fakeWc({
+      probe: {
+        tagName: "select",
+        role: null,
+        multiple: true,
+        ownsListbox: false,
+        optionsInDom: [orec("JS", "js"), orec("TS", "ts")],
+        optionsPresent: true,
+        hasFilterInput: false,
+        preCallValue: "",
+      },
+    });
+    await expect(listOptions(wc, "#multiSelect")).rejects.toMatchObject({
+      code: "CHOOSE_OPTION_FAILED",
+      details: { reason: "not-a-dropdown" },
+    });
+  });
+
+  it("a plain <div> (probe returns null) → TARGET_NOT_FOUND", async () => {
+    const { wc } = fakeWc({ probe: null });
+    await expect(listOptions(wc, "#plainDiv")).rejects.toMatchObject({ code: "TARGET_NOT_FOUND" });
+  });
+
+  it("a non-CSS selector (probe returns the sentinel) → INVALID_SELECTOR", async () => {
+    const { wc } = fakeWc({ probe: { __invalidSelector: true } });
+    await expect(listOptions(wc, "a:has-text('x')")).rejects.toMatchObject({
+      code: "INVALID_SELECTOR",
+    });
+  });
+
+  it("the option cap truncates the returned list and sets optionsTruncated", async () => {
+    const many = Array.from({ length: config.formFieldOptionCap + 2 }, (_, i) =>
+      orec(`Option ${i}`, String(i)),
+    );
+    const { wc } = fakeWc({
+      probe: {
+        tagName: "select",
+        role: null,
+        multiple: false,
+        ownsListbox: false,
+        optionsInDom: many,
+        optionsPresent: true,
+        hasFilterInput: false,
+        preCallValue: "",
+      },
+    });
+    const r = await listOptions(wc, "#big");
+    expect(r.options.length).toBe(config.formFieldOptionCap);
+    expect(r.optionsTruncated).toBe(true);
   });
 });
 

@@ -80,12 +80,12 @@ control value unchanged, menu closed, `interaction-log.jsonl` line count unchang
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Extend `tests/unit/choose-option.test.ts`: `listOptions()` returns a
+- [x] T008 [P] [US1] Extend `tests/unit/choose-option.test.ts`: `listOptions()` returns a
   native `<select>`'s options with `optionsPresent: true` and no open/close; drives
   open → gather → close for a scripted widget; a never-populating widget yields
   `{ options: [], optionsPresent: false, optionsTruncated: false }`; `<select multiple>`
   classifies as not-a-dropdown; the option cap sets `optionsTruncated`.
-- [ ] T009 [P] [US1] Add `tests/integration/list-options.spec.ts`: native select, scripted
+- [x] T009 [P] [US1] Add `tests/integration/list-options.spec.ts`: native select, scripted
   widget, plain `<div>` → `CHOOSE_OPTION_FAILED`/`reason:"not-a-dropdown"`, never-populating
   widget → empty + `optionsPresent:false` (with a lowered `HYPPO_CHOOSE_OPTION_WAIT_MS`),
   control value + menu state unchanged after the call, **`interaction-log.jsonl` unchanged**,
@@ -94,22 +94,22 @@ control value unchanged, menu closed, `interaction-log.jsonl` line count unchang
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Refactor `src/main/page/choose-option.ts`: extract the
+- [x] T010 [US1] Refactor `src/main/page/choose-option.ts`: extract the
   probe → (open if `!optionsPresent`) → `gatherScript` → `closeReadbackScript` sequence into
   an exported `listOptions(wc, selector)` returning `{ options, optionsPresent, optionsTruncated }`
   (cap via `config.formFieldOptionCap` + `capList`); make `chooseOption` call the shared
   steps so there is one copy; add the `SyntaxError` catch from `selector-syntax.ts` to
   `probeScript` and surface `{ __invalidSelector: true }`.
-- [ ] T011 [US1] Add the `list_options` branch to `src/main/page/interact.ts`: blocklist
+- [x] T011 [US1] Add the `list_options` branch to `src/main/page/interact.ts`: blocklist
   gate via the same rule set `choose_option` uses (`matchBlocklist(descriptor, "choose_option")`),
   call `listOptions`, map probe not-a-dropdown / `<select multiple>` to
   `CHOOSE_OPTION_FAILED`, call `assertSelectorValid` on the invalid-selector marker, and
   write **no** `log.record` entry on any path (success, refusal, error).
-- [ ] T012 [US1] In `src/main/mcp/tools.ts` add `"list_options"` to the `interact`
+- [x] T012 [US1] In `src/main/mcp/tools.ts` add `"list_options"` to the `interact`
   `operation` zod enum and to the tool description; return the `ListOptionsResult` shape
   (`tabId`, `selector`, `options`, `optionsPresent`, `optionsTruncated`, `queueDepth`) via
   `ok(...)`.
-- [ ] T013 [US1] Update `specs/001-open-any-url/contracts/mcp-tools.md`: add the
+- [x] T013 [US1] Update `specs/001-open-any-url/contracts/mcp-tools.md`: add the
   `list_options` operation row from `contracts/mcp-tools-008-delta.md` (request, response,
   read-only + no-audit guarantees, error table).
 

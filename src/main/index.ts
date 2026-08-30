@@ -276,15 +276,33 @@ async function main(): Promise<void> {
             .run(() =>
               interact(tabs.webContentsFor(tabId), log, tabId, operation, selector, value, label),
             )
-            .then((r) => ({
-              tabId,
-              operation,
-              outcome: "permitted",
-              ...(r.value && typeof r.value === "object" && "chosenOption" in r.value
-                ? { chosenOption: r.value.chosenOption }
-                : {}),
-              queueDepth: r.queueDepth,
-            })),
+            .then((r) => {
+              // list_options returns an option enumeration, not a permitted-action ack.
+              if (operation === "list_options") {
+                const v = r.value as {
+                  options: unknown;
+                  optionsPresent: boolean;
+                  optionsTruncated: boolean;
+                };
+                return {
+                  tabId,
+                  selector,
+                  options: v.options,
+                  optionsPresent: v.optionsPresent,
+                  optionsTruncated: v.optionsTruncated,
+                  queueDepth: r.queueDepth,
+                };
+              }
+              return {
+                tabId,
+                operation,
+                outcome: "permitted",
+                ...(r.value && typeof r.value === "object" && "chosenOption" in r.value
+                  ? { chosenOption: r.value.chosenOption }
+                  : {}),
+                queueDepth: r.queueDepth,
+              };
+            }),
         ),
       // Tests pass terse [selector, value] tuples; the MCP tool uses the
       // { selector, value } object form.

@@ -85,10 +85,10 @@ Points an existing tab at a new URL.
 Bounded interaction to reveal content. **Cannot** submit, send, or apply.
 
 **Input**:
-`{ tabId: string, operation: "click" | "fill" | "scroll" | "space" | "choose_option", selector?: string, value?: string, label?: string, fields?: Array<{ selector: string, value: string }> }`
+`{ tabId: string, operation: "click" | "fill" | "scroll" | "space" | "choose_option" | "list_options", selector?: string, value?: string, label?: string, fields?: Array<{ selector: string, value: string }> }`
 
-- `selector` required for `click`, `fill` (single form), and `choose_option`; `space` acts on
-  the focused element.
+- `selector` required for `click`, `fill` (single form), `choose_option`, and `list_options`;
+  `space` acts on the focused element.
 - `value` required for `fill` (single form).
 - `fields` (feature 004) — `fill` only, an alternative to `selector` + `value`: an ordered
   list of up to 50 `{ selector, value }` pairs applied in one call. Supply exactly one of the
@@ -96,14 +96,27 @@ Bounded interaction to reveal content. **Cannot** submit, send, or apply.
 - `label` (feature 006) — `choose_option` only: the target option's visible label
   (case-insensitive, whitespace-collapsed). Supply `label` and/or `value`; with both, `value`
   selects and `label` must also match. `choose_option` never presses Enter and never submits.
+- `list_options` (feature 008) — read-only enumeration of a dropdown's current choices.
+  Takes `tabId` + `selector`; `value` / `label` / `fields` are ignored. Valid targets are the
+  same as `choose_option` (single-select `<select>`, `role=combobox`/`listbox`, or a
+  listbox-owner). It opens and closes a scripted menu if needed, selects nothing, leaves the
+  control's value and menu state exactly as found, and writes **no** interaction-audit entry
+  on any path.
 
 **Returns**: `{ tabId, operation, outcome: "permitted", queueDepth }`. A batch `fill`
 returns `{ tabId, operation: "fill", outcome: "permitted" | "partial", fields: Array<{ selector, outcome, message? }>, summary: { requested, written, errored }, queueDepth }`.
 A permitted `choose_option` additionally carries `chosenOption: { label, value }` — the
 matched option's verbatim label and value (feature 006).
+`list_options` returns `{ tabId, selector, options: Array<{ label, value, disabled }>,
+optionsPresent, optionsTruncated, queueDepth }` (feature 008). `options` is in document
+order; `label` is verbatim except surrounding whitespace; `value` precedence is
+`data-value` → `value` → `id` → `""`. A native `<select>` always has `optionsPresent: true`
+and is read without opening anything. A scripted menu that never populates within the
+option-wait window returns `options: []`, `optionsPresent: false` — **not** an error.
+`options` is capped at `formFieldOptionCap`; `optionsTruncated: true` when it bit.
 
-**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND`, `REFUSED_EXTERNAL_ACT`, `BATCH_REJECTED`,
-`CHOOSE_OPTION_FAILED`.
+**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND`, `INVALID_SELECTOR`, `REFUSED_EXTERNAL_ACT`,
+`BATCH_REJECTED`, `CHOOSE_OPTION_FAILED`.
 
 **Refusal**: when the target matches a blocklist rule, returns `REFUSED_EXTERNAL_ACT` with
 `{ ruleId, description }` and a message referencing the no-external-act rule (FR-012, FR-012a).
@@ -116,6 +129,11 @@ option, or a `<select multiple>` with `CHOOSE_OPTION_FAILED` and a `reason` (`no
 `option-not-appeared` / `multi-select`); a submit/consent/credential/wording chooser is
 `REFUSED_EXTERNAL_ACT`. `in-form` does not gate `choose_option`. Every refusal leaves the
 control unchanged (feature 006).
+`list_options` (feature 008) is blocklist-gated identically to `choose_option`
+(submit/consent/credential/wording → `REFUSED_EXTERNAL_ACT` with the same `ruleId`; `in-form`
+does not gate it); a non-chooser or `<select multiple>` → `CHOOSE_OPTION_FAILED`
+(`reason: "not-a-dropdown"`); a non-CSS `selector` → `INVALID_SELECTOR`. It never writes an
+interaction-audit entry.
 
 ---
 

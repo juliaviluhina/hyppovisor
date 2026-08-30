@@ -9,7 +9,13 @@ import type { TabManager } from "../tabs/tab-manager.js";
 import type { InteractionLog } from "../safety/interaction-log.js";
 import { HyppoError, isHyppoError } from "../errors.js";
 import { readPage } from "../page/read.js";
-import { interact, fillBatch, checkFillInputShape, waitForSelector } from "../page/interact.js";
+import {
+  interact,
+  fillBatch,
+  checkFillInputShape,
+  waitForSelector,
+  type ListOptionsPayload,
+} from "../page/interact.js";
 import { readFormFields } from "../page/form-fields.js";
 
 export interface ToolDeps {
@@ -145,11 +151,18 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       "confirm the value stuck. A non-chooser / no-match / ambiguous label / disabled option " +
       "/ option-that-never-rendered / multi-select control is refused CHOOSE_OPTION_FAILED " +
       "with a `reason`; a permitted call returns `chosenOption: { label, value }`. `in-form` " +
-      "does not gate choose_option. Cannot submit, send, apply, or press Enter — " +
-      "submit/consent/credential targets are refused with a named rule.",
+      "does not gate choose_option. `list_options` is read-only: it returns every choice a " +
+      "dropdown currently offers as { label, value, disabled } — opening and closing a " +
+      "scripted menu if needed — without selecting anything, without changing the control's " +
+      "value, and WITHOUT an interaction-log entry (`value` / `label` / `fields` are ignored). " +
+      "A scripted menu that never populates yields options: [] with optionsPresent: false " +
+      "(not an error); a non-dropdown or <select multiple> is refused CHOOSE_OPTION_FAILED " +
+      "(reason: not-a-dropdown); it is blocklist-gated exactly as choose_option. Cannot " +
+      "submit, send, apply, or press Enter — submit/consent/credential targets are refused " +
+      "with a named rule.",
     {
       tabId: z.string(),
-      operation: z.enum(["click", "fill", "scroll", "space", "choose_option"]),
+      operation: z.enum(["click", "fill", "scroll", "space", "choose_option", "list_options"]),
       selector: z.string().optional(),
       value: z.string().optional(),
       label: z
@@ -175,6 +188,22 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
             return fillBatch(wc, log, tabId, fields, depth);
           });
           return ok(result);
+        }
+
+        if (operation === "list_options") {
+          const { value: result, queueDepth } = await queue.run(() => {
+            const wc = tabs.webContentsFor(tabId);
+            return interact(wc, log, tabId, operation, selector, value, label);
+          });
+          const r = result as ListOptionsPayload;
+          return ok({
+            tabId,
+            selector,
+            options: r.options,
+            optionsPresent: r.optionsPresent,
+            optionsTruncated: r.optionsTruncated,
+            queueDepth,
+          });
         }
 
         const { value: result, queueDepth } = await queue.run(() => {

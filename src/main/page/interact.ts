@@ -21,7 +21,7 @@ import {
   activeElementDescriptorScript,
   type TargetDescriptor,
 } from "../safety/blocklist.js";
-import { chooseOption } from "./choose-option.js";
+import { chooseOption, listOptions } from "./choose-option.js";
 import type {
   InteractOperation,
   InteractionLogEntry,
@@ -29,6 +29,7 @@ import type {
   BatchFieldResult,
   BatchFillResult,
   ChosenOption,
+  ListedOption,
 } from "../../shared/types.js";
 
 async function descriptorFor(wc: WebContents, selector: string): Promise<TargetDescriptor> {
@@ -214,6 +215,32 @@ export async function resolveFillTarget(
   return { ok: true, descriptor: d };
 }
 
+/** Payload for a permitted `list_options` (feature 008, US1). */
+export interface ListOptionsPayload {
+  options: ListedOption[];
+  optionsPresent: boolean;
+  optionsTruncated: boolean;
+}
+
+/**
+ * Resolve a target descriptor, swallowing the `SyntaxError` a non-CSS selector
+ * rejects with (that case is surfaced downstream as `INVALID_SELECTOR`). Returns
+ * `null` for "no match" and for "bad syntax" alike.
+ */
+async function descriptorOrNull(
+  wc: WebContents,
+  selector: string,
+): Promise<TargetDescriptor | null> {
+  try {
+    return (await wc.executeJavaScript(
+      targetDescriptorScript(selector),
+      true,
+    )) as TargetDescriptor | null;
+  } catch {
+    return null;
+  }
+}
+
 export async function interact(
   wc: WebContents,
   log: InteractionLog,
@@ -222,7 +249,7 @@ export async function interact(
   selector: string | undefined,
   value: string | undefined,
   label?: string,
-): Promise<{ chosenOption?: ChosenOption } | void> {
+): Promise<{ chosenOption?: ChosenOption } | ListOptionsPayload | void> {
   const url = wc.getURL();
   const target = selector ?? null;
   let logged = false;
@@ -232,6 +259,33 @@ export async function interact(
   // is not double-logged as an "error" by the outer catch.
   if (operation === "choose_option") {
     return chooseOption(wc, log, tabId, selector, label, value);
+  }
+
+  // list_options is a *read*: it selects nothing and writes NO interaction-log
+  // entry on any path (success, refusal, error) — same posture as read_page /
+  // read_form_fields (feature 008 US1, R1). Dispatched before the try/catch so
+  // the outer catch never records an "error" entry for it.
+  if (operation === "list_options") {
+    if (!selector) {
+      throw new HyppoError("TARGET_NOT_FOUND", `Operation "list_options" requires a selector.`);
+    }
+    // Blocklist gate — the SAME rule set choose_option uses (submit-control,
+    // consent-toggle, credential-field, external-act-label refuse; in-form does
+    // not). A non-CSS selector or a no-match returns null here and is surfaced
+    // as INVALID_SELECTOR / TARGET_NOT_FOUND by listOptions() below.
+    const d = await descriptorOrNull(wc, selector);
+    if (d) {
+      const verdict = matchBlocklist(d, "choose_option");
+      if (verdict.blocked) {
+        throw new HyppoError(
+          "REFUSED_EXTERNAL_ACT",
+          `Refused list_options on ${selector}: ${verdict.description} ` +
+            `The app never performs an external act (constitution Principle I).`,
+          { ruleId: verdict.ruleId, ruleDescription: verdict.description },
+        );
+      }
+    }
+    return listOptions(wc, selector);
   }
 
   try {
