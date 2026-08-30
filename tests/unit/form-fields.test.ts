@@ -9,6 +9,7 @@ import {
   kindFor,
   synthesizeSelector,
   readFormFields,
+  capList,
   type SelectorCounts,
 } from "../../src/main/page/form-fields.js";
 import {
@@ -16,6 +17,7 @@ import {
   clickVerdictFor,
   type TargetDescriptor,
 } from "../../src/main/safety/blocklist.js";
+import { config } from "../../src/main/config.js";
 
 describe("kindFor — research.md R4 table, first match wins", () => {
   it("maps the common (tag, type, role, contenteditable) combinations", () => {
@@ -121,6 +123,66 @@ describe("synthesizeSelector — preference #id → [name] → structural (resea
   });
 });
 
+describe("capList — control cap and per-record options cap (FR-010)", () => {
+  it("cuts to the cap in order and flags the truncation", () => {
+    expect(capList([1, 2, 3, 4, 5], 3)).toEqual({ items: [1, 2, 3], truncated: true });
+  });
+  it("leaves a list at or under the cap untouched", () => {
+    expect(capList([1, 2], 3)).toEqual({ items: [1, 2], truncated: false });
+    expect(capList([1, 2, 3], 3)).toEqual({ items: [1, 2, 3], truncated: false });
+  });
+  it("handles an empty list", () => {
+    expect(capList([], 3)).toEqual({ items: [], truncated: false });
+  });
+});
+
+describe("readFormFields applies both caps from config", () => {
+  it("truncates the control list and sets the top-level flag", async () => {
+    const many = Array.from({ length: config.formFieldControlCap + 5 }, () =>
+      rawRecord(desc({ type: "text" })),
+    );
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        hardCeilingHit: false,
+        records: many,
+      }),
+      "tab-1",
+      undefined,
+      0,
+    );
+    expect(map.records.length).toBe(config.formFieldControlCap);
+    expect(map.truncated).toBe(true);
+  });
+
+  it("truncates a record's options to the options cap with a per-record flag", async () => {
+    const opts = Array.from({ length: config.formFieldOptionCap + 3 }, (_, i) => ({
+      label: `o${i}`,
+      value: String(i),
+    }));
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        hardCeilingHit: false,
+        records: [
+          rawRecord(desc({ tagName: "select", type: null }), {
+            options: opts,
+            optionsAvailable: true,
+          }),
+        ],
+      }),
+      "tab-1",
+      undefined,
+      0,
+    );
+    expect(map.records[0].options.length).toBe(config.formFieldOptionCap);
+    expect(map.records[0].optionsTruncated).toBe(true);
+    expect(map.records[0].optionsAvailable).toBe(true);
+  });
+});
+
 const desc = (o: Partial<TargetDescriptor>): TargetDescriptor => ({
   tagName: "input",
   type: "text",
@@ -212,7 +274,7 @@ describe("record assembly — credential currentValue is omitted entirely (FR-00
       wcYielding({
         containerFound: true,
         observedAt: "2026-08-30T00:00:00.000Z",
-        truncated: false,
+        hardCeilingHit: false,
         records: [rawRecord(desc({ type: "password" }))],
       }),
       "tab-1",
@@ -229,7 +291,7 @@ describe("record assembly — credential currentValue is omitted entirely (FR-00
       wcYielding({
         containerFound: true,
         observedAt: "2026-08-30T00:00:00.000Z",
-        truncated: false,
+        hardCeilingHit: false,
         records: [rawRecord(desc({ type: "text" }), { currentValue: "hello" })],
       }),
       "tab-1",

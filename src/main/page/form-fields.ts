@@ -126,6 +126,23 @@ export function synthesizeSelector(c: SelectorCounts): SelectorResult {
   return { selector: null, selectorSynthesised: true, duplicateId };
 }
 
+/**
+ * Cut a list to `cap` in order, reporting whether anything was dropped (FR-010).
+ * Pure; applied in the main process for both the control cap and the per-record
+ * options cap so the boundary payload is bounded by a value read from `config`.
+ */
+export function capList<T>(items: T[], cap: number): { items: T[]; truncated: boolean } {
+  if (items.length > cap) return { items: items.slice(0, cap), truncated: true };
+  return { items, truncated: false };
+}
+
+/**
+ * A generous in-page hard ceiling so a pathological page cannot make the
+ * collector build an unbounded raw list before the real (config) cap is applied
+ * in the main process. Far above the 200 default and any real form.
+ */
+const COLLECTOR_HARD_CEILING = 2000;
+
 interface RawRecord {
   descriptor: TargetDescriptor;
   selectorCounts: SelectorCounts;
@@ -142,7 +159,12 @@ interface RawRecord {
 
 type CollectorResult =
   | { containerFound: false }
-  | { containerFound: true; observedAt: string; truncated: boolean; records: RawRecord[] };
+  | {
+      containerFound: true;
+      observedAt: string;
+      hardCeilingHit: boolean;
+      records: RawRecord[];
+    };
 
 /**
  * The in-page collector (isolated world). Returns `{ containerFound: false }`
@@ -152,8 +174,7 @@ type CollectorResult =
 export function formFieldsScript(containerSelector: string | undefined): string {
   const containerJson = containerSelector === undefined ? "null" : JSON.stringify(containerSelector);
   return `(() => {
-  const CONTROL_CAP = ${Number(config.formFieldControlCap)};
-  const OPTION_CAP = ${Number(config.formFieldOptionCap)};
+  const HARD_CEILING = ${COLLECTOR_HARD_CEILING};
   const containerSel = ${containerJson};
   const root = containerSel == null ? document : document.querySelector(containerSel);
   if (containerSel != null && !root) return { containerFound: false };
@@ -265,12 +286,9 @@ export function formFieldsScript(containerSelector: string | undefined): string 
         });
       }
     }
-    const optionsTruncated = raw.length > OPTION_CAP;
-    return {
-      options: optionsTruncated ? raw.slice(0, OPTION_CAP) : raw,
-      optionsAvailable: available,
-      optionsTruncated,
-    };
+    // The options cap is applied in the main process (capList); the collector
+    // returns every option so the flag can be set from a config value.
+    return { options: raw, optionsAvailable: available, optionsTruncated: false };
   };
 
   const currentValueFor = (el) => {
@@ -298,8 +316,8 @@ export function formFieldsScript(containerSelector: string | undefined): string 
   const all = [].slice.call(
     scope.querySelectorAll("input, select, textarea, button, [contenteditable], [role]")
   ).filter(isCandidate);
-  const truncated = all.length > CONTROL_CAP;
-  const chosen = truncated ? all.slice(0, CONTROL_CAP) : all;
+  const hardCeilingHit = all.length > HARD_CEILING;
+  const chosen = hardCeilingHit ? all.slice(0, HARD_CEILING) : all;
 
   const records = chosen.map((el, idx) => {
     const id = el.id || "";
@@ -339,7 +357,12 @@ export function formFieldsScript(containerSelector: string | undefined): string 
     };
   });
 
-  return { containerFound: true, observedAt: new Date().toISOString(), records: records, truncated: truncated };
+  return {
+    containerFound: true,
+    observedAt: new Date().toISOString(),
+    hardCeilingHit: hardCeilingHit,
+    records: records,
+  };
 })()`;
 }
 
@@ -367,11 +390,14 @@ export async function readFormFields(
     );
   }
 
-  const records: FormFieldRecord[] = raw.records.map((r) => {
+  const capped = capList(raw.records, config.formFieldControlCap);
+
+  const records: FormFieldRecord[] = capped.items.map((r) => {
     const d = r.descriptor;
     const sel = synthesizeSelector(r.selectorCounts);
     const fillVerdict = fillVerdictFor(d);
     const clickVerdict = clickVerdictFor(d);
+    const opts = capList(r.options, config.formFieldOptionCap);
     const record: FormFieldRecord = {
       selector: sel.selector,
       selectorSynthesised: sel.selectorSynthesised,
@@ -383,9 +409,9 @@ export async function readFormFields(
       group: r.group,
       inFormAncestor: r.inFormAncestor,
       visible: r.visible,
-      options: r.options,
+      options: opts.items,
       optionsAvailable: r.optionsAvailable,
-      optionsTruncated: r.optionsTruncated,
+      optionsTruncated: opts.truncated,
       fillVerdict,
       clickVerdict,
     };
@@ -402,7 +428,7 @@ export async function readFormFields(
     tabId,
     url: wc.getURL(),
     observedAt: raw.observedAt,
-    truncated: raw.truncated,
+    truncated: capped.truncated || raw.hardCeilingHit,
     records,
     queueDepth,
   };

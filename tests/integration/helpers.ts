@@ -11,7 +11,10 @@ import { _electron as electron, type ElectronApplication } from "@playwright/tes
 const fixturesDir = fileURLToPath(new URL("../fixtures/", import.meta.url));
 const mainEntry = fileURLToPath(new URL("../../dist/main/index.js", import.meta.url));
 
-const MIME: Record<string, string> = { ".html": "text/html", ".js": "text/javascript" };
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+};
 
 export async function startFixtureServer(): Promise<{ server: Server; base: string }> {
   const server = createServer(async (req, res) => {

@@ -168,3 +168,34 @@ test("US2: each control's fill / click verdict matches what interact returns", a
   ]);
   expect(okFill.outcome).toBe("permitted");
 });
+
+// ─── US3: dropdown options (T018, SC-006) ─────────────────────────────────────
+
+test("US3: <select> lists every option; a combobox lists in-DOM options, none when absent", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  let map = await read(tabId);
+  const country = map.records.find((r) => r.selector === "#country")!;
+  expect(country.kind).toBe("select");
+  expect(country.optionsAvailable).toBe(true);
+  expect(country.optionsTruncated).toBe(false);
+  expect(country.options).toEqual([
+    { label: "Select…", value: "" },
+    { label: "Germany", value: "de" },
+    { label: "United States", value: "us" },
+  ]);
+
+  const combo = map.records.find((r) => r.selector === "#locationCombobox")!;
+  expect(combo.optionsAvailable).toBe(true);
+  expect(combo.options.map((o) => o.label)).toEqual(["Berlin, Germany", "Munich, Germany"]);
+
+  // remove the option elements from the DOM → the reader reports none available
+  await probe(
+    tabId,
+    `document.querySelectorAll('#locationListbox [role="option"]').forEach((n) => n.remove())`,
+  );
+  map = await read(tabId);
+  const closed = map.records.find((r) => r.selector === "#locationCombobox")!;
+  expect(closed.options).toEqual([]);
+  expect(closed.optionsAvailable).toBe(false);
+});
