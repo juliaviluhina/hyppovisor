@@ -364,7 +364,13 @@ function typeFilterScript(selector: string, text: string): string {
   })()`;
 }
 
-/** activate the single matching option element (pointer/mouse/click, no keys). */
+/**
+ * Activate the single matching option element. Fires the full hover → press →
+ * release → click sequence a real pointer produces: react-select / downshift /
+ * MUI variously select on `mouseover`-tracked focus, on `mousedown` (to beat the
+ * input blur), or on `click`, so all three are covered. No key events — Enter is
+ * never pressed (Principle I).
+ */
 function activateScript(selector: string, wantValue: string, wantLabel: string): string {
   const SEL = JSON.stringify(selector);
   const WV = JSON.stringify(wantValue);
@@ -380,9 +386,22 @@ function activateScript(selector: string, wantValue: string, wantLabel: string):
       if (useValue ? s.value === ${WV} : norm(s.label) === norm(${WL})) { target = n; break; }
     }
     if (!target) return { notFound: true };
-    for (const type of ["pointerdown", "mousedown", "mouseup", "click"]) {
-      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
-    }
+    // Re-resolve by id in case the menu re-rendered between gather and here.
+    if (target.id) { const fresh = document.getElementById(target.id); if (fresh) target = fresh; }
+    const mopts = { bubbles: true, cancelable: true, composed: true, view: window, button: 0 };
+    const fire = (type, Ctor) => {
+      try { target.dispatchEvent(new Ctor(type, mopts)); }
+      catch (_) { target.dispatchEvent(new MouseEvent(type, mopts)); }
+    };
+    fire("pointerover", window.PointerEvent || MouseEvent);
+    fire("pointerenter", window.PointerEvent || MouseEvent);
+    fire("mouseover", MouseEvent);
+    fire("mousemove", MouseEvent);
+    fire("pointerdown", window.PointerEvent || MouseEvent);
+    fire("mousedown", MouseEvent);
+    fire("pointerup", window.PointerEvent || MouseEvent);
+    fire("mouseup", MouseEvent);
+    fire("click", MouseEvent);
     return { activated: true };
   })()`;
 }
@@ -411,16 +430,31 @@ function closeReadbackScript(selector: string, revertFilterTo: string | null): s
     }
     let shown = "";
     if (input && input.value) shown = input.value;
-    else {
+    if (!shown) {
       const selOpt = el.querySelector('[aria-selected="true"]');
       if (selOpt) shown = ((selOpt.innerText || selOpt.textContent || "") + "").trim();
-      else {
-        const adId = el.getAttribute("aria-activedescendant");
-        const ad = adId ? document.getElementById(adId) : null;
-        shown = ad ? ((ad.innerText || ad.textContent || "") + "").trim()
-                   : ((el.innerText || el.textContent || "") + "").trim();
-      }
     }
+    if (!shown) {
+      const adId = el.getAttribute("aria-activedescendant");
+      const ad = adId ? document.getElementById(adId) : null;
+      if (ad) shown = ((ad.innerText || ad.textContent || "") + "").trim();
+    }
+    if (!shown) {
+      // react-select / MUI: the committed value renders in a sibling of the
+      // input, inside the control container — not on the combobox element itself.
+      // Start the climb ABOVE el so its own class (e.g. "…__input") is not the
+      // container we search.
+      const start = el.parentElement || el;
+      const box =
+        (start.closest &&
+          start.closest('[class*="control"], [class*="combobox"], [class*="container"], [class*="select"]')) ||
+        start;
+      const sv = box && box.querySelector
+        ? box.querySelector('[class*="single-value"], [class*="singleValue"], [class*="SingleValue"], [class*="multiValue"], [class*="multi-value"]')
+        : null;
+      if (sv) shown = ((sv.innerText || sv.textContent || "") + "").trim();
+    }
+    if (!shown) shown = ((el.innerText || el.textContent || "") + "").trim();
     return { shown, expanded: el.getAttribute("aria-expanded") };
   })()`;
 }
@@ -668,7 +702,21 @@ export async function chooseOption(
     throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
   }
 
-  if (probe.hasFilterInput && label !== undefined) {
+  let options = gathered.options ?? [];
+  let m: MatchResult = options.length
+    ? matchOption(options, want)
+    : { ok: false, reason: "option-not-appeared" };
+
+  // Narrow with the widget's filter input ONLY when the target is not already
+  // among the rendered options. A widget that lays out its whole list on open
+  // (react-select) must not be over-filtered by an exact label its own filter
+  // grammar may reject.
+  if (
+    !m.ok &&
+    probe.hasFilterInput &&
+    label !== undefined &&
+    (m.reason === "no-option-match" || m.reason === "option-not-appeared")
+  ) {
     await wc.executeJavaScript(typeFilterScript(selector, label), true);
     gathered = (await wc.executeJavaScript(
       gatherScript(selector, config.chooseOptionWaitMs),
@@ -678,14 +726,13 @@ export async function chooseOption(
       record("error", { error: "control removed mid-operation" });
       throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
     }
+    options = gathered.options ?? [];
+    m = options.length ? matchOption(options, want) : { ok: false, reason: "option-not-appeared" };
   }
 
-  const options = gathered.options ?? [];
   if (options.length === 0) return await closeAndThrow("option-not-appeared");
-
-  const m = matchOption(options, want);
   if (!m.ok) return await closeAndThrow(m.reason, m.candidates);
-  const chosen = (m as { ok: true; option: { label: string; value: string } }).option;
+  const chosen = m.option;
 
   const act = (await wc.executeJavaScript(
     activateScript(selector, chosen.value, chosen.label),
@@ -706,7 +753,13 @@ export async function chooseOption(
     throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
   }
   const shown = norm(back.shown ?? "");
-  const matched = shown.includes(norm(chosen.label)) || (chosen.value !== "" && (back.shown ?? "") === chosen.value);
+  const wantLabel = norm(chosen.label);
+  // Bidirectional: a rich widget's committed display often trims or decorates the
+  // option text (e.g. "United States +1" → "United States"), so accept either
+  // containing the other. `value` equality stays an exact check.
+  const matched =
+    (shown.length >= 2 && (shown.includes(wantLabel) || wantLabel.includes(shown))) ||
+    (chosen.value !== "" && (back.shown ?? "") === chosen.value);
   // best-effort: nothing committed on a mismatch; the widget is already closed
   if (!matched) return refuseReason("option-not-appeared");
 

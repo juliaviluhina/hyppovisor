@@ -75,7 +75,7 @@
           aria-autocomplete="list"
           class="rs-select__input"
         />
-        <span id="msValue" class="rs-select__value"></span>
+        <span id="msValue" class="rs-select__single-value"></span>
       </div>
       <div id="msMenu" class="rs-select__menu" hidden></div>
     </div>
@@ -171,8 +171,11 @@
             d.setAttribute("data-value", o.value);
             if (o.disabled) d.setAttribute("aria-disabled", "true");
             d.textContent = o.label;
-            d.addEventListener("click", function () {
+            // react-select commits on the option's mousedown (to beat input blur),
+            // not its click — so this exercises activateScript's mousedown step.
+            d.addEventListener("mousedown", function (e) {
               if (o.disabled) return;
+              e.preventDefault();
               valueEl.textContent = o.label;
               input.setAttribute("aria-expanded", "false");
               menu.hidden = true;
