@@ -16,6 +16,10 @@ export const config = {
   defaultWaitMs: numFromEnv("HYPPO_DEFAULT_WAIT_MS", 10_000),
   /** Max (selector, value) pairs one batch `fill` may carry (feature 004, FR-003). */
   batchFillCap: numFromEnv("HYPPO_BATCH_FILL_CAP", 50),
+  /** Max form controls one read_form_fields call returns before truncation (feature 005, FR-010). */
+  formFieldControlCap: numFromEnv("HYPPO_FORM_FIELD_CONTROL_CAP", 200),
+  /** Max options per control read_form_fields returns before per-record truncation (feature 005, FR-010). */
+  formFieldOptionCap: numFromEnv("HYPPO_FORM_FIELD_OPTION_CAP", 200),
   /** Chrome height reserved at the top of the window for the renderer UI. */
   chromeHeight: 104,
 };

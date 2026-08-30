@@ -114,6 +114,7 @@ In a session, the agent can call:
 | `open_url` | Open an http(s) URL in a new tab |
 | `list_open_tabs` | List open tabs (id, URL, title, load state) |
 | `read_page` | Return one tab's verbatim visible text; DOM only when asked. Nothing is stored. |
+| `read_form_fields` | Return the tab's form controls in document order — selector, kind, verbatim label, current value (omitted for credentials), `<select>`/combobox options, and the `fill` / `click` verdict `interact` would give each. Read-only, derived view; `read_page` is unchanged. |
 | `navigate` | Point an existing tab at a new URL |
 | `interact` | `click` / `fill` / `scroll` / `space` — reveal content and prepare a draft; never submit, send, apply, or press Enter. `fill` also takes a batch form (an ordered `fields` list, max 50) that drafts a whole form in one call |
 | `wait_for_selector` | Wait for an element, up to a timeout |
@@ -155,6 +156,10 @@ The blocklist is defined in one file (`src/main/safety/blocklist.ts`) and is enu
 permits by default, so every interaction — permitted or refused — is appended to
 `interaction-log.jsonl` in the app's `userData` directory (never the shared data directory,
 never page text), which is what makes an unanticipated external act detectable after the fact.
+
+`read_form_fields` only *reports* these verdicts (`fillVerdict` / `clickVerdict` per control),
+computed from the same blocklist; it acts on nothing, writes nothing, and adds no audit-log
+entry.
 
 ## Tests
 

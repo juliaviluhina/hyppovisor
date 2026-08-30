@@ -7,27 +7,58 @@
     <h1>Form fixture</h1>
 
     <form id="theform" action="/submitted" method="post">
+      <!-- feature 005: <label for> elements so the reader has a verbatim accessible
+           name for each field. Labels carry no external-act wording. -->
+      <label for="name">Full name</label>
       <input type="text" id="name" name="name" />
+      <label for="password">Password</label>
       <input type="password" id="password" name="password" />
 
       <!-- feature 003: plain value fields inside the form (fill permitted) -->
+      <label for="first_name">First name</label>
       <input type="text" id="first_name" name="first_name" />
+      <label for="last_name">Last name</label>
       <input type="text" id="last_name" name="last_name" />
+      <label for="email">Email address</label>
       <input type="email" id="email" name="email" />
+      <label for="phone">Phone number</label>
       <input type="tel" id="phone" name="phone" />
+      <label for="website">Website</label>
       <input type="url" id="website" name="website" />
+      <label for="age">Age</label>
       <input type="number" id="age" name="age" />
+      <label for="bio">Bio</label>
       <textarea id="bio" name="bio"></textarea>
+      <label for="cover">Cover letter</label>
       <div id="cover" contenteditable="true"></div>
+
+      <!-- feature 005: a hidden control — listed with visible:false (spec Edge
+           Case: Greenhouse's real file input is hidden). -->
+      <input type="text" id="hiddenField" name="hiddenField" hidden />
+
+      <!-- feature 005: a control with neither id nor name — exercises structural
+           selector synthesis (selectorSynthesised: true). -->
+      <label>Middle name <input type="text" /></label>
+
+      <!-- feature 005: a radio group in a <fieldset> — each radio is its own
+           record sharing a `group` id (the shared name "shift"). -->
+      <fieldset id="shift">
+        <legend>Preferred shift</legend>
+        <label><input type="radio" name="shift" value="day" /> Day</label>
+        <label><input type="radio" name="shift" value="night" /> Night</label>
+      </fieldset>
 
       <!-- a React-style controlled input: an instance-level value setter that
            keeps a tracker, exactly like React's. A plain `el.value = x` is
            swallowed (tracker stays in sync, onChange suppressed); only the
            native prototype setter drives it. -->
+      <label for="reactish">Preferred name</label>
       <input type="text" id="reactish" name="reactish" />
 
       <!-- feature 003: fill targets that stay refused -->
+      <label for="resume">Resume</label>
       <input type="file" id="resume" name="resume" />
+      <label for="country">Country</label>
       <select id="country" name="country">
         <option value="">Select…</option>
         <option value="de">Germany</option>
@@ -56,6 +87,17 @@
 
       <button type="submit" id="submitBtn">Apply now</button>
     </form>
+
+    <!-- feature 005: a second form — read_form_fields container scoping (US4). -->
+    <form id="otherform" action="/other" method="post">
+      <label for="other_field">Other field</label>
+      <input type="text" id="other_field" name="other_field" required />
+    </form>
+
+    <!-- feature 005: two controls sharing an id (invalid HTML) — each record
+         gets a disambiguated structural selector and duplicateId: true. -->
+    <label>Dup one <input type="text" id="dupfield" /></label>
+    <label>Dup two <input type="text" id="dupfield" /></label>
 
     <!-- a safe control outside any form -->
     <button type="button" id="safeBtn" onclick="document.getElementById('revealed').hidden = false">

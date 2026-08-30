@@ -11,7 +11,10 @@ import { _electron as electron, type ElectronApplication } from "@playwright/tes
 const fixturesDir = fileURLToPath(new URL("../fixtures/", import.meta.url));
 const mainEntry = fileURLToPath(new URL("../../dist/main/index.js", import.meta.url));
 
-const MIME: Record<string, string> = { ".html": "text/html", ".js": "text/javascript" };
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+};
 
 export async function startFixtureServer(): Promise<{ server: Server; base: string }> {
   const server = createServer(async (req, res) => {
@@ -36,10 +39,12 @@ export async function startFixtureServer(): Promise<{ server: Server; base: stri
   return { server, base: `http://127.0.0.1:${port}` };
 }
 
-export async function launchApp(): Promise<ElectronApplication> {
+export async function launchApp(
+  extraEnv: Record<string, string> = {},
+): Promise<ElectronApplication> {
   const app = await electron.launch({
     args: [mainEntry],
-    env: { ...process.env, HYPPO_E2E: "1" },
+    env: { ...process.env, HYPPO_E2E: "1", ...extraEnv },
   });
   // main() wires globalThis.__hyppo asynchronously after app.whenReady() and
   // window setup; wait for it before any test calls in.
