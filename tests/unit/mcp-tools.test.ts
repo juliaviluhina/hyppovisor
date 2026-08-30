@@ -1,4 +1,4 @@
-// Feature 005 (T023) — the MCP surface is exactly seven tools and
+// Feature 005 / 008 — the MCP surface is exactly eight tools and
 // `read_form_fields` accepts `{ tabId }` and `{ tabId, containerSelector }`.
 
 import { describe, it, expect } from "vitest";
@@ -26,7 +26,7 @@ describe("MCP tool surface (contracts/mcp-tools.md)", () => {
   const { server, tools } = capture();
   registerTools(server, {} as unknown as ToolDeps);
 
-  it("registers exactly seven tools", () => {
+  it("registers exactly eight tools", () => {
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
         "interact",
@@ -35,6 +35,7 @@ describe("MCP tool surface (contracts/mcp-tools.md)", () => {
         "open_url",
         "read_form_fields",
         "read_page",
+        "screenshot",
         "wait_for_selector",
       ].sort(),
     );

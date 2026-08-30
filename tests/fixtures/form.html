@@ -94,6 +94,30 @@
       <input type="text" id="other_field" name="other_field" required />
     </form>
 
+    <!-- feature 008 US2: a text input carrying maxlength / pattern / inputmode
+         constraint hints; a group of required inputs left empty (only:
+         "required-unfilled"); and a plain <button type="button"> that a default
+         read omits and includeNonInteractive: true surfaces. -->
+    <form id="extras" action="/extras" method="post">
+      <label for="zipcode">Zip code</label>
+      <input
+        type="text"
+        id="zipcode"
+        name="zipcode"
+        maxlength="20"
+        pattern="[0-9]*"
+        inputmode="numeric"
+      />
+      <fieldset id="reqgroup">
+        <legend>Required, left empty</legend>
+        <label for="req_a">Req A</label>
+        <input type="text" id="req_a" name="req_a" required />
+        <label for="req_b">Req B</label>
+        <input type="text" id="req_b" name="req_b" required />
+      </fieldset>
+      <button type="button" id="plainBtn">Plain button</button>
+    </form>
+
     <!-- feature 005: two controls sharing an id (invalid HTML) — each record
          gets a disambiguated structural selector and duplicateId: true. -->
     <label>Dup one <input type="text" id="dupfield" /></label>

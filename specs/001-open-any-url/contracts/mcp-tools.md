@@ -2,8 +2,8 @@
 
 **Feature**: 001-open-any-url | **Transport**: Streamable HTTP on loopback (default) or stdio | **Date**: 2026-08-29
 
-The complete interface HyppoVisor exposes. Seven tools, no others (`read_form_fields`
-was added by feature 005). Entity shapes are in
+The complete interface HyppoVisor exposes. Eight tools, no others (`read_form_fields`
+was added by feature 005; `screenshot` by feature 008). Entity shapes are in
 [data-model.md](../data-model.md); error codes are defined there too.
 
 > **Runtime configuration (feature 007).** The HTTP listening port and the optional bearer
@@ -85,10 +85,10 @@ Points an existing tab at a new URL.
 Bounded interaction to reveal content. **Cannot** submit, send, or apply.
 
 **Input**:
-`{ tabId: string, operation: "click" | "fill" | "scroll" | "space" | "choose_option", selector?: string, value?: string, label?: string, fields?: Array<{ selector: string, value: string }> }`
+`{ tabId: string, operation: "click" | "fill" | "scroll" | "space" | "choose_option" | "list_options", selector?: string, value?: string, label?: string, fields?: Array<{ selector: string, value: string }> }`
 
-- `selector` required for `click`, `fill` (single form), and `choose_option`; `space` acts on
-  the focused element.
+- `selector` required for `click`, `fill` (single form), `choose_option`, and `list_options`;
+  `space` acts on the focused element.
 - `value` required for `fill` (single form).
 - `fields` (feature 004) — `fill` only, an alternative to `selector` + `value`: an ordered
   list of up to 50 `{ selector, value }` pairs applied in one call. Supply exactly one of the
@@ -96,14 +96,30 @@ Bounded interaction to reveal content. **Cannot** submit, send, or apply.
 - `label` (feature 006) — `choose_option` only: the target option's visible label
   (case-insensitive, whitespace-collapsed). Supply `label` and/or `value`; with both, `value`
   selects and `label` must also match. `choose_option` never presses Enter and never submits.
+- `fill` non-goals (feature 008): `fill` on `<input type="file">` stays **refused** —
+  attaching a file is a human step. `fill` types the **literal** text and stops; choosing
+  among an address / place autocomplete suggestion list is a human step.
+- `list_options` (feature 008) — read-only enumeration of a dropdown's current choices.
+  Takes `tabId` + `selector`; `value` / `label` / `fields` are ignored. Valid targets are the
+  same as `choose_option` (single-select `<select>`, `role=combobox`/`listbox`, or a
+  listbox-owner). It opens and closes a scripted menu if needed, selects nothing, leaves the
+  control's value and menu state exactly as found, and writes **no** interaction-audit entry
+  on any path.
 
 **Returns**: `{ tabId, operation, outcome: "permitted", queueDepth }`. A batch `fill`
 returns `{ tabId, operation: "fill", outcome: "permitted" | "partial", fields: Array<{ selector, outcome, message? }>, summary: { requested, written, errored }, queueDepth }`.
 A permitted `choose_option` additionally carries `chosenOption: { label, value }` — the
 matched option's verbatim label and value (feature 006).
+`list_options` returns `{ tabId, selector, options: Array<{ label, value, disabled }>,
+optionsPresent, optionsTruncated, queueDepth }` (feature 008). `options` is in document
+order; `label` is verbatim except surrounding whitespace; `value` precedence is
+`data-value` → `value` → `id` → `""`. A native `<select>` always has `optionsPresent: true`
+and is read without opening anything. A scripted menu that never populates within the
+option-wait window returns `options: []`, `optionsPresent: false` — **not** an error.
+`options` is capped at `formFieldOptionCap`; `optionsTruncated: true` when it bit.
 
-**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND`, `REFUSED_EXTERNAL_ACT`, `BATCH_REJECTED`,
-`CHOOSE_OPTION_FAILED`.
+**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND`, `INVALID_SELECTOR`, `REFUSED_EXTERNAL_ACT`,
+`BATCH_REJECTED`, `CHOOSE_OPTION_FAILED`.
 
 **Refusal**: when the target matches a blocklist rule, returns `REFUSED_EXTERNAL_ACT` with
 `{ ruleId, description }` and a message referencing the no-external-act rule (FR-012, FR-012a).
@@ -116,6 +132,11 @@ option, or a `<select multiple>` with `CHOOSE_OPTION_FAILED` and a `reason` (`no
 `option-not-appeared` / `multi-select`); a submit/consent/credential/wording chooser is
 `REFUSED_EXTERNAL_ACT`. `in-form` does not gate `choose_option`. Every refusal leaves the
 control unchanged (feature 006).
+`list_options` (feature 008) is blocklist-gated identically to `choose_option`
+(submit/consent/credential/wording → `REFUSED_EXTERNAL_ACT` with the same `ruleId`; `in-form`
+does not gate it); a non-chooser or `<select multiple>` → `CHOOSE_OPTION_FAILED`
+(`reason: "not-a-dropdown"`); a non-CSS `selector` → `INVALID_SELECTOR`. It never writes an
+interaction-audit entry.
 
 ---
 
@@ -123,22 +144,46 @@ control unchanged (feature 006).
 
 Read-only, derived view for building a batch `fill`. `read_page` is unchanged.
 
-**Input**: `{ tabId: string, containerSelector?: string }` — omit `containerSelector`
-for the whole page; give it to scope to controls inside that element.
+**Input**: `{ tabId: string, containerSelector?: string, fields?: string[],
+includeNonInteractive?: boolean, only?: "required-unfilled" }`.
+
+- `containerSelector` — omit for the whole page; give it to scope to controls inside that
+  element. Mutually exclusive with `fields` (supplying both → `BATCH_REJECTED`).
+- `fields` (feature 008) — return records only for controls matching these selectors, in
+  document order. An explicit selector is returned **even for a non-interactive element**
+  (overrides the default exclusion). A non-matching entry is silently absent; all-miss ⇒
+  empty `records`. A non-CSS entry → `INVALID_SELECTOR`.
+- `includeNonInteractive` (feature 008, default `false`) — when `false`, plain buttons and
+  hidden value-mirror inputs are omitted. When `true`, they are included (a mirror carries
+  `interactive: false` + `mirrors`).
+- `only: "required-unfilled"` (feature 008) — return only records that are `required` and
+  whose current value is empty (empty string / unchecked / no option chosen).
 
 **Returns**: `FormFieldMap` — `{ tabId, url, observedAt, truncated, records[], queueDepth }`.
 Each record: `selector` (usable by `interact`, verified unique at call time; `null` only when
 none could be built), `selectorSynthesised` / `duplicateId`, `kind`, raw `type`, verbatim
 `label`, `required`, `group` (radios), `inFormAncestor`, `visible`, `currentValue` (**omitted
 entirely** for a credential field), `options` + `optionsAvailable` + `optionsTruncated`
-(`<select>` and in-DOM combobox menus), and `fillVerdict` / `clickVerdict` — identical in
-shape and content to what `interact` returns for that target.
+(`<select>` and in-DOM combobox menus), `fillVerdict` / `clickVerdict` — identical in shape
+and content to what `interact` returns for that target — and (feature 008) `operation`
+(`"fill" | "choose" | "activate" | "none"`, derived from `kind`), `chooseVerdict`
+(`{ allowed, ruleId?, description? }` — what `choose_option` would return; `in-form` does not
+gate it), `interactive: false` on a surfaced plain button / value-mirror, `mirrors` on a
+value-mirror (the combobox `selector` it carries the value for), and `maxLength` / `pattern`
+/ `inputMode` on a text-like record that declares them. A scripted dropdown backed by a
+hidden same-named input collapses to **one** record whose `selector` is the one
+`choose_option` / `list_options` accept (the `role=combobox` element), not the hidden
+`[name]` input.
 
-**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND` (a container selector that resolves to nothing).
+**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND` (a container selector that resolves to
+nothing), `INVALID_SELECTOR` (a non-CSS `containerSelector` or `fields` entry),
+`BATCH_REJECTED` (`fields` and `containerSelector` supplied together).
 
 **Notes**: performs no interaction, writes nothing to the shared data directory, adds no
-interaction-audit-log entry. Bounded by `formFieldControlCap` (result-level `truncated`) and
-`formFieldOptionCap` (per-record `optionsTruncated`).
+interaction-audit-log entry. Bounded by `formFieldControlCap` (control count),
+`formFieldOptionCap` (per-record `optionsTruncated`), and a `formFieldReadMaxBytes` byte
+budget (64 KB default) that drops tail records in document order — the single result-level
+`truncated` flag covers all three.
 
 ---
 
@@ -149,6 +194,42 @@ interaction-audit-log entry. Bounded by `formFieldControlCap` (result-level `tru
 **Returns**: `{ tabId, selector, found: true, queueDepth }`
 
 **Errors**: `TAB_NOT_FOUND`, `WAIT_TIMEOUT` — timeout leaves the tab unchanged (US3 scenario 6).
+A non-CSS `selector` → `INVALID_SELECTOR` (feature 008); a valid selector that never appears
+still → `WAIT_TIMEOUT`.
+
+---
+
+## `screenshot` (feature 008)
+
+A picture of a tab, to check its rendered state. Retrieval only — touches no control, sends
+nothing, **writes nothing to disk, adds no interaction-audit entry** (matches `read_page`).
+Runs through the app-wide action queue.
+
+**Input**: `{ tabId: string, selector?: string, fullPage?: boolean, format?: "jpeg" | "png",
+maxBytes?: integer }`.
+
+- default — capture the viewport.
+- `selector` — clip to that element's on-screen box; **wins over `fullPage`**. Echoed back
+  as `element`.
+- `fullPage: true` — capture the full scroll height (CDP `Page.captureScreenshot`,
+  `captureBeyondViewport`).
+- `format` — `"jpeg"` (default) or `"png"`.
+- `maxBytes` — scale/compress until the image fits (default 262144 = 256 KB). A caller may
+  only **lower** it; it is clamped to the default ceiling and a small floor.
+
+**Returns**: an MCP **image** content block (`{ type: "image", data: <base64>, mimeType }`)
+followed by a **text** content block: `{ tabId, width, height, scale, format, fullPage,
+element?, limitNotMet }`. `scale` = returned width ÷ natural width (`1` = not downscaled).
+`limitNotMet: true` ⇒ still over `maxBytes` at the compression floor; the smallest achievable
+image is returned anyway. The bytes are **not** persisted — the content block is the only copy.
+
+**Errors**: `TAB_NOT_FOUND`; `INVALID_SELECTOR` (a non-CSS `selector`); `SCREENSHOT_FAILED`
+(the element resolves but is zero-size / fully off-viewport, or the capture/encode pipeline
+failed — `cause` set).
+
+**Privacy**: captures only what is rendered; credential inputs render masked and stay masked.
+A screenshot may show a signed-in identity or a partly-drafted value — not a new disclosure
+class, page text is already retrievable via `read_page`.
 
 ---
 

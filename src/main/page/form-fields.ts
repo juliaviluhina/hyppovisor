@@ -18,10 +18,12 @@ import { HyppoError } from "../errors.js";
 import {
   fillVerdictFor,
   clickVerdictFor,
+  chooseVerdictFor,
   DESCRIPTOR_BODY,
   ACCESSIBLE_NAME_SOURCES_BODY,
   type TargetDescriptor,
 } from "../safety/blocklist.js";
+import { SELECTOR_SYNTAX_HELPER, assertSelectorValid } from "./selector-syntax.js";
 import type { FieldOption, FormFieldMap, FormFieldRecord } from "../../shared/types.js";
 
 export type FieldKind = FormFieldRecord["kind"];
@@ -155,28 +157,60 @@ interface RawRecord {
   options: FieldOption[];
   optionsAvailable: boolean;
   optionsTruncated: boolean;
+  /** feature 008 — text-like kinds only, and only when the element declares them. */
+  maxLength?: number;
+  pattern?: string;
+  inputMode?: string;
+  /**
+   * feature 008 (R7) — set on a hidden value-mirror record: the index (in the
+   * pre-filter record list) of the combobox whose value this input carries,
+   * present only when that combobox is itself in the list.
+   */
+  mirrorOfIndex?: number;
+  /**
+   * feature 008 (R7) — set on any hidden value-mirror record: an in-page-computed
+   * selector for its combobox. Used for `mirrors` when the combobox is not in the
+   * record list (e.g. a `fields`-projected read that named only the mirror), and
+   * as the signal that the record is a mirror (⇒ `interactive: false`).
+   */
+  mirrorComboHint?: string;
 }
 
 type CollectorResult =
+  | { __invalidSelector: true }
   | { containerFound: false }
   | {
       containerFound: true;
       observedAt: string;
       hardCeilingHit: boolean;
+      /** feature 008 — `true` when the read was scoped to an explicit `fields` list. */
+      fieldsProjected: boolean;
       records: RawRecord[];
     };
 
 /**
- * The in-page collector (isolated world). Returns `{ containerFound: false }`
- * when a container selector was given but resolved to nothing; otherwise the raw
- * record list in document order, capped at `formFieldControlCap`.
+ * The in-page collector (isolated world). Returns `{ __invalidSelector: true }`
+ * when a `containerSelector` / `fields` entry is not valid CSS,
+ * `{ containerFound: false }` when a container selector resolved to nothing;
+ * otherwise the raw record list in document order (before the config caps).
+ *
+ * When `fields` is supplied the collector emits records **only** for elements
+ * matching those selectors (unioned, deduped, document order) — including
+ * elements a default read would exclude as non-interactive (FR-010).
  */
-export function formFieldsScript(containerSelector: string | undefined): string {
+export function formFieldsScript(
+  containerSelector: string | undefined,
+  fields: string[] | undefined,
+): string {
   const containerJson = containerSelector === undefined ? "null" : JSON.stringify(containerSelector);
+  const fieldsJson = fields === undefined ? "null" : JSON.stringify(fields);
   return `(() => {
+  ${SELECTOR_SYNTAX_HELPER}
+  try {
   const HARD_CEILING = ${COLLECTOR_HARD_CEILING};
   const containerSel = ${containerJson};
-  const root = containerSel == null ? document : document.querySelector(containerSel);
+  const fieldsList = ${fieldsJson};
+  const root = containerSel == null ? document : __querySafe(document, containerSel);
   if (containerSel != null && !root) return { containerFound: false };
   const scope = root || document;
 
@@ -313,11 +347,131 @@ export function formFieldsScript(containerSelector: string | undefined): string 
 
   const esc = (s) => CSS.escape(s);
 
-  const all = [].slice.call(
-    scope.querySelectorAll("input, select, textarea, button, [contenteditable], [role]")
-  ).filter(isCandidate);
-  const hardCeilingHit = all.length > HARD_CEILING;
-  const chosen = hardCeilingHit ? all.slice(0, HARD_CEILING) : all;
+  // feature 008 — constraint hints for text-like inputs / textareas, only when
+  // the element actually declares them.
+  const constraintsFor = (el) => {
+    const tag = el.tagName.toLowerCase();
+    if (tag !== "input" && tag !== "textarea") return {};
+    const out = {};
+    const mlAttr = el.getAttribute("maxlength");
+    if (mlAttr != null && typeof el.maxLength === "number" && el.maxLength >= 0) {
+      out.maxLength = el.maxLength;
+    }
+    const pat = el.getAttribute("pattern");
+    if (pat != null) out.pattern = pat;
+    const im = el.getAttribute("inputmode");
+    if (im != null) out.inputMode = im;
+    return out;
+  };
+
+  let candidates;
+  if (fieldsList) {
+    const seen = new Set();
+    const picked = [];
+    for (const sel of fieldsList) {
+      const matches = __queryAllSafe(document, sel);
+      for (const el of matches) { if (!seen.has(el)) { seen.add(el); picked.push(el); } }
+    }
+    picked.sort((a, b) => {
+      const pos = a.compareDocumentPosition(b);
+      if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+      if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+      return 0;
+    });
+    candidates = picked;
+  } else {
+    candidates = [].slice.call(
+      scope.querySelectorAll("input, select, textarea, button, [contenteditable], [role]")
+    ).filter(isCandidate);
+  }
+  const hardCeilingHit = candidates.length > HARD_CEILING;
+  const chosen = hardCeilingHit ? candidates.slice(0, HARD_CEILING) : candidates;
+
+  // feature 008 (R7): value-mirror cluster pass. Pair each combobox / listbox /
+  // listbox-owner with a hidden input that carries its value: same cluster means
+  // it shares the name attribute, or the combobox sits inside a marked
+  // (class or data-* bearing) container that also holds the input.
+  const roleOf = (el) => (el.getAttribute("role") || "").toLowerCase();
+  const ownsListbox = (el) => {
+    for (const attr of ["aria-controls", "aria-owns"]) {
+      const ref = el.getAttribute(attr);
+      if (ref) for (const id of ref.split(/\\s+/)) {
+        const n = document.getElementById(id);
+        if (n && roleOf(n) === "listbox") return true;
+      }
+    }
+    return false;
+  };
+  const isComboEl = (el) => {
+    const r = roleOf(el);
+    return r === "combobox" || r === "listbox" || ownsListbox(el);
+  };
+  const isHiddenMirrorInput = (el) => {
+    if (el.tagName.toLowerCase() !== "input") return false;
+    const t = (el.getAttribute("type") || "").toLowerCase();
+    const hidden = t === "hidden" || !isVisible(el);
+    return hidden && (t === "hidden" || !!el.getAttribute("name"));
+  };
+  const markedAncestor = (el, has) => {
+    let a = el.parentElement, hops = 0;
+    while (a && hops < 3) {
+      const tag = a.tagName.toLowerCase();
+      if (tag === "form" || tag === "body") break;
+      const marked = !!a.className ||
+        [].some.call(a.attributes, (at) => at.name.indexOf("data-") === 0);
+      if (marked) { const c = has(a); if (c) return c; }
+      a = a.parentElement; hops++;
+    }
+    return null;
+  };
+  // A stable selector for a combobox that is NOT itself in the record list
+  // (fallback for a value-mirror mirrors field): id, then name, then structural.
+  const selectorHintFor = (el) => {
+    if (el.id) {
+      const s = "#" + esc(el.id);
+      try { if (document.querySelectorAll(s).length === 1) return s; } catch (_) {}
+    }
+    const nm = el.getAttribute("name");
+    if (nm) {
+      const s = '[name="' + esc(nm) + '"]';
+      try { if (document.querySelectorAll(s).length === 1) return s; } catch (_) {}
+      const st = el.tagName.toLowerCase() + s;
+      try { if (document.querySelectorAll(st).length === 1) return st; } catch (_) {}
+    }
+    return structuralPath(el);
+  };
+  // For a hidden mirror input, find the combobox whose value it carries:
+  // shares the name attribute, or sits in a shared marked container.
+  const comboForMirror = (mirror) => {
+    const nm = mirror.getAttribute("name");
+    if (nm) {
+      const byName = [].slice.call(document.querySelectorAll('[name="' + esc(nm) + '"]'))
+        .find((x) => x !== mirror && isComboEl(x));
+      if (byName) return byName;
+    }
+    return markedAncestor(mirror, (a) => {
+      const c = a.querySelector('[role="combobox"], [role="listbox"]');
+      return c && c !== mirror ? c : null;
+    });
+  };
+
+  const chosenIndexOf = new Map();
+  chosen.forEach((el, i) => chosenIndexOf.set(el, i));
+
+  const mirrorOfIndexByChosen = {}; // chosenIndex(mirror) -> chosenIndex(combo), both in the list
+  const mirrorComboHint = {};       // chosenIndex(mirror) -> in-page selector hint for its combo
+  const comboHasMirror = new Set();  // chosenIndex(combo) that a mirror points at
+  chosen.forEach((el, i) => {
+    if (!isHiddenMirrorInput(el)) return;
+    const combo = comboForMirror(el);
+    if (!combo) return;
+    mirrorComboHint[i] = selectorHintFor(combo);
+    const ci = chosenIndexOf.get(combo);
+    if (ci !== undefined) {
+      mirrorOfIndexByChosen[i] = ci;
+      comboHasMirror.add(ci);
+    }
+  });
 
   const records = chosen.map((el, idx) => {
     const id = el.id || "";
@@ -333,16 +487,20 @@ export function formFieldsScript(containerSelector: string | undefined): string 
       el.getAttribute("aria-required") === "true" ||
       /\\*/.test(label);
     const opt = optionsFor(el);
-    return {
+    // A combobox that has a value-mirror must NOT synthesise a name-attribute
+    // selector (it would also match the hidden input) — force id / structural
+    // (R7 / FR-015).
+    const suppressName = comboHasMirror.has(idx);
+    const rec = Object.assign({
       descriptor: descriptorFor(el),
       selectorCounts: {
         id: id ? esc(id) : null,
-        name: nm ? esc(nm) : null,
+        name: suppressName ? null : (nm ? esc(nm) : null),
         tagName: tagName,
         structuralPath: path,
         idCount: idSel ? document.querySelectorAll(idSel).length : 0,
-        nameBareCount: nameBare ? document.querySelectorAll(nameBare).length : 0,
-        nameTaggedCount: nameTagged ? document.querySelectorAll(nameTagged).length : 0,
+        nameBareCount: suppressName ? 0 : (nameBare ? document.querySelectorAll(nameBare).length : 0),
+        nameTaggedCount: suppressName ? 0 : (nameTagged ? document.querySelectorAll(nameTagged).length : 0),
         structuralCount: path ? document.querySelectorAll(path).length : 0,
       },
       label: label,
@@ -354,66 +512,167 @@ export function formFieldsScript(containerSelector: string | undefined): string 
       options: opt.options,
       optionsAvailable: opt.optionsAvailable,
       optionsTruncated: opt.optionsTruncated,
-    };
+    }, constraintsFor(el));
+    if (Object.prototype.hasOwnProperty.call(mirrorOfIndexByChosen, idx)) {
+      rec.mirrorOfIndex = mirrorOfIndexByChosen[idx];
+    }
+    if (Object.prototype.hasOwnProperty.call(mirrorComboHint, idx)) {
+      rec.mirrorComboHint = mirrorComboHint[idx];
+    }
+    return rec;
   });
 
   return {
     containerFound: true,
     observedAt: new Date().toISOString(),
     hardCeilingHit: hardCeilingHit,
+    fieldsProjected: !!fieldsList,
     records: records,
   };
+  } catch (e) {
+    if (e && e.__invalidSelector) return { __invalidSelector: true };
+    throw e;
+  }
 })()`;
 }
 
+/** Options a `read_form_fields` call may carry (feature 008). */
+export interface ReadFormFieldsOptions {
+  /**
+   * Return records only for controls matching these selectors, document order.
+   * An explicit selector is returned even for a non-interactive element
+   * (overrides the default exclusion, FR-010). Mutually exclusive with
+   * `containerSelector`.
+   */
+  fields?: string[];
+  /** Include plain buttons and hidden value-mirror inputs (default `false`). */
+  includeNonInteractive?: boolean;
+  /** Return only records that are `required` and whose current value is empty. */
+  only?: "required-unfilled";
+}
+
 /**
- * Read one tab's form controls (feature 005). Runs the collector in an isolated
- * world, then in the main process attaches the fill / click verdicts from the
- * same `blocklist.ts` functions `interact` uses and omits a credential field's
- * `currentValue` key. No `log.record` call (FR-014); nothing persisted (FR-013).
+ * Which `interact` operation applies to a control, from its `kind` alone
+ * (data-model.md R8). Pure. Mechanical restatement — no judgement (Principle II).
+ */
+export function operationForKind(
+  kind: FormFieldRecord["kind"],
+): NonNullable<FormFieldRecord["operation"]> {
+  switch (kind) {
+    case "text":
+    case "textarea":
+    case "richtext":
+      return "fill";
+    case "select":
+    case "combobox":
+      return "choose";
+    case "checkbox":
+    case "radio":
+    case "button":
+      return "activate";
+    default:
+      return "none";
+  }
+}
+
+/**
+ * A record is `required` and currently holds no value: empty string / unchecked
+ * / no option chosen / never set. Pure — the byte-budget and `only` filters and
+ * the unit tests all compute from this one predicate (data-model.md §1).
+ */
+export function isRequiredUnfilled(
+  rec: Pick<FormFieldRecord, "required" | "currentValue">,
+): boolean {
+  if (rec.required !== true) return false;
+  const v = rec.currentValue;
+  if (v === undefined || v === null) return true;
+  if (v === "") return true;
+  if (v === false) return true;
+  if (Array.isArray(v)) return v.length === 0;
+  return false;
+}
+
+/**
+ * Malformed-call guard (feature 008, research.md R6): `fields` and
+ * `containerSelector` are mutually exclusive. Returns the error to throw, or
+ * `null` when the shape is valid. Shared by the MCP dispatch and `readFormFields`
+ * so a direct call is guarded too.
+ */
+export function checkReadFormFieldsShape(
+  containerSelector: string | undefined,
+  fields: string[] | undefined,
+): HyppoError | null {
+  if (containerSelector !== undefined && fields !== undefined) {
+    return new HyppoError(
+      "BATCH_REJECTED",
+      "read_form_fields accepts either `fields` or `containerSelector`, not both.",
+    );
+  }
+  return null;
+}
+
+/**
+ * Read one tab's form controls (feature 005 + 008). Runs the collector in an
+ * isolated world, then in the main process attaches the fill / click / choose
+ * verdicts from the same `blocklist.ts` functions `interact` uses, omits a
+ * credential field's `currentValue` key, applies the `includeNonInteractive` /
+ * `only` filters, and trims the payload to a byte budget (FR-011). No
+ * `log.record` call (FR-014); nothing persisted (FR-013).
  */
 export async function readFormFields(
   wc: WebContents,
   tabId: string,
   containerSelector: string | undefined,
   queueDepth: number,
+  opts: ReadFormFieldsOptions = {},
 ): Promise<FormFieldMap> {
+  const { fields, includeNonInteractive = false, only } = opts;
+
+  const shapeError = checkReadFormFieldsShape(containerSelector, fields);
+  if (shapeError) throw shapeError;
+
   const raw = (await wc.executeJavaScript(
-    formFieldsScript(containerSelector),
+    formFieldsScript(containerSelector, fields),
     true,
   )) as CollectorResult;
 
-  if (!raw.containerFound) {
+  // A non-CSS `containerSelector` or `fields` entry → INVALID_SELECTOR (before
+  // any "not found" interpretation, FR-018).
+  assertSelectorValid(raw);
+
+  const full = raw as Extract<CollectorResult, { containerFound: true }>;
+  if (!full.containerFound) {
     throw new HyppoError(
       "TARGET_NOT_FOUND",
       `No element matches container selector ${JSON.stringify(containerSelector)}.`,
     );
   }
 
-  const capped = capList(raw.records, config.formFieldControlCap);
-
-  const records: FormFieldRecord[] = capped.items.map((r) => {
+  let mapped: FormFieldRecord[] = full.records.map((r) => {
     const d = r.descriptor;
     const sel = synthesizeSelector(r.selectorCounts);
     const fillVerdict = fillVerdictFor(d);
     const clickVerdict = clickVerdictFor(d);
-    const opts = capList(r.options, config.formFieldOptionCap);
+    const kind = kindFor(d.tagName, d.type, d.role, d.isContentEditable);
+    const opts_ = capList(r.options, config.formFieldOptionCap);
     const record: FormFieldRecord = {
       selector: sel.selector,
       selectorSynthesised: sel.selectorSynthesised,
       duplicateId: sel.duplicateId,
-      kind: kindFor(d.tagName, d.type, d.role, d.isContentEditable),
+      kind,
       type: d.type,
       label: r.label,
       required: r.required,
       group: r.group,
       inFormAncestor: r.inFormAncestor,
       visible: r.visible,
-      options: opts.items,
+      options: opts_.items,
       optionsAvailable: r.optionsAvailable,
-      optionsTruncated: opts.truncated,
+      optionsTruncated: opts_.truncated,
       fillVerdict,
       clickVerdict,
+      operation: operationForKind(kind),
+      chooseVerdict: chooseVerdictFor(d),
     };
     // A credential field's value never enters the payload — the key is omitted
     // entirely, not set to null / a placeholder, so payload length cannot leak
@@ -421,15 +680,58 @@ export async function readFormFields(
     if (fillVerdict.ruleId !== "credential-field") {
       record.currentValue = r.currentValue;
     }
+    if (r.maxLength !== undefined) record.maxLength = r.maxLength;
+    if (r.pattern !== undefined) record.pattern = r.pattern;
+    if (r.inputMode !== undefined) record.inputMode = r.inputMode;
+    // A plain button is non-interactive for a fill workflow.
+    if (kind === "button") record.interactive = false;
     return record;
   });
 
-  return {
-    tabId,
-    url: wc.getURL(),
-    observedAt: raw.observedAt,
-    truncated: capped.truncated || raw.hardCeilingHit,
-    records,
-    queueDepth,
-  };
+  // Value-mirror cluster (R7): a hidden input carrying a combobox's value is
+  // marked non-interactive and points at that combobox's selector — the
+  // synthesised one when the combobox is also in the list, else the in-page hint.
+  // Resolved before any filtering so the index alignment with `full.records` holds.
+  mapped.forEach((rec, i) => {
+    const raw = full.records[i];
+    if (raw.mirrorComboHint === undefined && raw.mirrorOfIndex === undefined) return;
+    rec.interactive = false;
+    const canonical =
+      raw.mirrorOfIndex !== undefined ? mapped[raw.mirrorOfIndex]?.selector : undefined;
+    const target = canonical ?? raw.mirrorComboHint;
+    if (target != null) rec.mirrors = target;
+  });
+
+  // Default-read exclusion: plain buttons and non-interactive records (value
+  // mirrors). Skipped when the read was `fields`-projected (an explicit selector
+  // overrides the exclusion, FR-010) or `includeNonInteractive: true`.
+  if (!full.fieldsProjected && !includeNonInteractive) {
+    mapped = mapped.filter((rec) => rec.kind !== "button" && rec.interactive !== false);
+  }
+
+  if (only === "required-unfilled") {
+    mapped = mapped.filter(isRequiredUnfilled);
+  }
+
+  const capped = capList(mapped, config.formFieldControlCap);
+  let records = capped.items;
+  let truncated = capped.truncated || full.hardCeilingHit;
+
+  // Byte budget (FR-011, R5): drop the last record while the serialised payload
+  // exceeds `formFieldReadMaxBytes`. Document order is preserved; a single flag
+  // covers count-cap + option-cap + byte-budget trimming together.
+  const url = wc.getURL();
+  const measure = () =>
+    Buffer.byteLength(
+      JSON.stringify({ tabId, url, observedAt: full.observedAt, truncated: true, records, queueDepth }),
+      "utf8",
+    );
+  if (records.length > 0 && measure() > config.formFieldReadMaxBytes) {
+    while (records.length > 0 && measure() > config.formFieldReadMaxBytes) {
+      records = records.slice(0, -1);
+    }
+    truncated = true;
+  }
+
+  return { tabId, url, observedAt: full.observedAt, truncated, records, queueDepth };
 }

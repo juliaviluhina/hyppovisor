@@ -13,7 +13,14 @@ import { config } from "../config.js";
 import { HyppoError } from "../errors.js";
 import { InteractionLog } from "../safety/interaction-log.js";
 import { matchBlocklist, targetDescriptorScript, type TargetDescriptor } from "../safety/blocklist.js";
-import type { ChooseOptionReason, ChosenOption } from "../../shared/types.js";
+import { capList } from "./form-fields.js";
+import {
+  SELECTOR_SYNTAX_HELPER,
+  assertSelectorValid,
+  isInvalidSelectorMarker,
+  INVALID_SELECTOR_MESSAGE,
+} from "./selector-syntax.js";
+import type { ChooseOptionReason, ChosenOption, ListedOption } from "../../shared/types.js";
 
 /** Internal — never crosses the MCP boundary. */
 type ChooserKind = "native-select" | "custom-combobox" | "listbox";
@@ -136,6 +143,36 @@ const OPTION_SOURCES_FN = `
     if (sib && (sib.getAttribute("role") || "").toLowerCase() === "listbox") {
       add(sib.querySelectorAll('[role="option"]'));
     }
+    // react-select / MUI / downshift: the open menu is a sibling of the CONTROL —
+    // several levels above a role=combobox <input>, not a descendant of it — and
+    // may carry no id we were handed. Walk up to 6 ancestors; at each, if the
+    // ancestor holds at most ONE combobox (so a shared wrapper full of sibling
+    // widgets — the test fixture — is never scraped), take options from a
+    // descendant listbox or a [class*=menu] container.
+    if (out.length === 0) {
+      let anc = el.parentElement;
+      for (let i = 0; i < 6 && anc && anc.querySelectorAll; i++) {
+        const combos = anc.querySelectorAll(
+          '[role="combobox"], input.select__input, [class*="combobox"]',
+        ).length;
+        if (combos <= 1) {
+          const lb = anc.querySelector('[role="listbox"]');
+          if (lb && lb.querySelectorAll('[role="option"]').length) {
+            add(lb.querySelectorAll('[role="option"]'));
+            break;
+          }
+          const menuOpt = anc.querySelector(
+            '[class*="menu"] [role="option"], [class*="Menu"] [role="option"], [class*="listbox"] [role="option"], [class*="options"] [role="option"]',
+          );
+          if (menuOpt) {
+            const menu = menuOpt.closest('[class*="menu"], [class*="Menu"], [class*="listbox"], [class*="options"]') || anc;
+            add(menu.querySelectorAll('[role="option"]'));
+            break;
+          }
+        }
+        anc = anc.parentElement;
+      }
+    }
     return out;
   }
   function __optionSnap(n) {
@@ -154,8 +191,9 @@ const OPTION_SOURCES_FN = `
 
 function probeScript(selector: string): string {
   const SEL = JSON.stringify(selector);
-  return `(() => {${OPTION_SOURCES_FN}
-    const el = document.querySelector(${SEL});
+  return `(() => {${SELECTOR_SYNTAX_HELPER}${OPTION_SOURCES_FN}
+   try {
+    const el = __querySafe(document, ${SEL});
     if (!el) return null;
     const tag = el.tagName.toLowerCase();
     const role = (el.getAttribute("role") || "").toLowerCase() || null;
@@ -200,6 +238,10 @@ function probeScript(selector: string): string {
       hasFilterInput: !!filterInput,
       preCallValue,
     };
+   } catch (e) {
+     if (e && e.__invalidSelector) return { __invalidSelector: true };
+     throw e;
+   }
   })()`;
 }
 
@@ -243,14 +285,61 @@ function revertNativeScript(selector: string, value: string): string {
   })()`;
 }
 
-/** click the chooser to open its menu. */
+/**
+ * Open the chooser's menu. Escalating and **idempotent** — each step is skipped
+ * once the widget reports open, so a plain toggle-on-click widget is never
+ * double-toggled:
+ *   1. `el.click()` — simple widgets, `<button>` triggers, the fixtures.
+ *   2. `mousedown` (+ pointer) on the widget's control container — react-select /
+ *      downshift / MUI open on `mousedown` on the control, not a `click` on the
+ *      inner `<input>`.
+ *   3. focus the inner input + `ArrowDown` — the keyboard-combobox path.
+ */
 function openScript(selector: string): string {
   const SEL = JSON.stringify(selector);
   return `(() => {
     const el = document.querySelector(${SEL});
     if (!el) return { gone: true };
+    // Idempotency signal: this widget's own expanded state. Deliberately NOT a
+    // page-wide '[role="option"]' probe — another widget may already be open.
+    const isOpen = () => {
+      if (el.getAttribute("aria-expanded") === "true") return true;
+      const inner = el.querySelector && el.querySelector('[role="combobox"][aria-expanded="true"], [aria-expanded="true"]');
+      return !!inner;
+    };
+    if (isOpen()) return { ok: true, via: "already" };
+
     if (typeof el.click === "function") el.click();
-    return { ok: true };
+    if (isOpen()) return { ok: true, via: "click" };
+    if (!document.querySelector(${SEL})) return { gone: true };
+
+    const control =
+      (el.closest && el.closest('[class*="control"], [class*="select"], [class*="combobox"], [class*="dropdown"], [class*="Autocomplete"]')) ||
+      el.parentElement ||
+      el;
+    const fireMouse = (t) => {
+      try { t.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); } catch (_) {}
+      t.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window, button: 0 }));
+      try { t.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true })); } catch (_) {}
+      t.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window, button: 0 }));
+    };
+    fireMouse(control);
+    if (isOpen()) return { ok: true, via: "mousedown" };
+    if (!document.querySelector(${SEL})) return { gone: true };
+
+    const input =
+      el.tagName && el.tagName.toLowerCase() === "input"
+        ? el
+        : (el.querySelector && el.querySelector("input"));
+    if (input && typeof input.focus === "function") {
+      input.focus();
+      for (const type of ["keydown", "keyup"]) {
+        input.dispatchEvent(new KeyboardEvent(type, {
+          key: "ArrowDown", code: "ArrowDown", keyCode: 40, which: 40, bubbles: true,
+        }));
+      }
+    }
+    return { ok: true, via: isOpen() ? "arrowdown" : "attempted" };
   })()`;
 }
 
@@ -288,7 +377,13 @@ function typeFilterScript(selector: string, text: string): string {
   })()`;
 }
 
-/** activate the single matching option element (pointer/mouse/click, no keys). */
+/**
+ * Activate the single matching option element. Fires the full hover → press →
+ * release → click sequence a real pointer produces: react-select / downshift /
+ * MUI variously select on `mouseover`-tracked focus, on `mousedown` (to beat the
+ * input blur), or on `click`, so all three are covered. No key events — Enter is
+ * never pressed (Principle I).
+ */
 function activateScript(selector: string, wantValue: string, wantLabel: string): string {
   const SEL = JSON.stringify(selector);
   const WV = JSON.stringify(wantValue);
@@ -303,10 +398,24 @@ function activateScript(selector: string, wantValue: string, wantLabel: string):
       const s = __optionSnap(n);
       if (useValue ? s.value === ${WV} : norm(s.label) === norm(${WL})) { target = n; break; }
     }
-    if (!target) return { notFound: true };
-    for (const type of ["pointerdown", "mousedown", "mouseup", "click"]) {
-      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
-    }
+    const __seen = __optionNodes(el).length;
+    if (!target) return { notFound: true, seen: __seen };
+    // Re-resolve by id in case the menu re-rendered between gather and here.
+    if (target.id) { const fresh = document.getElementById(target.id); if (fresh) target = fresh; }
+    const mopts = { bubbles: true, cancelable: true, composed: true, view: window, button: 0 };
+    const fire = (type, Ctor) => {
+      try { target.dispatchEvent(new Ctor(type, mopts)); }
+      catch (_) { target.dispatchEvent(new MouseEvent(type, mopts)); }
+    };
+    fire("pointerover", window.PointerEvent || MouseEvent);
+    fire("pointerenter", window.PointerEvent || MouseEvent);
+    fire("mouseover", MouseEvent);
+    fire("mousemove", MouseEvent);
+    fire("pointerdown", window.PointerEvent || MouseEvent);
+    fire("mousedown", MouseEvent);
+    fire("pointerup", window.PointerEvent || MouseEvent);
+    fire("mouseup", MouseEvent);
+    fire("click", MouseEvent);
     return { activated: true };
   })()`;
 }
@@ -335,18 +444,133 @@ function closeReadbackScript(selector: string, revertFilterTo: string | null): s
     }
     let shown = "";
     if (input && input.value) shown = input.value;
-    else {
+    if (!shown) {
       const selOpt = el.querySelector('[aria-selected="true"]');
       if (selOpt) shown = ((selOpt.innerText || selOpt.textContent || "") + "").trim();
-      else {
-        const adId = el.getAttribute("aria-activedescendant");
-        const ad = adId ? document.getElementById(adId) : null;
-        shown = ad ? ((ad.innerText || ad.textContent || "") + "").trim()
-                   : ((el.innerText || el.textContent || "") + "").trim();
-      }
     }
+    if (!shown) {
+      const adId = el.getAttribute("aria-activedescendant");
+      const ad = adId ? document.getElementById(adId) : null;
+      if (ad) shown = ((ad.innerText || ad.textContent || "") + "").trim();
+    }
+    if (!shown) {
+      // react-select / MUI: the committed value renders in a SIBLING of the
+      // input, up inside the control/value container — not on the combobox
+      // element itself, and not in the input's own wrapper. Climb from the
+      // parent and take the first ancestor that actually contains a
+      // single/multi-value node.
+      let box = el.parentElement;
+      let sv = null;
+      for (let i = 0; i < 5 && box && !sv; i++) {
+        sv =
+          box.querySelector &&
+          box.querySelector(
+            '[class*="single-value"], [class*="singleValue"], [class*="SingleValue"], [class*="multiValue"], [class*="multi-value"]',
+          );
+        if (!sv) box = box.parentElement;
+      }
+      if (sv) shown = ((sv.innerText || sv.textContent || "") + "").trim();
+    }
+    if (!shown) shown = ((el.innerText || el.textContent || "") + "").trim();
     return { shown, expanded: el.getAttribute("aria-expanded") };
   })()`;
+}
+
+// ─── Shared probe + gather ───────────────────────────────────────────────────
+
+/** Run the in-page probe; throws INVALID_SELECTOR on a non-CSS selector. */
+async function probeChooser(
+  wc: WebContents,
+  selector: string,
+): Promise<ChooserProbe | null> {
+  const probe = (await wc.executeJavaScript(probeScript(selector), true)) as
+    | ChooserProbe
+    | { __invalidSelector: true }
+    | null;
+  assertSelectorValid(probe);
+  return (probe as ChooserProbe | null) ?? null;
+}
+
+/**
+ * Custom-widget open (only if the options are not already in the DOM) → one
+ * MutationObserver-bounded gather. Shared by `listOptions` and `chooseOption`.
+ */
+async function openAndGather(
+  wc: WebContents,
+  selector: string,
+  probe: ChooserProbe,
+): Promise<{ gone?: boolean; options?: OptionRecord[] }> {
+  if (!probe.optionsPresent) {
+    const opened = (await wc.executeJavaScript(openScript(selector), true)) as { gone?: boolean };
+    if (opened.gone) return { gone: true };
+  }
+  return (await wc.executeJavaScript(
+    gatherScript(selector, config.chooseOptionWaitMs),
+    true,
+  )) as { gone?: boolean; options?: OptionRecord[] };
+}
+
+/**
+ * Read-only enumeration of a chooser's options (feature 008, US1). Reuses the
+ * `choose_option` probe → open → gather → close machinery but selects nothing,
+ * types nothing, and writes no audit entry (the caller in `interact.ts` also
+ * writes none). A scripted menu that never populates within `chooseOptionWaitMs`
+ * yields `{ options: [], optionsPresent: false }` — not an error (FR-007).
+ *
+ * Throws `HyppoError`:
+ * - `INVALID_SELECTOR` — selector is not valid CSS
+ * - `TARGET_NOT_FOUND` — selector matches nothing / control removed mid-probe
+ * - `CHOOSE_OPTION_FAILED` (`reason: "not-a-dropdown"`) — not a `<select>` /
+ *   `role=combobox|listbox` / listbox-owner, or a `<select multiple>`
+ */
+export async function listOptions(
+  wc: WebContents,
+  selector: string,
+): Promise<{ options: ListedOption[]; optionsPresent: boolean; optionsTruncated: boolean }> {
+  const probe = await probeChooser(wc, selector);
+  if (!probe) {
+    throw new HyppoError(
+      "TARGET_NOT_FOUND",
+      `No element matches selector ${JSON.stringify(selector)}.`,
+    );
+  }
+
+  const notADropdown = (): never => {
+    throw new HyppoError(
+      "CHOOSE_OPTION_FAILED",
+      `${REASON_MESSAGE["not-a-dropdown"]} (reason: not-a-dropdown)`,
+      { reason: "not-a-dropdown" },
+    );
+  };
+
+  // A `<select multiple>` / multiselectable widget is not a dropdown for this op.
+  if (probe.multiple) return notADropdown();
+  const kind = chooserKindFor(probe);
+  if (kind === null) return notADropdown();
+
+  if (kind === "native-select") {
+    const capped = capList(probe.optionsInDom, config.formFieldOptionCap);
+    return { options: capped.items, optionsPresent: true, optionsTruncated: capped.truncated };
+  }
+
+  // custom-combobox / listbox — open, gather, then close + revert so the control
+  // is left exactly as it was found.
+  const gathered = await openAndGather(wc, selector, probe);
+  if (gathered.gone) {
+    throw new HyppoError(
+      "TARGET_NOT_FOUND",
+      `Control ${JSON.stringify(selector)} was removed mid-operation.`,
+    );
+  }
+  await wc.executeJavaScript(closeReadbackScript(selector, probe.preCallValue || ""), true);
+
+  const options = gathered.options ?? [];
+  const capped = capList(options, config.formFieldOptionCap);
+  return {
+    options: capped.items,
+    optionsPresent: options.length > 0,
+    optionsTruncated: capped.truncated,
+  };
 }
 
 // ─── Orchestration ───────────────────────────────────────────────────────────
@@ -405,12 +629,17 @@ export async function chooseOption(
       ...(extra.reason ? { reason: extra.reason } : {}),
     });
 
-  const refuseReason = (reason: ChooseOptionReason, candidates?: string[]): never => {
+  const refuseReason = (
+    reason: ChooseOptionReason,
+    candidates?: string[],
+    detail?: string,
+  ): never => {
     record("refused", { reason });
     throw new HyppoError(
       "CHOOSE_OPTION_FAILED",
       `${REASON_MESSAGE[reason]} (reason: ${reason})` +
-        (candidates ? ` candidates: ${candidates.join(" | ")}` : ""),
+        (candidates ? ` candidates: ${candidates.join(" | ")}` : "") +
+        (detail ? ` [${detail}]` : ""),
       { reason, ...(candidates ? { candidates } : {}) },
     );
   };
@@ -428,7 +657,11 @@ export async function chooseOption(
   const descriptor = (await wc.executeJavaScript(
     targetDescriptorScript(selector),
     true,
-  )) as TargetDescriptor | null;
+  )) as TargetDescriptor | { __invalidSelector: true } | null;
+  if (isInvalidSelectorMarker(descriptor)) {
+    record("error", { error: INVALID_SELECTOR_MESSAGE });
+    throw new HyppoError("INVALID_SELECTOR", INVALID_SELECTOR_MESSAGE);
+  }
   if (!descriptor) {
     record("error", { error: `No element matches selector ${JSON.stringify(selector)}.` });
     throw new HyppoError(
@@ -436,7 +669,7 @@ export async function chooseOption(
       `No element matches selector ${JSON.stringify(selector)}.`,
     );
   }
-  const verdict = matchBlocklist(descriptor, "choose_option");
+  const verdict = matchBlocklist(descriptor as TargetDescriptor, "choose_option");
   if (verdict.blocked) {
     record("refused", { ruleId: verdict.ruleId ?? null });
     throw new HyppoError(
@@ -479,30 +712,33 @@ export async function chooseOption(
     return { chosenOption: { label: chosen.label, value: chosen.value } };
   }
 
-  // custom-combobox / listbox
-  if (!probe.optionsPresent) {
-    const opened = (await wc.executeJavaScript(openScript(selector), true)) as { gone?: boolean };
-    if (opened.gone) {
-      record("error", { error: "control removed mid-operation" });
-      throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
-    }
-  }
-
+  // custom-combobox / listbox — shared open + gather (also used by listOptions).
   const closeAndThrow = async (reason: ChooseOptionReason, candidates?: string[]): Promise<never> => {
     await wc.executeJavaScript(closeReadbackScript(selector, probe.preCallValue || ""), true);
     return refuseReason(reason, candidates);
   };
 
-  let gathered = (await wc.executeJavaScript(
-    gatherScript(selector, config.chooseOptionWaitMs),
-    true,
-  )) as { gone?: boolean; options?: Array<{ label: string; value: string; disabled: boolean }> };
+  let gathered = await openAndGather(wc, selector, probe);
   if (gathered.gone) {
     record("error", { error: "control removed mid-operation" });
     throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
   }
 
-  if (probe.hasFilterInput && label !== undefined) {
+  let options = gathered.options ?? [];
+  let m: MatchResult = options.length
+    ? matchOption(options, want)
+    : { ok: false, reason: "option-not-appeared" };
+
+  // Narrow with the widget's filter input ONLY when the target is not already
+  // among the rendered options. A widget that lays out its whole list on open
+  // (react-select) must not be over-filtered by an exact label its own filter
+  // grammar may reject.
+  if (
+    !m.ok &&
+    probe.hasFilterInput &&
+    label !== undefined &&
+    (m.reason === "no-option-match" || m.reason === "option-not-appeared")
+  ) {
     await wc.executeJavaScript(typeFilterScript(selector, label), true);
     gathered = (await wc.executeJavaScript(
       gatherScript(selector, config.chooseOptionWaitMs),
@@ -512,24 +748,33 @@ export async function chooseOption(
       record("error", { error: "control removed mid-operation" });
       throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
     }
+    options = gathered.options ?? [];
+    m = options.length ? matchOption(options, want) : { ok: false, reason: "option-not-appeared" };
   }
 
-  const options = gathered.options ?? [];
-  if (options.length === 0) return await closeAndThrow("option-not-appeared");
-
-  const m = matchOption(options, want);
+  if (options.length === 0) {
+    await wc.executeJavaScript(closeReadbackScript(selector, probe.preCallValue || ""), true);
+    return refuseReason("option-not-appeared", undefined, "no options gathered after open");
+  }
   if (!m.ok) return await closeAndThrow(m.reason, m.candidates);
-  const chosen = (m as { ok: true; option: { label: string; value: string } }).option;
+  const chosen = m.option;
 
   const act = (await wc.executeJavaScript(
     activateScript(selector, chosen.value, chosen.label),
     true,
-  )) as { gone?: boolean; notFound?: boolean; activated?: boolean };
+  )) as { gone?: boolean; notFound?: boolean; activated?: boolean; seen?: number };
   if (act.gone) {
     record("error", { error: "control removed mid-operation" });
     throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
   }
-  if (!act.activated) return await closeAndThrow("option-not-appeared");
+  if (!act.activated) {
+    await wc.executeJavaScript(closeReadbackScript(selector, probe.preCallValue || ""), true);
+    return refuseReason(
+      "option-not-appeared",
+      undefined,
+      `option node not found at activate time (gathered ${options.length}, activate saw ${act.seen ?? "?"})`,
+    );
+  }
 
   const back = (await wc.executeJavaScript(
     closeReadbackScript(selector, null),
@@ -540,9 +785,29 @@ export async function chooseOption(
     throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
   }
   const shown = norm(back.shown ?? "");
-  const matched = shown.includes(norm(chosen.label)) || (chosen.value !== "" && (back.shown ?? "") === chosen.value);
+  const wantLabel = norm(chosen.label);
+  // The widget closed its menu and now displays a value it did not display
+  // before — a choice was committed even if the display text is decorated or
+  // abbreviated (a dialing-code picker shows "+1", not "United States +1").
+  const committed =
+    back.expanded !== "true" &&
+    shown.length > 0 &&
+    shown !== norm(probe.preCallValue || "");
+  // Bidirectional: a rich widget's committed display often trims or decorates the
+  // option text (e.g. "United States +1" → "United States"), so accept either
+  // containing the other. `value` equality stays an exact check.
+  const matched =
+    (shown.length >= 2 && (shown.includes(wantLabel) || wantLabel.includes(shown))) ||
+    (chosen.value !== "" && (back.shown ?? "") === chosen.value) ||
+    committed;
   // best-effort: nothing committed on a mismatch; the widget is already closed
-  if (!matched) return refuseReason("option-not-appeared");
+  if (!matched) {
+    return refuseReason(
+      "option-not-appeared",
+      undefined,
+      `read-back mismatch: shown=${JSON.stringify(back.shown ?? "")} want=${JSON.stringify(chosen.label)}`,
+    );
+  }
 
   record("permitted");
   return { chosenOption: { label: chosen.label, value: chosen.value } };

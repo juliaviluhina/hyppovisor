@@ -4,6 +4,7 @@ import {
   listBlocklistRules,
   listSafeFillTypes,
   isSafeFillTarget,
+  chooseVerdictFor,
   SAFE_FILL_TYPES,
   BLOCKLIST_RULES,
   type TargetDescriptor,
@@ -239,5 +240,46 @@ describe("click / space verdict parity (feature 003 FR-012, SC-003)", () => {
     });
     expect(matchBlocklist(plainButtonInForm, "click").ruleId).toBe("in-form");
     expect(matchBlocklist(plainButtonInForm, "space").blocked).toBe(false);
+  });
+});
+
+describe("chooseVerdictFor — parity with choose_option's refusals (feature 008 R8)", () => {
+  it("refuses exactly submit-control / consent-toggle / credential-field / external-act-label", () => {
+    expect(chooseVerdictFor(d({ tagName: "button", type: "submit", name: "go" }))).toMatchObject({
+      allowed: false,
+      ruleId: "submit-control",
+    });
+    expect(
+      chooseVerdictFor(d({ tagName: "input", type: "checkbox", name: "i agree to the terms" })),
+    ).toMatchObject({ allowed: false, ruleId: "consent-toggle" });
+    expect(chooseVerdictFor(d({ tagName: "input", type: "password" }))).toMatchObject({
+      allowed: false,
+      ruleId: "credential-field",
+    });
+    expect(chooseVerdictFor(d({ tagName: "span", name: "download report" }))).toMatchObject({
+      allowed: false,
+      ruleId: "external-act-label",
+    });
+  });
+
+  it("permits an in-form plain <select> — in-form does not gate choose_option", () => {
+    expect(
+      chooseVerdictFor(d({ tagName: "select", name: "country", hasFormAncestor: true })),
+    ).toEqual({ allowed: true });
+  });
+
+  it("matches matchBlocklist(d, 'choose_option') by construction", () => {
+    const cases = [
+      d({ tagName: "button", type: "submit" }),
+      d({ tagName: "select", hasFormAncestor: true }),
+      d({ tagName: "input", type: "password" }),
+      d({ tagName: "div", role: "combobox", name: "role" }),
+    ];
+    for (const c of cases) {
+      const v = matchBlocklist(c, "choose_option");
+      const cv = chooseVerdictFor(c);
+      expect(cv.allowed).toBe(!v.blocked);
+      if (v.blocked) expect(cv.ruleId).toBe(v.ruleId);
+    }
   });
 });

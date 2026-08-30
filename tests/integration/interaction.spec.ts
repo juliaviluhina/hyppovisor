@@ -283,6 +283,55 @@ test("space activates the focused element under the click rules (US3, SC-003/SC-
   expect(noneEntry.ruleId).toBe(null);
 });
 
+// ─── feature 008 US5: actionable feedback for an unusable selector (T035) ─────
+
+test("US5: a non-CSS selector returns INVALID_SELECTOR (not TARGET_NOT_FOUND) across the tool surface", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const BAD = "a:has-text('Apply')";
+
+  for (const op of ["click", "fill", "scroll", "space", "list_options"] as const) {
+    // scroll/space ignore the selector, but the others must reject it up front
+    if (op === "scroll" || op === "space") continue;
+    const msg = String(
+      await callHandle(app, "interact", [tabId, op, BAD, "x"]).catch((e: Error) => e.message),
+    );
+    expect(msg, op).toContain("INVALID_SELECTOR");
+    // the message names the unsupported forms and points at the discovery tools
+    expect(msg, op).toContain(":has-text()");
+    expect(msg, op).toContain("read_form_fields");
+  }
+
+  // choose_option too
+  const chooseMsg = String(
+    await callHandle(app, "interact", [tabId, "choose_option", BAD, undefined, "x"]).catch(
+      (e: Error) => e.message,
+    ),
+  );
+  expect(chooseMsg).toContain("INVALID_SELECTOR");
+
+  // wait_for_selector too — and it does not spend the whole timeout window
+  const t0 = Date.now();
+  const waitMsg = String(
+    await callHandle(app, "waitFor", [tabId, BAD, 5000]).catch((e: Error) => e.message),
+  );
+  expect(waitMsg).toContain("INVALID_SELECTOR");
+  expect(Date.now() - t0).toBeLessThan(2000);
+
+  // a VALID selector that matches nothing still → TARGET_NOT_FOUND
+  const nf = String(
+    await callHandle(app, "interact", [tabId, "click", "#definitely-not-here"]).catch(
+      (e: Error) => e.message,
+    ),
+  );
+  expect(nf).toContain("TARGET_NOT_FOUND");
+  const nfWait = String(
+    await callHandle(app, "waitFor", [tabId, "#definitely-not-here", 300]).catch(
+      (e: Error) => e.message,
+    ),
+  );
+  expect(nfWait).toContain("WAIT_TIMEOUT");
+});
+
 test("a burst across multiple tabs never overlaps and every request completes (T045, SC-008a)", async () => {
   const tabs = await Promise.all(
     [0, 1, 2, 3].map(() =>

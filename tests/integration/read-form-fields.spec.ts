@@ -58,13 +58,14 @@ test("US1: one call returns an ordered field map with working selectors and labe
   expect(map.truncated).toBe(false);
   expect(map.records.length).toBeGreaterThan(8);
 
-  // document order: known controls appear in source order
+  // document order: known controls appear in source order (feature 008 excludes
+  // plain/submit buttons from a default read, so the chain skips #submitBtn)
   const sels = map.records.map((r) => r.selector);
   const idx = (s: string) => sels.indexOf(s);
   expect(idx("#name")).toBeGreaterThanOrEqual(0);
   expect(idx("#name")).toBeLessThan(idx("#email"));
-  expect(idx("#email")).toBeLessThan(idx("#submitBtn"));
-  expect(idx("#submitBtn")).toBeLessThan(idx("#other_field"));
+  expect(idx("#email")).toBeLessThan(idx("#other_field"));
+  expect(sels).not.toContain("#submitBtn"); // button, excluded by default (feature 008)
 
   // every visible control: non-null selector + a kind; labelable ones have a label
   for (const r of map.records) {
@@ -109,7 +110,13 @@ test("US1: one call returns an ordered field map with working selectors and labe
 
 test("US2: each control's fill / click verdict matches what interact returns", async () => {
   const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
-  const map = await read(tabId);
+  // includeNonInteractive so #submitBtn (a button) is still in the map for the
+  // verdict-parity checks (feature 008 excludes buttons from a default read).
+  const map = await callHandle<FormFieldMap>(app, "readFormFields", [
+    tabId,
+    undefined,
+    { includeNonInteractive: true },
+  ]);
   const rec = (sel: string) => map.records.find((r) => r.selector === sel)!;
 
   // submit button — refused both ways, submit-control
@@ -274,7 +281,12 @@ test("US4: a container selector scopes the read; an unresolved container errors"
   const other = await read(tabId, "#otherform");
   expect(other.records.map((r) => r.selector)).toEqual(["#other_field"]);
 
-  const scoped = await read(tabId, "#theform");
+  // includeNonInteractive so the in-form #submitBtn is still surfaced (feature 008)
+  const scoped = await callHandle<FormFieldMap>(app, "readFormFields", [
+    tabId,
+    "#theform",
+    { includeNonInteractive: true },
+  ]);
   const sels = scoped.records.map((r) => r.selector);
   for (const outside of ["#safeBtn", "#connectLink", "#saveBtn", "#tos", "#remoteOnly", "#other_field"]) {
     expect(sels, outside).not.toContain(outside);
@@ -306,6 +318,184 @@ test("SC-008: a batch built from only the reader's permitted selectors passes 00
   );
   expect(r.outcome).toBe("permitted");
   expect(r.summary).toEqual({ requested: batch.length, written: batch.length, errored: 0 });
+});
+
+// ─── feature 008 US2: scoped, size-budgeted reads (T015) ──────────────────────
+
+const readOpts = (
+  tabId: string,
+  opts: { fields?: string[]; includeNonInteractive?: boolean; only?: "required-unfilled" },
+) => callHandle<FormFieldMap>(app, "readFormFields", [tabId, undefined, opts]);
+
+test("US2: `fields` returns exactly the named controls in document order, incl. a named hidden mirror", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+
+  const map = await readOpts(tabId, { fields: ["#cfirst", "#roleCombo", "#q_role"] });
+  // #q_role and #roleCombo are inside #roleWidget (near the top); #cfirst is far below.
+  expect(map.records.map((r) => r.selector)).toEqual(["#q_role", "#roleCombo", "#cfirst"]);
+  // the hidden value-mirror is present ONLY because it was named explicitly
+  const mirror = map.records.find((r) => r.selector === "#q_role")!;
+  expect(mirror).toBeTruthy();
+});
+
+test("US2: a default read omits a plain <button type=button>; includeNonInteractive surfaces it", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const dflt = await callHandle<FormFieldMap>(app, "readFormFields", [tabId]);
+  expect(dflt.records.map((r) => r.selector)).not.toContain("#plainBtn");
+
+  const withAll = await readOpts(tabId, { includeNonInteractive: true });
+  expect(withAll.records.map((r) => r.selector)).toContain("#plainBtn");
+});
+
+test("US2: only:'required-unfilled' returns only empty required controls", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const map = await readOpts(tabId, { only: "required-unfilled" });
+  expect(map.records.length).toBeGreaterThan(0);
+  for (const r of map.records) {
+    expect(r.required, r.selector ?? "?").toBe(true);
+    const v = r.currentValue;
+    const empty = v === "" || v === null || v === undefined || v === false || (Array.isArray(v) && v.length === 0);
+    expect(empty, `${r.selector} currentValue=${JSON.stringify(v)}`).toBe(true);
+  }
+  const sels = map.records.map((r) => r.selector);
+  expect(sels).toEqual(expect.arrayContaining(["#req_a", "#req_b", "#other_field"]));
+  expect(sels).not.toContain("#first_name"); // not required
+});
+
+test("US2: a constrained text input carries maxLength / pattern / inputMode", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const map = await readOpts(tabId, { fields: ["#zipcode"] });
+  expect(map.records[0]).toMatchObject({
+    selector: "#zipcode",
+    maxLength: 20,
+    pattern: "[0-9]*",
+    inputMode: "numeric",
+  });
+  // a field without the attributes carries none of the keys
+  const plain = await readOpts(tabId, { fields: ["#first_name"] });
+  expect("maxLength" in plain.records[0]).toBe(false);
+  expect("pattern" in plain.records[0]).toBe(false);
+  expect("inputMode" in plain.records[0]).toBe(false);
+});
+
+test("US2: `fields` and `containerSelector` together is an argument error", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const err = await callHandle(app, "readFormFields", [tabId, "#theform", { fields: ["#name"] }]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(err)).toContain("BATCH_REJECTED");
+});
+
+test("US2: a lowered byte budget trims tail records in document order with truncated:true", async () => {
+  const small = await startFixtureServer();
+  const capped = await launchApp({ HYPPO_FORM_FIELD_READ_MAX_BYTES: "1800" });
+  try {
+    const { tabId } = await callHandle<{ tabId: string }>(capped, "open", [`${small.base}/form.html`]);
+    const budgeted = await callHandle<FormFieldMap>(capped, "readFormFields", [tabId]);
+    expect(budgeted.truncated).toBe(true);
+    expect(budgeted.records.length).toBeGreaterThan(0);
+    // document order preserved from the top of the page
+    expect(budgeted.records[0].selector).toBe("#name");
+    // and the payload actually fits the budget
+    expect(Buffer.byteLength(JSON.stringify(budgeted), "utf8")).toBeLessThanOrEqual(1800);
+
+    // an unbudgeted read of the same page returns strictly more records
+    const full = await callHandle<FormFieldMap>(app, "readFormFields", [
+      (await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`])).tabId,
+    ]);
+    expect(full.records.length).toBeGreaterThan(budgeted.records.length);
+  } finally {
+    await capped.close();
+    small.server.close();
+  }
+});
+
+// ─── feature 008 US3: one selector + operation per control (T023) ─────────────
+
+test("US3: a scripted dropdown collapses to one record whose selector choose_option accepts", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+
+  const map = await callHandle<FormFieldMap>(app, "readFormFields", [tabId]);
+  const roleRecs = map.records.filter((r) => r.selector === "#roleCombo");
+  expect(roleRecs.length).toBe(1);
+  expect(roleRecs[0].kind).toBe("combobox");
+  expect(roleRecs[0].operation).toBe("choose");
+  // the hidden value-mirror is NOT in a default read
+  expect(map.records.map((r) => r.selector)).not.toContain("#q_role");
+
+  // that selector, fed straight into choose_option, succeeds on the first try
+  const chosen = await callHandle<{ chosenOption?: { label: string; value: string } }>(app, "interact", [
+    tabId,
+    "choose_option",
+    "#roleCombo",
+    undefined,
+    "Frontend Engineer",
+  ]);
+  expect(chosen.chosenOption).toEqual({ label: "Frontend Engineer", value: "fe" });
+});
+
+test("US3: each record's operation matches its kind", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+  const map = await callHandle<FormFieldMap>(app, "readFormFields", [
+    tabId,
+    undefined,
+    { includeNonInteractive: true },
+  ]);
+  const op = (sel: string) => map.records.find((r) => r.selector === sel)?.operation;
+  expect(op("#cfirst")).toBe("fill");
+  expect(op("#roleCombo")).toBe("choose");
+  expect(op("#plainSelect")).toBe("choose");
+  expect(op("#cnews")).toBe("activate");
+  expect(op("#cfile")).toBe("none");
+});
+
+test("US3: the hidden mirror appears only when named or under includeNonInteractive, tagged interactive:false", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+
+  const named = await callHandle<FormFieldMap>(app, "readFormFields", [
+    tabId,
+    undefined,
+    { fields: ["#q_role"] },
+  ]);
+  expect(named.records.length).toBe(1);
+  expect(named.records[0].interactive).toBe(false);
+  expect(named.records[0].mirrors).toBe("#roleCombo");
+
+  const withAll = await callHandle<FormFieldMap>(app, "readFormFields", [
+    tabId,
+    undefined,
+    { includeNonInteractive: true },
+  ]);
+  const mirror = withAll.records.find((r) => r.selector === "#q_role")!;
+  expect(mirror).toBeTruthy();
+  expect(mirror.interactive).toBe(false);
+  expect(mirror.mirrors).toBe("#roleCombo");
+});
+
+// ─── feature 008 US5: INVALID_SELECTOR on the reader's selector inputs (T036) ─
+
+test("US5: a bad containerSelector and a bad fields entry each → INVALID_SELECTOR", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const badContainer = await callHandle(app, "readFormFields", [tabId, "div:has-text('x')"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(badContainer)).toContain("INVALID_SELECTOR");
+
+  const badField = await callHandle(app, "readFormFields", [
+    tabId,
+    undefined,
+    { fields: ["#first_name", "a >> b"] },
+  ]).catch((e: Error) => e.message);
+  expect(String(badField)).toContain("INVALID_SELECTOR");
+
+  // a valid containerSelector that matches nothing still → TARGET_NOT_FOUND
+  const noMatch = await callHandle(app, "readFormFields", [tabId, "#no-such-container"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(noMatch)).toContain("TARGET_NOT_FOUND");
 });
 
 test("US4: more controls than the cap truncates to the first cap-many with the flag", async () => {

@@ -30,11 +30,11 @@ Single project — `src/main/**`, `src/renderer/**`, `src/shared/**`, `tests/**`
 
 ## Phase 1: Setup (fixtures)
 
-- [ ] T001 [P] Add `tests/fixtures/combobox.html` — a scripted dropdown whose
+- [x] T001 [P] Add `tests/fixtures/combobox.html` — a scripted dropdown whose
   `[role="option"]` nodes are injected only after the control is clicked, backed by a hidden
   `<input type="hidden" name="q_role">` value-mirror; plus a plain native `<select>` and a
   `<select multiple>`; plus one widget wired to never inject options.
-- [ ] T002 [P] Extend `tests/fixtures/form.html` — add a
+- [x] T002 [P] Extend `tests/fixtures/form.html` — add a
   `maxlength="20" pattern="[0-9]*" inputmode="numeric"` text input, a group of `required`
   inputs left empty, and a plain `<button type="button">`.
 
@@ -44,24 +44,24 @@ Single project — `src/main/**`, `src/renderer/**`, `src/shared/**`, `tests/**`
 
 **⚠️ No user-story work starts until this phase is done.**
 
-- [ ] T003 Add config keys to `src/main/config.ts`: `formFieldReadMaxBytes`
+- [x] T003 Add config keys to `src/main/config.ts`: `formFieldReadMaxBytes`
   (`HYPPO_FORM_FIELD_READ_MAX_BYTES`, 65536), `screenshotMaxBytes`
   (`HYPPO_SCREENSHOT_MAX_BYTES`, 262144), `screenshotJpegQualityStart`
   (`HYPPO_SCREENSHOT_JPEG_QUALITY_START`, 80), `screenshotJpegQualityFloor`
   (`HYPPO_SCREENSHOT_JPEG_QUALITY_FLOOR`, 30), all via the existing `numFromEnv`.
-- [ ] T004 Add `"INVALID_SELECTOR"` and `"SCREENSHOT_FAILED"` to the `ErrorCode` union in
+- [x] T004 Add `"INVALID_SELECTOR"` and `"SCREENSHOT_FAILED"` to the `ErrorCode` union in
   `src/main/errors.ts` (no new `details` fields).
-- [ ] T005 Create `src/main/page/selector-syntax.ts` — export `INVALID_SELECTOR_MESSAGE`
+- [x] T005 Create `src/main/page/selector-syntax.ts` — export `INVALID_SELECTOR_MESSAGE`
   (the fixed text from `research.md` R9) and `assertSelectorValid(marker: unknown)` which
   throws `new HyppoError("INVALID_SELECTOR", INVALID_SELECTOR_MESSAGE)` when the in-page
   script returned `{ __invalidSelector: true }`. Also export the JS snippet string that
   wraps a `querySelector(All)` call in the `SyntaxError`-catching `try/catch`.
-- [ ] T006 [P] Declare shared types in `src/shared/types.ts`: extend `FormFieldRecord` with
+- [x] T006 [P] Declare shared types in `src/shared/types.ts`: extend `FormFieldRecord` with
   optional `operation` (`"fill"|"choose"|"activate"|"none"`), `chooseVerdict`
   (`{ allowed: boolean; ruleId?: string; description?: string }`), `interactive` (boolean),
   `mirrors` (string), `maxLength` / `pattern` / `inputMode` (all optional); add
   `ListOptionsResult` and `ScreenshotResult` per `data-model.md` §3–§4.
-- [ ] T007 [P] Unit test `tests/unit/selector-syntax.test.ts` — `assertSelectorValid`
+- [x] T007 [P] Unit test `tests/unit/selector-syntax.test.ts` — `assertSelectorValid`
   throws `INVALID_SELECTOR` on the sentinel and is a no-op otherwise; message names
   `:has-text()`, `text=`, `>>`.
 
@@ -80,12 +80,12 @@ control value unchanged, menu closed, `interaction-log.jsonl` line count unchang
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Extend `tests/unit/choose-option.test.ts`: `listOptions()` returns a
+- [x] T008 [P] [US1] Extend `tests/unit/choose-option.test.ts`: `listOptions()` returns a
   native `<select>`'s options with `optionsPresent: true` and no open/close; drives
   open → gather → close for a scripted widget; a never-populating widget yields
   `{ options: [], optionsPresent: false, optionsTruncated: false }`; `<select multiple>`
   classifies as not-a-dropdown; the option cap sets `optionsTruncated`.
-- [ ] T009 [P] [US1] Add `tests/integration/list-options.spec.ts`: native select, scripted
+- [x] T009 [P] [US1] Add `tests/integration/list-options.spec.ts`: native select, scripted
   widget, plain `<div>` → `CHOOSE_OPTION_FAILED`/`reason:"not-a-dropdown"`, never-populating
   widget → empty + `optionsPresent:false` (with a lowered `HYPPO_CHOOSE_OPTION_WAIT_MS`),
   control value + menu state unchanged after the call, **`interaction-log.jsonl` unchanged**,
@@ -94,22 +94,22 @@ control value unchanged, menu closed, `interaction-log.jsonl` line count unchang
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Refactor `src/main/page/choose-option.ts`: extract the
+- [x] T010 [US1] Refactor `src/main/page/choose-option.ts`: extract the
   probe → (open if `!optionsPresent`) → `gatherScript` → `closeReadbackScript` sequence into
   an exported `listOptions(wc, selector)` returning `{ options, optionsPresent, optionsTruncated }`
   (cap via `config.formFieldOptionCap` + `capList`); make `chooseOption` call the shared
   steps so there is one copy; add the `SyntaxError` catch from `selector-syntax.ts` to
   `probeScript` and surface `{ __invalidSelector: true }`.
-- [ ] T011 [US1] Add the `list_options` branch to `src/main/page/interact.ts`: blocklist
+- [x] T011 [US1] Add the `list_options` branch to `src/main/page/interact.ts`: blocklist
   gate via the same rule set `choose_option` uses (`matchBlocklist(descriptor, "choose_option")`),
   call `listOptions`, map probe not-a-dropdown / `<select multiple>` to
   `CHOOSE_OPTION_FAILED`, call `assertSelectorValid` on the invalid-selector marker, and
   write **no** `log.record` entry on any path (success, refusal, error).
-- [ ] T012 [US1] In `src/main/mcp/tools.ts` add `"list_options"` to the `interact`
+- [x] T012 [US1] In `src/main/mcp/tools.ts` add `"list_options"` to the `interact`
   `operation` zod enum and to the tool description; return the `ListOptionsResult` shape
   (`tabId`, `selector`, `options`, `optionsPresent`, `optionsTruncated`, `queueDepth`) via
   `ok(...)`.
-- [ ] T013 [US1] Update `specs/001-open-any-url/contracts/mcp-tools.md`: add the
+- [x] T013 [US1] Update `specs/001-open-any-url/contracts/mcp-tools.md`: add the
   `list_options` operation row from `contracts/mcp-tools-008-delta.md` (request, response,
   read-only + no-audit guarantees, error table).
 
@@ -128,12 +128,12 @@ read stays ≤ 64 KB and flags trimming; a plain button is absent by default.
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Extend `tests/unit/form-fields.test.ts`: byte-budget tail-drop is
+- [x] T014 [P] [US2] Extend `tests/unit/form-fields.test.ts`: byte-budget tail-drop is
   order-stable and sets `truncated`; `required-unfilled` predicate (empty string / unchecked
   / no option chosen / placeholder-only count as empty); `maxLength` / `pattern` /
   `inputMode` extraction only when the attribute is present; `fields` + `containerSelector`
   together is rejected as an argument error.
-- [ ] T015 [P] [US2] Extend `tests/integration/read-form-fields.spec.ts`: `fields:
+- [x] T015 [P] [US2] Extend `tests/integration/read-form-fields.spec.ts`: `fields:
   ["#first_name","#email","#q_role"]` returns exactly those three in document order and
   includes `#q_role` though it is a hidden mirror (explicit selector overrides exclusion);
   default read omits the plain `<button type="button">`; `includeNonInteractive: true`
@@ -143,28 +143,28 @@ read stays ≤ 64 KB and flags trimming; a plain button is absent by default.
 
 ### Implementation for User Story 2
 
-- [ ] T016 [US2] `src/main/page/form-fields.ts` collector: accept a `fields: string[]`
+- [x] T016 [US2] `src/main/page/form-fields.ts` collector: accept a `fields: string[]`
   argument — for each entry run `document.querySelectorAll` inside the `SyntaxError` catch,
   union + dedupe matched elements in document order, and when `fields` is present emit
   records only for those elements (skipping the non-interactive exclusion for named
   elements); return `{ __invalidSelector: true }` on a bad entry.
-- [ ] T017 [US2] `src/main/page/form-fields.ts` collector: for text-like kinds read
+- [x] T017 [US2] `src/main/page/form-fields.ts` collector: for text-like kinds read
   `el.maxLength` (emit when ≥ 0 and set), `getAttribute("pattern")`,
   `getAttribute("inputmode")`; attach to the record only when present.
-- [ ] T018 [US2] `src/main/page/form-fields.ts` main process: add `includeNonInteractive`
+- [x] T018 [US2] `src/main/page/form-fields.ts` main process: add `includeNonInteractive`
   (default `false`) — filter out `kind === "button"` records unless set or named in
   `fields`; after the count cap, run the byte-budget trim against
   `config.formFieldReadMaxBytes` (measure `Buffer.byteLength(JSON.stringify(payload))`, drop
   the last record while over budget, set `truncated`); reject `fields` + `containerSelector`
   supplied together.
-- [ ] T019 [US2] `src/main/page/form-fields.ts` main process: add `only: "required-unfilled"`
+- [x] T019 [US2] `src/main/page/form-fields.ts` main process: add `only: "required-unfilled"`
   — keep only records where `required === true` and the current value is empty per the
   `data-model.md` definition.
-- [ ] T020 [US2] `src/main/mcp/tools.ts` `read_form_fields`: add `fields` (`z.array(z.string())`),
+- [x] T020 [US2] `src/main/mcp/tools.ts` `read_form_fields`: add `fields` (`z.array(z.string())`),
   `includeNonInteractive` (`z.boolean().optional()`), `only` (`z.enum(["required-unfilled"]).optional()`)
   params + description text; thread them to `readFormFields`; convert the invalid-selector
   marker to `INVALID_SELECTOR` via `assertSelectorValid`.
-- [ ] T021 [US2] Update `specs/001-open-any-url/contracts/mcp-tools.md`: `read_form_fields`
+- [x] T021 [US2] Update `specs/001-open-any-url/contracts/mcp-tools.md`: `read_form_fields`
   new params + the `truncated`-now-covers-byte-budget note from the delta doc.
 
 **Checkpoint**: US1 and US2 both work independently.
@@ -182,14 +182,14 @@ whose `selector` `choose_option` accepts; every record states its `operation` an
 
 ### Tests for User Story 3
 
-- [ ] T022 [P] [US3] Extend `tests/unit/form-fields.test.ts`: the mirror classifier tags a
+- [x] T022 [P] [US3] Extend `tests/unit/form-fields.test.ts`: the mirror classifier tags a
   hidden same-`name` input beside a combobox `interactive: false` + `mirrors:
   "<combobox selector>"`; the combobox record's synthesised `selector` is the chooser
   element, never the `[name]` input; `operation` derivation matches the `data-model.md`
   table. Extend `tests/unit/blocklist.test.ts`: `chooseVerdictFor` refuses exactly the
   `submit-control` / `consent-toggle` / `credential-field` / `external-act-label` targets
   and permits an in-form plain field.
-- [ ] T023 [P] [US3] Extend `tests/integration/read-form-fields.spec.ts`: `combobox.html`'s
+- [x] T023 [P] [US3] Extend `tests/integration/read-form-fields.spec.ts`: `combobox.html`'s
   scripted widget appears as one record; that `selector` passed to
   `interact { operation: "choose_option" }` succeeds first try (no `not-a-dropdown`); each
   record's `operation` matches its kind; the hidden mirror appears only under
@@ -197,21 +197,21 @@ whose `selector` `choose_option` accepts; every record states its `operation` an
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] `src/main/safety/blocklist.ts`: add `chooseVerdictFor(descriptor)` — apply
+- [x] T024 [US3] `src/main/safety/blocklist.ts`: add `chooseVerdictFor(descriptor)` — apply
   the `choose_option` gate (`submit-control`, `consent-toggle`, `credential-field`,
   `external-act-label` refuse; `in-form` does not gate), returning the same
   `{ allowed, ruleId?, description? }` shape as `fillVerdictFor` / `clickVerdictFor`.
-- [ ] T025 [US3] `src/main/page/form-fields.ts` collector: cluster pass — for each
+- [x] T025 [US3] `src/main/page/form-fields.ts` collector: cluster pass — for each
   `role="combobox"` / `role="listbox"` / listbox-owner candidate, find an associated hidden
   `<input>` (shares `name`, or the combobox sits inside the input's nearest widget
   container); tag that input `interactive: false` + `mirrors: "<combobox selector>"`, and
   constrain `synthesizeSelector` for the combobox record to the chooser element (never the
   `[name]` input).
-- [ ] T026 [US3] `src/main/page/form-fields.ts` main process: set `operation` on every
+- [x] T026 [US3] `src/main/page/form-fields.ts` main process: set `operation` on every
   record from `kind` (`data-model.md` R8 table) and `chooseVerdict` from
   `chooseVerdictFor(descriptor)`; extend the default non-interactive exclusion to also drop
   `interactive === false` records (unless named in `fields` or `includeNonInteractive`).
-- [ ] T027 [US3] Update `specs/001-open-any-url/contracts/mcp-tools.md`: the new record
+- [x] T027 [US3] Update `specs/001-open-any-url/contracts/mcp-tools.md`: the new record
   fields (`operation`, `chooseVerdict`, `interactive`, `mirrors`) and the "one record per
   scripted dropdown, chooser selector" guarantee.
 
@@ -230,11 +230,11 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
 
 ### Tests for User Story 4
 
-- [ ] T028 [P] [US4] Add `tests/unit/screenshot.test.ts`: the scale/compress loop with a
+- [x] T028 [P] [US4] Add `tests/unit/screenshot.test.ts`: the scale/compress loop with a
   stubbed encoder — walks JPEG quality down to the floor, then downscales by 0.8, bounded to
   ≤ 6 iterations; reports `scale` = finalWidth / naturalWidth and `limitNotMet` when still
   over budget at the floor; the PNG path only downscales.
-- [ ] T029 [P] [US4] Add `tests/integration/screenshot.spec.ts`: viewport shot returns an
+- [x] T029 [P] [US4] Add `tests/integration/screenshot.spec.ts`: viewport shot returns an
   image block + metadata (`width`/`height` > 0, `scale: 1`, `format: "jpeg"`, ≤ 256 KB);
   `maxBytes: 20000` → `scale < 1` and/or lower quality, `limitNotMet` truthful; element clip
   dimensions ≈ the input's bounding box and `element` echoes the selector; a zero-size /
@@ -244,7 +244,7 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
 
 ### Implementation for User Story 4
 
-- [ ] T030 [US4] Create `src/main/page/screenshot.ts` — `takeScreenshot(wc, opts)`:
+- [x] T030 [US4] Create `src/main/page/screenshot.ts` — `takeScreenshot(wc, opts)`:
   viewport via `wc.capturePage()`; element via `getBoundingClientRect` in an isolated world
   + renderable check (`width < 1 || height < 1` or fully off-viewport → `SCREENSHOT_FAILED`)
   then `wc.capturePage(rect)`; `fullPage` via `wc.debugger.attach("1.3")` +
@@ -252,17 +252,17 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
   detach in `finally`; the scale/compress loop from T028 using `NativeImage`
   `toJPEG` / `toPNG` / `resize`; returns `{ bytes, mimeType, meta: ScreenshotResult }`;
   throws `INVALID_SELECTOR` / `SCREENSHOT_FAILED` (with `cause`).
-- [ ] T031 [US4] `src/main/mcp/tools.ts`: add an `okImage(dataBase64, mimeType, meta)`
+- [x] T031 [US4] `src/main/mcp/tools.ts`: add an `okImage(dataBase64, mimeType, meta)`
   helper returning `{ content: [{ type: "image", data, mimeType }, { type: "text", text:
   JSON.stringify(meta, null, 2) }] }`; register the `screenshot` tool (zod: `tabId`,
   `selector?`, `fullPage?`, `format?`, `maxBytes?`) running through `queue.run`, no
   `log.record`, returning `okImage(...)`.
-- [ ] T032 [US4] `src/main/mcp/tools.ts`: add `"screenshot"` to `TOOL_NAMES` (7 → 8).
-- [ ] T033 [P] [US4] `src/renderer/snippets.ts`: add a `screenshot` line to the About-text
+- [x] T032 [US4] `src/main/mcp/tools.ts`: add `"screenshot"` to `TOOL_NAMES` (7 → 8).
+- [x] T033 [P] [US4] `src/renderer/snippets.ts`: add a `screenshot` line to the About-text
   tool list (one-line purpose, e.g. "screenshot   a picture of a tab, to check rendered
   state"); run `tests/unit/connection-snippets.test.ts` (the guard iterates `TOOL_NAMES` and
   must pass).
-- [ ] T034 [US4] Update `specs/001-open-any-url/contracts/mcp-tools.md` and the `README.md`
+- [x] T034 [US4] Update `specs/001-open-any-url/contracts/mcp-tools.md` and the `README.md`
   tool table: add the `screenshot` row incl. the privacy note from the delta doc.
 
 **Checkpoint**: US1–US4 independently functional.
@@ -279,22 +279,22 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
 
 ### Tests for User Story 5
 
-- [ ] T035 [P] [US5] Extend `tests/integration/interaction.spec.ts`: `interact` `click`
+- [x] T035 [P] [US5] Extend `tests/integration/interaction.spec.ts`: `interact` `click`
   (and one more op) with `a:has-text('Apply')` → `INVALID_SELECTOR` whose message names the
   unsupported forms; `wait_for_selector` with the same → `INVALID_SELECTOR`;
   `#definitely-not-here` (valid CSS) still → `TARGET_NOT_FOUND`.
-- [ ] T036 [P] [US5] Extend `tests/integration/read-form-fields.spec.ts`: a bad
+- [x] T036 [P] [US5] Extend `tests/integration/read-form-fields.spec.ts`: a bad
   `containerSelector` and a bad entry in `fields` each → `INVALID_SELECTOR`.
 
 ### Implementation for User Story 5
 
-- [ ] T037 [US5] `src/main/page/interact.ts`: wrap the caller-selector `querySelector`
+- [x] T037 [US5] `src/main/page/interact.ts`: wrap the caller-selector `querySelector`
   calls in `targetDescriptorScript` / `activeElementDescriptorScript` and the
   `waitForSelector` poll script with the `SyntaxError` catch from `selector-syntax.ts`;
   call `assertSelectorValid` on the marker so every `interact` operation (`click`, `fill`,
   `scroll`, `space`, `choose_option`, `list_options`) and `wait_for_selector` return
   `INVALID_SELECTOR` before the "not found" path.
-- [ ] T038 [US5] Audit the US1 (`choose-option.ts` `probeScript`) and US2/US3
+- [x] T038 [US5] Audit the US1 (`choose-option.ts` `probeScript`) and US2/US3
   (`form-fields.ts` collector) invalid-selector paths added earlier: confirm they route
   through the one shared module + message; add any missing call site.
 
@@ -304,18 +304,18 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
 
 ## Phase 8: Polish & cross-cutting
 
-- [ ] T039 [P] `README.md` "What the app will not do": add a line that attaching files to a
+- [x] T039 [P] `README.md` "What the app will not do": add a line that attaching files to a
   file-upload control is not supported and is a human step (FR-029); keep the existing
   `kind: "file"` + refusing `fillVerdict` behaviour as the hand-off signal.
-- [ ] T040 [P] `README.md` and the `interact` `fill` description in `src/main/mcp/tools.ts`:
+- [x] T040 [P] `README.md` and the `interact` `fill` description in `src/main/mcp/tools.ts`:
   add that choosing among address / place autocomplete suggestions is a human step —
   `fill` types the literal text and stops (FR-030).
-- [ ] T041 Fold `specs/008-form-filling-robustness/contracts/mcp-tools-008-delta.md` fully
+- [x] T041 Fold `specs/008-form-filling-robustness/contracts/mcp-tools-008-delta.md` fully
   into `specs/001-open-any-url/contracts/mcp-tools.md`; replace any "seven tools" / "six
   tools" phrasing with eight and reconcile the tool list.
-- [ ] T042 Run `specs/008-form-filling-robustness/quickstart.md` §1–§7 end to end against a
+- [x] T042 Run `specs/008-form-filling-robustness/quickstart.md` §1–§7 end to end against a
   built app; fix any drift between the docs and behaviour.
-- [ ] T043 Full gate: `npm run build && npm run lint && npm test && npm run test:e2e`
+- [x] T043 Full gate: `npm run build && npm run lint && npm test && npm run test:e2e`
   (ensure local port 7357 is free for the connection-panel e2e).
 
 ---

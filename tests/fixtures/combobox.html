@@ -1,0 +1,298 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Combobox Fixture Page</title>
+  </head>
+  <body>
+    <h1>Combobox fixture</h1>
+
+    <!-- feature 008 US1/US3: a scripted dropdown whose [role="option"] nodes are
+         injected into its listbox only after the control is clicked, backed by a
+         hidden value-mirror <input> that shares the combobox's `name`. The reader
+         must collapse this cluster to ONE interactive record whose selector is the
+         chooser (#roleCombo), not the hidden #q_role input. -->
+    <div id="roleWidget" class="rs-container">
+      <input type="hidden" name="q_role" id="q_role" />
+      <label id="roleLabel" for="roleCombo">Role</label>
+      <div
+        id="roleCombo"
+        role="combobox"
+        name="q_role"
+        aria-labelledby="roleLabel"
+        aria-expanded="false"
+        aria-controls="roleListbox"
+        tabindex="0"
+      >
+        <span id="roleComboValue"></span>
+      </div>
+      <ul role="listbox" id="roleListbox"></ul>
+    </div>
+
+    <!-- a plain native single-select -->
+    <label for="plainSelect">Team</label>
+    <select id="plainSelect" name="plain">
+      <option value="">Choose…</option>
+      <option value="eng">Engineering</option>
+      <option value="design">Design</option>
+      <option value="ops" disabled>Operations</option>
+    </select>
+
+    <!-- a native multi-select — classifies as not-a-dropdown for list_options -->
+    <label for="multiSelect">Skills</label>
+    <select id="multiSelect" name="multi" multiple>
+      <option value="js">JavaScript</option>
+      <option value="ts">TypeScript</option>
+    </select>
+
+    <!-- a widget wired to never inject options: click opens it but nothing renders -->
+    <div
+      id="deadCombo"
+      role="combobox"
+      aria-expanded="false"
+      aria-controls="deadListbox"
+      tabindex="0"
+    >
+      <span id="deadComboValue"></span>
+    </div>
+    <ul role="listbox" id="deadListbox"></ul>
+
+    <!-- a plain <div>: not a dropdown at all -->
+    <div id="plainDiv">just text</div>
+
+    <!-- feature 008 fix: a react-select-style widget that opens ONLY on mousedown
+         on the control container (a click on the inner input does nothing), and
+         whose menu is a sibling of the control (no aria-controls, no id handed to
+         us) — exercises openScript's mousedown escalation + the ancestor-climb
+         option source. -->
+    <div id="msWidget" class="rs-select">
+      <label id="msLabel" for="msInput">Preferred stack</label>
+      <div id="msControl" class="rs-select__control">
+        <input
+          id="msInput"
+          role="combobox"
+          aria-labelledby="msLabel"
+          aria-expanded="false"
+          aria-autocomplete="list"
+          class="rs-select__input"
+        />
+        <span id="msValue" class="rs-select__single-value"></span>
+      </div>
+      <div id="msMenu" class="rs-select__menu" hidden></div>
+    </div>
+
+    <!-- feature 008 fix (deep react-select): a faithful react-select DOM — the
+         open menu (a [role="listbox"]) is a SIBLING of .ds-select__control,
+         several levels above #dsInput; the committed value renders in a
+         .ds-select__single-value two levels up; and the on-select display text
+         ("+47 (NO)") is NOT a substring of the option label ("Norway +47"), so a
+         permitted call must rely on the "menu closed + value changed" fallback,
+         not text matching. Exercises __optionNodes' deep [role=listbox] climb,
+         closeReadbackScript's multi-level single-value climb, and the `committed`
+         read-back path. -->
+    <div id="dsWidget" class="ds-select">
+      <label id="dsLabel" for="dsInput">Region code</label>
+      <div class="ds-select__container">
+        <div class="ds-select__shell">
+          <div class="ds-select__control">
+            <div class="ds-select__value-container">
+              <div class="ds-select__single-value" id="dsValue"></div>
+              <div class="ds-select__input-container">
+                <input
+                  id="dsInput"
+                  role="combobox"
+                  aria-labelledby="dsLabel"
+                  aria-expanded="false"
+                  aria-autocomplete="list"
+                  class="ds-select__input"
+                />
+              </div>
+            </div>
+            <div class="ds-select__indicators">▾</div>
+          </div>
+          <div class="ds-select__menu" id="dsMenu" hidden>
+            <div class="ds-select__menu-list" role="listbox" id="dsListbox"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- feature 008 US1: blocklist parity targets for list_options -->
+    <form id="cformguard" action="/x" method="post">
+      <label for="cpassword">Password</label>
+      <input type="password" id="cpassword" name="cpassword" />
+      <label><input type="checkbox" id="cagree" name="cagree" /> I agree to the terms</label>
+      <button type="submit" id="csubmit">Apply now</button>
+    </form>
+
+    <!-- feature 008 US3: plain controls so `operation` derivation can be checked
+         against each kind (text→fill, checkbox→activate, file→none). -->
+    <label for="cfirst">First name</label>
+    <input type="text" id="cfirst" name="cfirst" />
+    <label for="cnews">Newsletter</label>
+    <input type="checkbox" id="cnews" name="cnews" />
+    <label for="cfile">Attachment</label>
+    <input type="file" id="cfile" name="cfile" />
+
+    <script>
+      // The scripted role combobox: options render into its listbox only on open;
+      // choosing one mirrors the value into the hidden #q_role input and collapses.
+      (function () {
+        var combo = document.getElementById("roleCombo");
+        var listbox = document.getElementById("roleListbox");
+        var valueEl = document.getElementById("roleComboValue");
+        var mirror = document.getElementById("q_role");
+        var opts = [
+          { label: "Frontend Engineer", value: "fe" },
+          { label: "Backend Engineer", value: "be" },
+          { label: "Staff Engineer", value: "staff", disabled: true },
+        ];
+        function render() {
+          listbox.innerHTML = "";
+          opts.forEach(function (o) {
+            var li = document.createElement("li");
+            li.setAttribute("role", "option");
+            li.setAttribute("data-value", o.value);
+            if (o.disabled) li.setAttribute("aria-disabled", "true");
+            li.textContent = o.label;
+            li.addEventListener("click", function () {
+              if (o.disabled) return;
+              mirror.value = o.value;
+              valueEl.textContent = o.label;
+              combo.setAttribute("aria-expanded", "false");
+              listbox.innerHTML = "";
+            });
+            listbox.appendChild(li);
+          });
+        }
+        combo.addEventListener("click", function () {
+          if (combo.getAttribute("aria-expanded") === "true") {
+            combo.setAttribute("aria-expanded", "false");
+            listbox.innerHTML = "";
+            return;
+          }
+          combo.setAttribute("aria-expanded", "true");
+          render();
+        });
+      })();
+
+      // #deadCombo: opens, never renders an option.
+      (function () {
+        var combo = document.getElementById("deadCombo");
+        combo.addEventListener("click", function () {
+          combo.setAttribute(
+            "aria-expanded",
+            combo.getAttribute("aria-expanded") === "true" ? "false" : "true",
+          );
+        });
+      })();
+
+      // #msWidget: react-select-style. A click on #msInput does nothing; the menu
+      // renders only on mousedown on #msControl. Options are plain <div role=option>
+      // in #msMenu, a sibling of the control — no aria-controls, no shared id.
+      (function () {
+        var control = document.getElementById("msControl");
+        var input = document.getElementById("msInput");
+        var menu = document.getElementById("msMenu");
+        var valueEl = document.getElementById("msValue");
+        var opts = [
+          { label: "Playwright", value: "pw" },
+          { label: "Selenium", value: "se" },
+          { label: "Cypress", value: "cy", disabled: true },
+        ];
+        function render() {
+          menu.innerHTML = "";
+          opts.forEach(function (o) {
+            var d = document.createElement("div");
+            d.setAttribute("role", "option");
+            d.setAttribute("data-value", o.value);
+            if (o.disabled) d.setAttribute("aria-disabled", "true");
+            d.textContent = o.label;
+            // react-select commits on the option's mousedown (to beat input blur),
+            // not its click — so this exercises activateScript's mousedown step.
+            d.addEventListener("mousedown", function (e) {
+              if (o.disabled) return;
+              e.preventDefault();
+              valueEl.textContent = o.label;
+              input.setAttribute("aria-expanded", "false");
+              menu.hidden = true;
+              menu.innerHTML = "";
+            });
+            menu.appendChild(d);
+          });
+          menu.hidden = false;
+        }
+        function close() {
+          input.setAttribute("aria-expanded", "false");
+          menu.hidden = true;
+          menu.innerHTML = "";
+        }
+        control.addEventListener("mousedown", function () {
+          if (input.getAttribute("aria-expanded") === "true") {
+            close();
+            return;
+          }
+          input.setAttribute("aria-expanded", "true");
+          render();
+        });
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") close();
+        });
+        // a click on the inner input is intentionally inert
+      })();
+
+      // #dsWidget: faithful react-select DOM. Opens on mousedown on
+      // .ds-select__control; the menu ([role=listbox]) is a sibling of the
+      // control, 3 ancestors above #dsInput. On select, #dsValue (two levels
+      // above the input) shows an abbreviated "+47 (NO)" that is NOT a substring
+      // of the option label "Norway +47".
+      (function () {
+        var widget = document.getElementById("dsWidget");
+        var control = widget.querySelector(".ds-select__control");
+        var input = document.getElementById("dsInput");
+        var menu = document.getElementById("dsMenu");
+        var listbox = document.getElementById("dsListbox");
+        var valueEl = document.getElementById("dsValue");
+        var opts = [
+          { label: "Norway +47", value: "no", short: "+47 (NO)" },
+          { label: "Sweden +46", value: "se", short: "+46 (SE)" },
+          { label: "Finland +358", value: "fi", short: "+358 (FI)", disabled: true },
+        ];
+        function close() {
+          input.setAttribute("aria-expanded", "false");
+          menu.hidden = true;
+          listbox.innerHTML = "";
+        }
+        function render() {
+          listbox.innerHTML = "";
+          opts.forEach(function (o) {
+            var d = document.createElement("div");
+            d.setAttribute("role", "option");
+            d.setAttribute("data-value", o.value);
+            if (o.disabled) d.setAttribute("aria-disabled", "true");
+            d.className = "ds-select__option";
+            d.textContent = o.label;
+            d.addEventListener("mousedown", function (e) {
+              if (o.disabled) return;
+              e.preventDefault();
+              valueEl.textContent = o.short; // abbreviated — not a substring of label
+              close();
+            });
+            listbox.appendChild(d);
+          });
+          menu.hidden = false;
+        }
+        control.addEventListener("mousedown", function () {
+          if (input.getAttribute("aria-expanded") === "true") {
+            close();
+            return;
+          }
+          input.setAttribute("aria-expanded", "true");
+          render();
+        });
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") close();
+        });
+      })();
+    </script>
+  </body>
+</html>

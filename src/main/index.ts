@@ -22,6 +22,7 @@ import {
 import { readPage } from "./page/read.js";
 import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { readFormFields } from "./page/form-fields.js";
+import { takeScreenshot } from "./page/screenshot.js";
 import { listBlocklistRules } from "./safety/blocklist.js";
 import type {
   InteractOperation,
@@ -276,15 +277,33 @@ async function main(): Promise<void> {
             .run(() =>
               interact(tabs.webContentsFor(tabId), log, tabId, operation, selector, value, label),
             )
-            .then((r) => ({
-              tabId,
-              operation,
-              outcome: "permitted",
-              ...(r.value && typeof r.value === "object" && "chosenOption" in r.value
-                ? { chosenOption: r.value.chosenOption }
-                : {}),
-              queueDepth: r.queueDepth,
-            })),
+            .then((r) => {
+              // list_options returns an option enumeration, not a permitted-action ack.
+              if (operation === "list_options") {
+                const v = r.value as {
+                  options: unknown;
+                  optionsPresent: boolean;
+                  optionsTruncated: boolean;
+                };
+                return {
+                  tabId,
+                  selector,
+                  options: v.options,
+                  optionsPresent: v.optionsPresent,
+                  optionsTruncated: v.optionsTruncated,
+                  queueDepth: r.queueDepth,
+                };
+              }
+              return {
+                tabId,
+                operation,
+                outcome: "permitted",
+                ...(r.value && typeof r.value === "object" && "chosenOption" in r.value
+                  ? { chosenOption: r.value.chosenOption }
+                  : {}),
+                queueDepth: r.queueDepth,
+              };
+            }),
         ),
       // Tests pass terse [selector, value] tuples; the MCP tool uses the
       // { selector, value } object form.
@@ -297,10 +316,20 @@ async function main(): Promise<void> {
             .run((depth) => fillBatch(tabs.webContentsFor(tabId), log, tabId, pairs, depth))
             .then((r) => r.value);
         }),
-      readFormFields: (tabId: string, containerSelector?: string) =>
+      readFormFields: (
+        tabId: string,
+        containerSelector?: string,
+        opts?: {
+          fields?: string[];
+          includeNonInteractive?: boolean;
+          only?: "required-unfilled";
+        },
+      ) =>
         withCode(() =>
           queue
-            .run((d) => readFormFields(tabs.webContentsFor(tabId), tabId, containerSelector, d))
+            .run((d) =>
+              readFormFields(tabs.webContentsFor(tabId), tabId, containerSelector, d, opts ?? {}),
+            )
             .then((r) => r.value),
         ),
       waitFor: (tabId: string, selector: string, timeoutMs?: number) =>
@@ -308,6 +337,22 @@ async function main(): Promise<void> {
           queue
             .run(() => waitForSelector(tabs.webContentsFor(tabId), log, tabId, selector, timeoutMs))
             .then((r) => ({ tabId, selector, found: true, queueDepth: r.queueDepth })),
+        ),
+      // Feature 008: returns the metadata plus the encoded byte length (the raw
+      // image does not need to cross the evaluate() boundary for assertions).
+      screenshot: (
+        tabId: string,
+        opts: {
+          selector?: string;
+          fullPage?: boolean;
+          format?: "jpeg" | "png";
+          maxBytes?: number;
+        } = {},
+      ) =>
+        withCode(() =>
+          queue
+            .run(() => takeScreenshot(tabs.webContentsFor(tabId), { tabId, ...opts }))
+            .then((r) => ({ ...r.value.meta, byteLength: r.value.bytes.length })),
         ),
       // Test-only scaffolding (never wired to MCP): move focus / read a value
       // back out of the tab so assertions can check what `fill` and `space` did.

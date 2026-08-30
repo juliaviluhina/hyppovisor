@@ -28,6 +28,14 @@ export const config = {
   formFieldControlCap: numFromEnv("HYPPO_FORM_FIELD_CONTROL_CAP", 200),
   /** Max options per control read_form_fields returns before per-record truncation (feature 005, FR-010). */
   formFieldOptionCap: numFromEnv("HYPPO_FORM_FIELD_OPTION_CAP", 200),
+  /** Byte budget for one read_form_fields payload; tail records drop past it (feature 008, FR-011). */
+  formFieldReadMaxBytes: numFromEnv("HYPPO_FORM_FIELD_READ_MAX_BYTES", 65536),
+  /** Byte budget for one screenshot image; the capture is scaled/compressed to fit (feature 008, FR-023). */
+  screenshotMaxBytes: numFromEnv("HYPPO_SCREENSHOT_MAX_BYTES", 262144),
+  /** First JPEG quality the screenshot compress loop tries (feature 008, R10). */
+  screenshotJpegQualityStart: numFromEnv("HYPPO_SCREENSHOT_JPEG_QUALITY_START", 80),
+  /** Lowest JPEG quality the screenshot compress loop will drop to before downscaling (feature 008, R10). */
+  screenshotJpegQualityFloor: numFromEnv("HYPPO_SCREENSHOT_JPEG_QUALITY_FLOOR", 30),
   /** Chrome height reserved at the top of the window for the renderer UI. */
   chromeHeight: 104,
 };
