@@ -230,11 +230,11 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
 
 ### Tests for User Story 4
 
-- [ ] T028 [P] [US4] Add `tests/unit/screenshot.test.ts`: the scale/compress loop with a
+- [x] T028 [P] [US4] Add `tests/unit/screenshot.test.ts`: the scale/compress loop with a
   stubbed encoder — walks JPEG quality down to the floor, then downscales by 0.8, bounded to
   ≤ 6 iterations; reports `scale` = finalWidth / naturalWidth and `limitNotMet` when still
   over budget at the floor; the PNG path only downscales.
-- [ ] T029 [P] [US4] Add `tests/integration/screenshot.spec.ts`: viewport shot returns an
+- [x] T029 [P] [US4] Add `tests/integration/screenshot.spec.ts`: viewport shot returns an
   image block + metadata (`width`/`height` > 0, `scale: 1`, `format: "jpeg"`, ≤ 256 KB);
   `maxBytes: 20000` → `scale < 1` and/or lower quality, `limitNotMet` truthful; element clip
   dimensions ≈ the input's bounding box and `element` echoes the selector; a zero-size /
@@ -244,7 +244,7 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
 
 ### Implementation for User Story 4
 
-- [ ] T030 [US4] Create `src/main/page/screenshot.ts` — `takeScreenshot(wc, opts)`:
+- [x] T030 [US4] Create `src/main/page/screenshot.ts` — `takeScreenshot(wc, opts)`:
   viewport via `wc.capturePage()`; element via `getBoundingClientRect` in an isolated world
   + renderable check (`width < 1 || height < 1` or fully off-viewport → `SCREENSHOT_FAILED`)
   then `wc.capturePage(rect)`; `fullPage` via `wc.debugger.attach("1.3")` +
@@ -252,17 +252,17 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
   detach in `finally`; the scale/compress loop from T028 using `NativeImage`
   `toJPEG` / `toPNG` / `resize`; returns `{ bytes, mimeType, meta: ScreenshotResult }`;
   throws `INVALID_SELECTOR` / `SCREENSHOT_FAILED` (with `cause`).
-- [ ] T031 [US4] `src/main/mcp/tools.ts`: add an `okImage(dataBase64, mimeType, meta)`
+- [x] T031 [US4] `src/main/mcp/tools.ts`: add an `okImage(dataBase64, mimeType, meta)`
   helper returning `{ content: [{ type: "image", data, mimeType }, { type: "text", text:
   JSON.stringify(meta, null, 2) }] }`; register the `screenshot` tool (zod: `tabId`,
   `selector?`, `fullPage?`, `format?`, `maxBytes?`) running through `queue.run`, no
   `log.record`, returning `okImage(...)`.
-- [ ] T032 [US4] `src/main/mcp/tools.ts`: add `"screenshot"` to `TOOL_NAMES` (7 → 8).
-- [ ] T033 [P] [US4] `src/renderer/snippets.ts`: add a `screenshot` line to the About-text
+- [x] T032 [US4] `src/main/mcp/tools.ts`: add `"screenshot"` to `TOOL_NAMES` (7 → 8).
+- [x] T033 [P] [US4] `src/renderer/snippets.ts`: add a `screenshot` line to the About-text
   tool list (one-line purpose, e.g. "screenshot   a picture of a tab, to check rendered
   state"); run `tests/unit/connection-snippets.test.ts` (the guard iterates `TOOL_NAMES` and
   must pass).
-- [ ] T034 [US4] Update `specs/001-open-any-url/contracts/mcp-tools.md` and the `README.md`
+- [x] T034 [US4] Update `specs/001-open-any-url/contracts/mcp-tools.md` and the `README.md`
   tool table: add the `screenshot` row incl. the privacy note from the delta doc.
 
 **Checkpoint**: US1–US4 independently functional.

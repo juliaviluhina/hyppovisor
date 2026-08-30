@@ -17,6 +17,7 @@ import {
   type ListOptionsPayload,
 } from "../page/interact.js";
 import { readFormFields } from "../page/form-fields.js";
+import { takeScreenshot } from "../page/screenshot.js";
 
 export interface ToolDeps {
   queue: ActionQueue;
@@ -41,10 +42,21 @@ export const TOOL_NAMES = [
   "interact",
   "read_form_fields",
   "wait_for_selector",
+  "screenshot",
 ] as const;
 
 function ok(payload: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
+}
+
+/** An MCP image content block followed by a text block carrying the metadata (feature 008). */
+function okImage(dataBase64: string, mimeType: string, meta: unknown) {
+  return {
+    content: [
+      { type: "image" as const, data: dataBase64, mimeType },
+      { type: "text" as const, text: JSON.stringify(meta, null, 2) },
+    ],
+  };
 }
 
 function fail(e: unknown) {
@@ -296,6 +308,39 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           await waitForSelector(wc, log, tabId, selector, timeoutMs);
         });
         return ok({ tabId, selector, found: true, queueDepth });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "screenshot",
+    "Return a picture of a tab, to check its rendered state. Default is the viewport; pass " +
+      "`selector` to clip to one element's on-screen box (wins over `fullPage`), or " +
+      "`fullPage: true` for the whole scroll height. JPEG by default (`format: \"png\"` for " +
+      "lossless); the image is scaled/compressed to fit `maxBytes` (256 KB default; a caller " +
+      "may only lower it). Returns an image content block plus a text block with " +
+      "{ width, height, scale, format, fullPage, limitNotMet } — `scale` < 1 means the shot " +
+      "was downscaled, `limitNotMet: true` means it is still over budget at the compression " +
+      "floor. Retrieval only: nothing is written to disk, no interaction-audit entry is made, " +
+      "credential inputs stay masked as rendered. The screenshot is a supplementary visual " +
+      "aid — `read_page` remains the verbatim-text channel.",
+    {
+      tabId: z.string(),
+      selector: z.string().optional().describe("Clip to this element's on-screen box"),
+      fullPage: z.boolean().optional().describe("Capture the full scroll height, not just the viewport"),
+      format: z.enum(["jpeg", "png"]).optional(),
+      maxBytes: z.number().int().positive().optional().describe("Scale/compress to fit this size (≤ 256 KB)"),
+    },
+    async ({ tabId, selector, fullPage, format, maxBytes }) => {
+      seen("screenshot");
+      try {
+        const { value } = await queue.run(() => {
+          const wc = tabs.webContentsFor(tabId);
+          return takeScreenshot(wc, { tabId, selector, fullPage, format, maxBytes });
+        });
+        return okImage(value.bytes.toString("base64"), value.mimeType, value.meta);
       } catch (e) {
         return fail(e);
       }

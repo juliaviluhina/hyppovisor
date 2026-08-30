@@ -70,8 +70,9 @@ The assistant can use these tools:
   read_page           return one tab's visible text (and its DOM only when asked)
   read_form_fields    list a page's form controls, read-only
   navigate            point an existing tab at another address
-  interact            one bounded action: click, fill, scroll, space, or choose_option
+  interact            one bounded action: click, fill, scroll, space, choose_option, or list_options
   wait_for_selector   wait until an element appears, up to a timeout
+  screenshot          a picture of a tab, to check its rendered state
 
 What HyppoVisor never does: it will not submit a form, send a message,
 apply for anything, connect anywhere, or authenticate on your behalf, and it

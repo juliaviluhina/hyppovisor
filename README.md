@@ -122,10 +122,11 @@ In a session, the agent can call:
 | `open_url` | Open an http(s) URL in a new tab |
 | `list_open_tabs` | List open tabs (id, URL, title, load state) |
 | `read_page` | Return one tab's verbatim visible text; DOM only when asked. Nothing is stored. |
-| `read_form_fields` | Return the tab's form controls in document order — selector, kind, verbatim label, current value (omitted for credentials), `<select>`/combobox options, and the `fill` / `click` verdict `interact` would give each. Read-only, derived view; `read_page` is unchanged. |
+| `read_form_fields` | Return the tab's form controls in document order — selector, kind, verbatim label, current value (omitted for credentials), `<select>`/combobox options, the `fill` / `click` / `choose` verdict `interact` would give each, an `operation` hint, plus `maxLength` / `pattern` / `inputMode` where declared. `fields` projection, `only: "required-unfilled"`, and a 64 KB byte budget keep it bounded. Read-only, derived view; `read_page` is unchanged. |
 | `navigate` | Point an existing tab at a new URL |
-| `interact` | `click` / `fill` / `scroll` / `space` / `choose_option` — reveal content and prepare a draft; never submit, send, apply, or press Enter. `fill` also takes a batch form (an ordered `fields` list, max 50) that drafts a whole form in one call. `choose_option` selects an option in a `<select>` or combobox by exact `label` / `value` and re-reads the control to confirm it stuck |
+| `interact` | `click` / `fill` / `scroll` / `space` / `choose_option` / `list_options` — reveal content and prepare a draft; never submit, send, apply, or press Enter. `fill` also takes a batch form (an ordered `fields` list, max 50) that drafts a whole form in one call. `choose_option` selects an option in a `<select>` or combobox by exact `label` / `value` and re-reads the control to confirm it stuck. `list_options` just lists a dropdown's choices, read-only. |
 | `wait_for_selector` | Wait for an element, up to a timeout |
+| `screenshot` | A picture of a tab — viewport, an element clip, or the full page — to check its rendered state. JPEG by default, bounded to 256 KB, returned inline. Nothing written to disk. |
 
 Full contract: [`specs/001-open-any-url/contracts/mcp-tools.md`](specs/001-open-any-url/contracts/mcp-tools.md).
 
