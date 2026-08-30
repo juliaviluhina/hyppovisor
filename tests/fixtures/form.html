@@ -32,6 +32,10 @@
       <label for="cover">Cover letter</label>
       <div id="cover" contenteditable="true"></div>
 
+      <!-- feature 005: a hidden control — listed with visible:false (spec Edge
+           Case: Greenhouse's real file input is hidden). -->
+      <input type="text" id="hiddenField" name="hiddenField" hidden />
+
       <!-- feature 005: a control with neither id nor name — exercises structural
            selector synthesis (selectorSynthesised: true). -->
       <label>Middle name <input type="text" /></label>
@@ -87,8 +91,13 @@
     <!-- feature 005: a second form — read_form_fields container scoping (US4). -->
     <form id="otherform" action="/other" method="post">
       <label for="other_field">Other field</label>
-      <input type="text" id="other_field" name="other_field" />
+      <input type="text" id="other_field" name="other_field" required />
     </form>
+
+    <!-- feature 005: two controls sharing an id (invalid HTML) — each record
+         gets a disambiguated structural selector and duplicateId: true. -->
+    <label>Dup one <input type="text" id="dupfield" /></label>
+    <label>Dup two <input type="text" id="dupfield" /></label>
 
     <!-- a safe control outside any form -->
     <button type="button" id="safeBtn" onclick="document.getElementById('revealed').hidden = false">

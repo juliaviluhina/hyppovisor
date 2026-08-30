@@ -200,6 +200,72 @@ test("US3: <select> lists every option; a combobox lists in-DOM options, none wh
   expect(closed.optionsAvailable).toBe(false);
 });
 
+test("US3: the options cap truncates a record's option list with a per-record flag", async () => {
+  const small = await startFixtureServer();
+  const capped = await launchApp({ HYPPO_FORM_FIELD_OPTION_CAP: "2" });
+  try {
+    const { tabId } = await callHandle<{ tabId: string }>(capped, "open", [
+      `${small.base}/form.html`,
+    ]);
+    const map = await callHandle<FormFieldMap>(capped, "readFormFields", [tabId]);
+    const country = map.records.find((r) => r.selector === "#country")!;
+    expect(country.options.map((o) => o.value)).toEqual(["", "de"]); // first 2 in order
+    expect(country.optionsTruncated).toBe(true);
+    expect(country.optionsAvailable).toBe(true);
+  } finally {
+    await capped.close();
+    small.server.close();
+  }
+});
+
+// ─── Edge-case record fields: group, required, visible:false, duplicateId ──────
+
+test("edge cases: radio group id, required, hidden richtext, and duplicate ids", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const map = await read(tabId);
+
+  // radio group — each radio its own record, sharing group "shift" (spec Edge Case, FR-009)
+  const radios = map.records.filter((r) => r.kind === "radio");
+  expect(radios.length).toBe(2);
+  for (const r of radios) {
+    expect(r.group).toBe("shift");
+    expect(r.inFormAncestor).toBe(true);
+    expect(r.currentValue).toBe(false); // neither selected
+  }
+
+  // required (from the `required` attribute) — #other_field carries it
+  const other = map.records.find((r) => r.selector === "#other_field")!;
+  expect(other.required).toBe(true);
+  // a field without it stays false
+  expect(map.records.find((r) => r.selector === "#first_name")!.required).toBe(false);
+
+  // contenteditable region — listed as kind:"richtext" (spec Edge Cases)
+  expect(map.records.find((r) => r.selector === "#cover")!.kind).toBe("richtext");
+
+  // a hidden control is still listed, with visible:false (spec Edge Cases)
+  const hidden = map.records.find((r) => r.selector === "#hiddenField")!;
+  expect(hidden.visible).toBe(false);
+  expect(hidden.kind).toBe("text");
+
+  // duplicate id — both records flagged, each with a structural selector that
+  // still resolves to exactly one element (spec Edge Case)
+  const dups = map.records.filter((r) => r.label === "Dup one" || r.label === "Dup two");
+  expect(dups.length).toBe(2);
+  const dupSelectors = new Set<string>();
+  for (const d of dups) {
+    expect(d.duplicateId).toBe(true);
+    expect(d.selectorSynthesised).toBe(true);
+    expect(d.selector).not.toBeNull();
+    dupSelectors.add(d.selector as string);
+    const n = await probe<number>(
+      tabId,
+      `document.querySelectorAll(${JSON.stringify(d.selector)}).length`,
+    );
+    expect(n, d.selector as string).toBe(1);
+  }
+  expect(dupSelectors.size).toBe(2); // the two records got distinct selectors
+});
+
 // ─── US4: container scoping and an oversized page (T020) ──────────────────────
 
 test("US4: a container selector scopes the read; an unresolved container errors", async () => {
