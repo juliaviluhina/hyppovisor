@@ -7,22 +7,58 @@ import { fileURLToPath } from "node:url";
 import { ActionQueue } from "./queue/action-queue.js";
 import { InteractionLog } from "./safety/interaction-log.js";
 import { TabManager } from "./tabs/tab-manager.js";
-import { startStdioMcpServer, startHttpMcpServer } from "./mcp/server.js";
+import {
+  startStdioMcpServer,
+  startHttpMcpServer,
+  generateToken,
+  type HttpMcpHandle,
+} from "./mcp/server.js";
+import {
+  loadSettings,
+  saveSettings,
+  readEnvOverrides,
+  resolveEffective,
+} from "./settings.js";
 import { readPage } from "./page/read.js";
 import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { readFormFields } from "./page/form-fields.js";
 import { listBlocklistRules } from "./safety/blocklist.js";
-import type { InteractOperation, BatchFillField } from "../shared/types.js";
+import type {
+  InteractOperation,
+  BatchFillField,
+  ConnectionSettings,
+  EffectiveConnection,
+  StdioLaunch,
+} from "../shared/types.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+// The embedded MCP server drives third-party transport code; a stray rejection
+// or throw from it must not take the window down — the app is useful standalone
+// (FR: "a transport failure must not take the window down").
+process.on("unhandledRejection", (reason) => {
+  console.error("[hyppovisor] unhandled rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[hyppovisor] uncaught exception:", err);
+});
+
 async function main(): Promise<void> {
+  // Test isolation: point userData at a throwaway dir so settings.json and the
+  // interaction log never touch dev state (research.md R13).
+  if (process.env.HYPPO_USER_DATA_DIR) {
+    app.setPath("userData", process.env.HYPPO_USER_DATA_DIR);
+  }
+
   await app.whenReady();
 
   const win = new BrowserWindow({
     width: 1280,
     height: 900,
     title: "HyppoVisor",
+    // Repo-root build/icon.png (from dist/main). Used for the dev / Linux / Windows
+    // window + taskbar; the macOS packaged .icns is wired once packaging config exists.
+    icon: join(here, "../../build/icon.png"),
     webPreferences: {
       preload: join(here, "../preload/chrome.cjs"),
       contextIsolation: true,
@@ -36,6 +72,7 @@ async function main(): Promise<void> {
     if (!win.isDestroyed()) win.webContents.send(channel, ...args);
   };
 
+
   const queue = new ActionQueue();
   const log = new InteractionLog(app.getPath("userData"));
   const tabs = new TabManager(win, {
@@ -44,8 +81,24 @@ async function main(): Promise<void> {
     onActivity: (tabId, description) => send("tabs:activity", { tabId, description }),
   });
 
-  await win.loadFile(join(here, "../renderer/index.html"));
-  send("tabs:changed", tabs.list());
+  // MCP connection state (feature 007): persisted settings + the environment,
+  // folded into one effective view the panel and status line render.
+  const loaded = loadSettings(app.getPath("userData"));
+  let curSettings: ConnectionSettings = loaded.settings;
+  let existed = loaded.existed;
+  const env = readEnvOverrides();
+  let httpHandle: HttpMcpHandle | undefined;
+
+  const currentEffective = (): EffectiveConnection => ({
+    ...resolveEffective(curSettings, env, existed),
+    lastRequest: httpHandle?.lastRequest() ?? null,
+  });
+  const computeStdioLaunch = (): StdioLaunch => ({
+    command: process.execPath,
+    args: [join(here, "index.js")],
+    env: { HYPPO_MCP_STDIO: "1" },
+  });
+  const pushConnection = () => send("connection:changed", currentEffective());
 
   // Person-initiated actions from the renderer chrome.
   ipcMain.handle("chrome:open-url", (_e, url: string) =>
@@ -57,11 +110,124 @@ async function main(): Promise<void> {
   ipcMain.handle("chrome:close-tab", (_e, tabId: string) => tabs.close(tabId));
   ipcMain.handle("chrome:list-tabs", () => tabs.list());
 
+  // ── Connection panel IPC (feature 007, contracts/ipc-connection.md) ──────────
+  ipcMain.handle("chrome:get-connection", () => ({
+    ...currentEffective(),
+    stdioLaunch: computeStdioLaunch(),
+    appVersion: app.getVersion(),
+    license: "Apache-2.0" as const,
+  }));
+  ipcMain.handle("chrome:set-panel-open", (_e, open: unknown) => {
+    tabs.setChromeOverlay(!!open);
+  });
+
+  ipcMain.handle("chrome:set-port", async (_e, port: unknown) => {
+    if (env.stdio) return { ok: false, error: "stdio mode has no network port" };
+    if (currentEffective().portSource === "env")
+      return { ok: false, error: "port is set by the HYPPO_MCP_PORT environment variable" };
+    if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)
+      return { ok: false, error: "port must be an integer between 1 and 65535" };
+    if (!httpHandle) return { ok: false, error: "the HTTP MCP server is not running" };
+    if (port === httpHandle.port) return { ok: true, port };
+    try {
+      await httpHandle.rebind(port);
+      curSettings = { ...curSettings, port };
+      saveSettings(app.getPath("userData"), curSettings);
+      existed = true;
+      pushConnection();
+      return { ok: true, port };
+    } catch (e) {
+      const msg = String((e as Error).message ?? e);
+      return {
+        ok: false,
+        error: /EADDRINUSE|in use/i.test(msg) ? `port ${port} is already in use` : msg,
+      };
+    }
+  });
+
+  const guardTokenMutation = (): { ok: false; error: string } | null => {
+    if (env.stdio) return { ok: false, error: "stdio mode uses no token" };
+    if (currentEffective().tokenSource === "env")
+      return { ok: false, error: "token is set by the HYPPO_MCP_TOKEN environment variable" };
+    if (!httpHandle) return { ok: false, error: "the HTTP MCP server is not running" };
+    return null;
+  };
+
+  ipcMain.handle("chrome:set-token-required", (_e, required: unknown) => {
+    const blocked = guardTokenMutation();
+    if (blocked) return blocked;
+    const token = required ? generateToken() : null;
+    httpHandle!.setToken(token);
+    curSettings = { ...curSettings, tokenRequired: !!required, token };
+    saveSettings(app.getPath("userData"), curSettings);
+    existed = true;
+    pushConnection();
+    return { ok: true, ...currentEffective() };
+  });
+
+  ipcMain.handle("chrome:regenerate-token", (_e) => {
+    const blocked = guardTokenMutation();
+    if (blocked) return blocked;
+    if (!currentEffective().tokenRequired)
+      return { ok: false, error: "no token to regenerate" };
+    const token = generateToken();
+    httpHandle!.setToken(token);
+    curSettings = { ...curSettings, token };
+    saveSettings(app.getPath("userData"), curSettings);
+    existed = true;
+    pushConnection();
+    return { ok: true, ...currentEffective() };
+  });
+
+  // Expose the MCP server. Default is an HTTP listener on loopback; the port and
+  // token come from the effective settings (env > settings.json > default).
+  // HYPPO_MCP_STDIO=1 switches to the spawn model (no open port). A transport
+  // failure must not take the window down — the app is still useful standalone.
+  // Nudge the renderer when the last-request record changes, at most once per
+  // second but never dropping the final update (leading + trailing edge).
+  let lastPushAt = 0;
+  let trailing: NodeJS.Timeout | undefined;
+  const throttledPush = () => {
+    const wait = 1000 - (Date.now() - lastPushAt);
+    if (wait <= 0) {
+      lastPushAt = Date.now();
+      pushConnection();
+    } else if (!trailing) {
+      trailing = setTimeout(() => {
+        trailing = undefined;
+        lastPushAt = Date.now();
+        pushConnection();
+      }, wait);
+    }
+  };
+
+  try {
+    const deps = { queue, tabs, log, onToolInvoked: () => throttledPush() };
+    if (env.stdio) {
+      await startStdioMcpServer(deps);
+    } else {
+      const eff = resolveEffective(curSettings, env, existed);
+      httpHandle = await startHttpMcpServer(deps, {
+        port: eff.port,
+        token: eff.token,
+        onActivity: throttledPush,
+      });
+    }
+  } catch (err) {
+    console.error("[hyppovisor] MCP server did not start:", err);
+  }
+
+  // Load the renderer only once every IPC handler and the MCP server are ready,
+  // so the panel's first getConnection() / status push can't race them.
+  await win.loadFile(join(here, "../renderer/index.html"));
+  send("tabs:changed", tabs.list());
+  pushConnection();
+
   const e2e = process.env.HYPPO_E2E === "1";
 
   // Test-only handle: same code paths the MCP tools use, reachable from
-  // Playwright's electronApp.evaluate(). Installed BEFORE the MCP server so a
-  // transport hiccup can never leave the handle unset.
+  // Playwright's electronApp.evaluate(). The HTTP MCP server and the connection
+  // IPC are already started above, so the panel e2e can exercise a real socket.
   if (e2e) {
     // Rejections must carry the error CODE in the message: only `.message`
     // survives Playwright's app.evaluate() boundary, not custom fields.
@@ -181,24 +347,7 @@ async function main(): Promise<void> {
             .then((r) => r.value),
         ),
     };
-    return; // e2e drives the test handle; the stdio MCP server is not used here
-  }
-
-  // Normal run: expose the MCP server. Default is an HTTP listener on loopback
-  // (start the app, then connect Claude Code to the URL); HYPPO_MCP_STDIO=1
-  // switches to the spawn model (no open port). A transport failure must not
-  // take the window down — the app is still useful standalone.
-  try {
-    if (process.env.HYPPO_MCP_STDIO === "1") {
-      await startStdioMcpServer({ queue, tabs, log });
-    } else {
-      const port = Number(process.env.HYPPO_MCP_PORT) || 7357;
-      const token = process.env.HYPPO_MCP_TOKEN || undefined;
-      const mcp = await startHttpMcpServer({ queue, tabs, log }, { port, token });
-      send("mcp:ready", { url: mcp.url, requiresToken: mcp.requiresToken });
-    }
-  } catch (err) {
-    console.error("[hyppovisor] MCP server did not start:", err);
+    return; // e2e drives the test handle; the MCP server started above still runs
   }
 }
 

@@ -1,6 +1,9 @@
-// App chrome: tab strip + address bar (FR-023, FR-025), plus a live line
-// showing what the orchestrator is doing to a tab (FR-024) and any blocked
-// popup/download (FR-017).
+// App chrome: a browser-like top bar (tab switcher + address bar + connection
+// button), a scrollable tab strip, and a dismissible notice line for transient
+// status — what the orchestrator is doing to a tab (FR-024) and any blocked
+// popup / download (FR-017). The connection panel lives in panel.ts.
+
+import { mountConnectionPanel } from "./panel.js";
 
 interface TabSummary {
   tabId: string;
@@ -17,7 +20,6 @@ interface HyppoApi {
   onTabsChanged: (cb: (tabs: TabSummary[]) => void) => void;
   onActivity: (cb: (a: { tabId: string; description: string }) => void) => void;
   onBlockedAction: (cb: (a: { kind: string; detail: string }) => void) => void;
-  onMcpReady: (cb: (a: { url: string; requiresToken: boolean }) => void) => void;
 }
 
 declare global {
@@ -31,10 +33,44 @@ export {};
 const hyppo = window.hyppo;
 const $ = (id: string) => document.getElementById(id)!;
 const address = $("address") as HTMLInputElement;
-const activity = $("activity");
+const tabselect = $("tabselect") as HTMLSelectElement;
+const noticeEl = $("notice");
+const noticeText = $("notice-text");
 let activeId: string | null = null;
+let noticeTimer: number | undefined;
+
+// ── notice line ─────────────────────────────────────────────────────────────
+function showNotice(msg: string, kind: "info" | "warn" | "error"): void {
+  noticeText.textContent = msg;
+  noticeEl.className = kind;
+  noticeEl.hidden = false;
+  window.clearTimeout(noticeTimer);
+  if (kind === "info") noticeTimer = window.setTimeout(hideNotice, 4000);
+}
+function hideNotice(): void {
+  window.clearTimeout(noticeTimer);
+  noticeEl.hidden = true;
+  noticeText.textContent = "";
+}
+$("notice-x").addEventListener("click", hideNotice);
+
+// ── tabs ────────────────────────────────────────────────────────────────────
+function labelFor(t: TabSummary): string {
+  return t.title || t.url || "(loading)";
+}
 
 function render(tabs: TabSummary[]): void {
+  // Quick-switch dropdown (shown only when there is more than one tab).
+  tabselect.hidden = tabs.length < 2;
+  tabselect.innerHTML = "";
+  for (const t of tabs) {
+    const opt = document.createElement("option");
+    opt.value = t.tabId;
+    opt.textContent = labelFor(t);
+    if (t.tabId === activeId) opt.selected = true;
+    tabselect.appendChild(opt);
+  }
+
   const box = $("tabs");
   box.innerHTML = "";
   for (const t of tabs) {
@@ -42,7 +78,7 @@ function render(tabs: TabSummary[]): void {
     el.className = "tab" + (t.tabId === activeId ? " active" : "");
     el.title = t.url;
     const label = document.createElement("span");
-    label.textContent = `${t.title || t.url || "(loading)"} · ${t.loadState}`;
+    label.textContent = `${labelFor(t)} · ${t.loadState}`;
     label.onclick = () => {
       activeId = t.tabId;
       hyppo.activateTab(t.tabId);
@@ -59,16 +95,22 @@ function render(tabs: TabSummary[]): void {
   }
 }
 
+tabselect.addEventListener("change", () => {
+  activeId = tabselect.value;
+  hyppo.activateTab(activeId);
+});
+
+// ── address bar ─────────────────────────────────────────────────────────────
 async function open(): Promise<void> {
   const url = address.value.trim();
   if (!url) return;
-  activity.textContent = `opening ${url}…`;
+  showNotice(`opening ${url}…`, "info");
   try {
     await hyppo.openUrl(url);
-    activity.textContent = "";
+    hideNotice();
     address.value = "";
   } catch (e) {
-    activity.textContent = `error: ${(e as Error).message}`;
+    showNotice(`error: ${(e as Error).message}`, "error");
   }
 }
 
@@ -77,20 +119,20 @@ address.addEventListener("keydown", (e) => {
   if (e.key === "Enter") open();
 });
 
+// ── live updates ────────────────────────────────────────────────────────────
 hyppo.onTabsChanged((tabs) => {
-  if (!activeId && tabs.length) activeId = tabs[tabs.length - 1].tabId;
+  if ((!activeId || !tabs.some((t) => t.tabId === activeId)) && tabs.length) {
+    activeId = tabs[tabs.length - 1].tabId;
+  }
   render(tabs);
 });
 hyppo.onActivity((a) => {
-  activity.textContent = `${a.tabId}: ${a.description}`;
+  showNotice(`${a.tabId}: ${a.description}`, "info");
 });
 hyppo.onBlockedAction((a) => {
-  activity.textContent = `blocked ${a.kind}: ${a.detail}`;
+  showNotice(`blocked ${a.kind}: ${a.detail}`, "warn");
 });
-hyppo.onMcpReady((a) => {
-  const el = $("mcp");
-  el.textContent = `MCP: ${a.url}${a.requiresToken ? " (token required)" : ""}`;
-  el.title = "Register in Claude Code:  claude mcp add --transport http hyppovisor " + a.url;
-});
+
+mountConnectionPanel();
 
 hyppo.listTabs().then(render);

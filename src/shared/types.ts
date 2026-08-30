@@ -164,6 +164,51 @@ export interface FormFieldMap {
   queueDepth: number;
 }
 
+// ─── feature 007: MCP connection panel ──────────────────────────────────────
+
+export type ConnectionTransport = "http" | "stdio";
+/** Where an effective value came from — env var, persisted settings, or the built-in default. */
+export type ConnectionSource = "env" | "persisted" | "default";
+
+/** The persisted shape of `<userData>/settings.json` (feature 007, contracts/settings-file.md). */
+export interface ConnectionSettings {
+  /** Integer 1–65535. */
+  port: number;
+  tokenRequired: boolean;
+  /** 32 lowercase hex chars when `tokenRequired`; `null` otherwise. */
+  token: string | null;
+}
+
+/** In-memory record of the most recent inbound MCP request — metadata only, never persisted. */
+export interface LastRequestInfo {
+  at: number;
+  /** Registered tool / method name; `null` for a rejected (401) request. */
+  tool: string | null;
+  outcome: "ok" | "rejected";
+}
+
+/** How to launch HyppoVisor as a stdio MCP subprocess — computed in main, rendered by the panel. */
+export interface StdioLaunch {
+  command: string;
+  args: string[];
+  env: { HYPPO_MCP_STDIO: "1" };
+}
+
+/** The resolved connection state the panel and status line render (feature 007, data-model §3). */
+export interface EffectiveConnection {
+  transport: ConnectionTransport;
+  /** Meaningful only when `transport === "http"`. */
+  port: number;
+  /** `http://127.0.0.1:${port}/mcp`; `""` when `transport === "stdio"`. */
+  endpointUrl: string;
+  tokenRequired: boolean;
+  /** The real value (the renderer masks it); `null` when not required. */
+  token: string | null;
+  portSource: ConnectionSource;
+  tokenSource: ConnectionSource;
+  lastRequest: LastRequestInfo | null;
+}
+
 export interface InteractionLogEntry {
   at: string;
   tabId: string;
