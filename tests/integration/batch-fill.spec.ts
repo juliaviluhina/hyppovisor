@@ -99,3 +99,86 @@ test("US1: values are applied in order — a duplicate selector ends with the la
   expect(r.fields).toHaveLength(2);
   expect(await probe<string>(tabId, "document.querySelector('#first_name').value")).toBe("B");
 });
+
+// ─── US2: any forbidden / unresolved target refuses the whole batch ───────────
+
+/**
+ * Run a batch expected to be refused whole. Returns the rejection message and
+ * the log lines the batch appended. The `targets[]` breakdown does not survive
+ * the app.evaluate() boundary (only `.message` does), so per-offender detail is
+ * verified against the persisted audit lines — which is exactly where FR-014
+ * requires each offender to be recorded.
+ */
+async function expectWholeBatchRefused(
+  tabId: string,
+  fields: Array<[string, string]>,
+): Promise<{ message: string; added: Array<Record<string, unknown>> }> {
+  const lp = await logPath();
+  const n0 = readLog(lp).length;
+  const message = await callHandle(app, "fillBatch", [tabId, fields]).then(
+    () => {
+      throw new Error("expected the batch to be refused");
+    },
+    (e: Error) => e.message,
+  );
+  expect(message).toContain("BATCH_REJECTED");
+  return { message, added: readLog(lp).slice(n0) };
+}
+
+test("US2: a batch with a credential + a file target is refused whole; both offenders named (T015, SC-003)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const { added } = await expectWholeBatchRefused(tabId, [
+    ["#first_name", "Iuliia"],
+    ["#password", "hunter2"],
+    ["#email", "x@y.co"],
+    ["#resume", "cv"],
+  ]);
+
+  // 2 per-offender fill/refused lines + 1 fill_batch/refused summary; no permitted line.
+  expect(added).toHaveLength(3);
+  const offenderLines = added.slice(0, 2);
+  expect(offenderLines.map((e) => e.operation)).toEqual(["fill", "fill"]);
+  expect(offenderLines.every((e) => e.outcome === "refused")).toBe(true);
+  expect(
+    Object.fromEntries(offenderLines.map((e) => [e.target, e.ruleId])),
+  ).toEqual({ "#password": "credential-field", "#resume": "unsafe-fill-type" });
+
+  const summary = added[2];
+  expect(summary.operation).toBe("fill_batch");
+  expect(summary.outcome).toBe("refused");
+  expect(summary.batch).toEqual({ requested: 4, written: 0, errored: 0, refused: 2 });
+  expect(added.some((e) => e.outcome === "permitted")).toBe(false);
+
+  // nothing was written
+  expect(await probe<string>(tabId, "document.querySelector('#first_name').value")).toBe("");
+  expect(await probe<string>(tabId, "document.querySelector('#email').value")).toBe("");
+  expect(await probe<boolean>(tabId, "window.__submitted")).toBe(false);
+});
+
+test("US2: a submit control, a consent toggle, or an unresolved selector each bounces the batch (T015)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const submit = await expectWholeBatchRefused(tabId, [
+    ["#first_name", "A"],
+    ["#submitBtn", "x"],
+  ]);
+  expect(submit.added.find((e) => e.target === "#submitBtn")?.ruleId).toBe("submit-control");
+
+  const consent = await expectWholeBatchRefused(tabId, [
+    ["#first_name", "A"],
+    ["#agree", "x"],
+  ]);
+  expect(consent.added.find((e) => e.target === "#agree")?.ruleId).toBe("consent-toggle");
+
+  const missing = await expectWholeBatchRefused(tabId, [
+    ["#first_name", "A"],
+    ["#does_not_exist", "x"],
+  ]);
+  const miss = missing.added.find((e) => e.target === "#does_not_exist")!;
+  expect(miss.ruleId).toBeNull();
+  expect(String(miss.error)).toContain("no element matches");
+
+  // every one of the three left the form untouched
+  expect(await probe<string>(tabId, "document.querySelector('#first_name').value")).toBe("");
+});

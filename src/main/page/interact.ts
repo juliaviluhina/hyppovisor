@@ -147,14 +147,22 @@ export type ResolveFillResult =
   | { ok: false; offender: FillOffender };
 
 /**
- * Resolve a selector and apply the *exact* rule set a single `fill` faces:
- * descriptor lookup → blocklist (`fill`) → safe-fill-type allowlist. Returns an
- * offender instead of throwing so a batch can collect every one. Shared by the
- * single-`fill` path in `interact()` and by `fillBatch` (feature 004, FR-004).
+ * Resolve a selector and apply the rule set a `fill` faces: descriptor lookup →
+ * blocklist (`fill`) → safe-fill-type allowlist. Returns an offender instead of
+ * throwing so a batch can collect every one. Shared by the single-`fill` path in
+ * `interact()` and by `fillBatch` (feature 004, FR-004).
+ *
+ * `gateActivation` (batch only): also refuse a target that a *click* blocklist
+ * rule would stop — `submit-control`, `consent-toggle` — so a submit button or a
+ * consent checkbox in a batch is attributed to its precise rule rather than the
+ * generic `unsafe-fill-type`. `in-form` is deliberately excluded: it never gates
+ * a fill, single or batch (FR-004). `external-act-label` / `credential-field`
+ * already apply to `fill`, so this changes attribution only, never the outcome.
  */
 export async function resolveFillTarget(
   wc: WebContents,
   selector: string,
+  { gateActivation = false }: { gateActivation?: boolean } = {},
 ): Promise<ResolveFillResult> {
   const d = (await wc.executeJavaScript(
     targetDescriptorScript(selector),
@@ -162,6 +170,23 @@ export async function resolveFillTarget(
   )) as TargetDescriptor | null;
   if (!d) {
     return { ok: false, offender: { selector, reason: "no element matches" } };
+  }
+  // Batch only: check the click blocklist first so a submit control / consent
+  // toggle is attributed to its precise rule (both would otherwise fall through
+  // to `external-act-label` or `unsafe-fill-type`). `in-form` is ignored — it
+  // never gates a fill (FR-004).
+  if (gateActivation) {
+    const clickVerdict = matchBlocklist(d, "click");
+    if (clickVerdict.blocked && clickVerdict.ruleId !== "in-form") {
+      return {
+        ok: false,
+        offender: {
+          selector,
+          ruleId: clickVerdict.ruleId,
+          ruleDescription: clickVerdict.description,
+        },
+      };
+    }
   }
   const verdict = matchBlocklist(d, "fill");
   if (verdict.blocked) {
@@ -423,7 +448,7 @@ export async function fillBatch(
   // every offender. Any offender → refuse the whole batch, write nothing.
   const offenders: FillOffender[] = [];
   for (const { selector } of fields) {
-    const resolved = await resolveFillTarget(wc, selector);
+    const resolved = await resolveFillTarget(wc, selector, { gateActivation: true });
     if (!resolved.ok) offenders.push(resolved.offender);
   }
   if (offenders.length > 0) {

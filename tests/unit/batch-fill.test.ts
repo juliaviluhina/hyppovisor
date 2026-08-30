@@ -132,3 +132,39 @@ describe("resolveFillTarget — offender parity with a single fill (FR-004, T014
     if (!r.ok) expect(r.offender.ruleId).toBe("external-act-label");
   });
 });
+
+describe("resolveFillTarget gateActivation — precise rule id for the batch pre-check (T014)", () => {
+  const submit = desc({ tagName: "button", type: "submit", name: "apply now", hasFormAncestor: true });
+  // A consent checkbox whose label reads as consent but carries no external-act
+  // word, so the fill blocklist alone would fall through to unsafe-fill-type.
+  const consent = desc({
+    tagName: "input",
+    type: "checkbox",
+    name: "i understand the privacy policy",
+    hasFormAncestor: true,
+  });
+  const plainInForm = desc({ tagName: "input", type: "text", name: "first name", hasFormAncestor: true });
+
+  it("attributes a submit control to submit-control, not unsafe-fill-type", async () => {
+    const r = await resolveFillTarget(wcResolving(submit), "#s", { gateActivation: true });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.offender.ruleId).toBe("submit-control");
+  });
+
+  it("attributes a consent checkbox to consent-toggle, not unsafe-fill-type", async () => {
+    const r = await resolveFillTarget(wcResolving(consent), "#c", { gateActivation: true });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.offender.ruleId).toBe("consent-toggle");
+  });
+
+  it("does NOT gate a plain value field inside a <form> (in-form never blocks a fill)", async () => {
+    const r = await resolveFillTarget(wcResolving(plainInForm), "#f", { gateActivation: true });
+    expect(r.ok).toBe(true);
+  });
+
+  it("without gateActivation, a consent checkbox is the generic unsafe-fill-type (single-fill parity)", async () => {
+    const r = await resolveFillTarget(wcResolving(consent), "#c");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.offender.ruleId).toBe("unsafe-fill-type");
+  });
+});
