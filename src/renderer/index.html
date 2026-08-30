@@ -12,24 +12,57 @@
         margin: 0;
         height: 104px;
         overflow: hidden;
+        position: relative;
         display: flex;
         flex-direction: column;
         border-bottom: 1px solid rgba(128, 128, 128, 0.4);
       }
       #bar {
         display: flex;
-        gap: 6px;
+        gap: 8px;
         padding: 8px;
+        align-items: stretch;
+      }
+      #bar-main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      #bar-row {
+        display: flex;
+        gap: 6px;
         align-items: center;
+      }
+      #tabselect {
+        flex: none;
+        max-width: 180px;
+        padding: 4px 6px;
+      }
+      #tabselect[hidden] {
+        display: none;
       }
       #address {
         flex: 1;
+        min-width: 0;
         padding: 5px 8px;
+      }
+      #go {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 5px 9px;
+      }
+      #go svg {
+        width: 15px;
+        height: 15px;
+        display: block;
       }
       #tabs {
         display: flex;
         gap: 4px;
-        padding: 0 8px 8px;
         overflow-x: auto;
       }
       .tab {
@@ -49,30 +82,250 @@
       .tab .x {
         opacity: 0.6;
       }
-      #activity {
-        margin-left: auto;
-        opacity: 0.7;
-        font-variant-numeric: tabular-nums;
-      }
-      #mcp {
-        padding: 0 8px 6px;
+      #notice {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 6;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 8px;
         font-size: 11px;
-        opacity: 0.6;
-        user-select: text;
-        white-space: nowrap;
+        background: Canvas;
+        border-top: 1px solid rgba(128, 128, 128, 0.4);
+      }
+      #notice[hidden] {
+        display: none;
+      }
+      #notice-text {
+        flex: 1;
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #notice.warn {
+        color: #b5730a;
+      }
+      #notice.error {
+        color: crimson;
+      }
+      #notice-x {
+        flex: none;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        opacity: 0.6;
+        font-size: 12px;
+        line-height: 1;
+        padding: 2px 4px;
+      }
+      #notice-x:hover {
+        opacity: 1;
+      }
+      #hyppo {
+        flex: none;
+        align-self: stretch;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2px 8px;
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        border-radius: 8px;
+      }
+      #hyppo:hover {
+        background: rgba(128, 128, 128, 0.18);
+      }
+      #hyppo img {
+        width: 52px;
+        height: 52px;
+        display: block;
+      }
+      #panel {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+      }
+      #panel[hidden] {
+        display: none;
+      }
+      #panel-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+      }
+      #panel-card {
+        position: relative;
+        margin: auto;
+        width: 640px;
+        max-width: 92vw;
+        max-height: 90vh;
+        overflow: auto;
+        padding: 16px 18px;
+        border-radius: 10px;
+        background: Canvas;
+        color: CanvasText;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+      }
+      #panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      #panel-head h2 {
+        margin: 0;
+        font-size: 15px;
+      }
+      #panel-close {
+        flex: none;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        opacity: 0.6;
+        font-size: 15px;
+        line-height: 1;
+        padding: 4px 7px;
+        border-radius: 6px;
+      }
+      #panel-close:hover {
+        opacity: 1;
+        background: rgba(128, 128, 128, 0.18);
+      }
+      #panel-card h3 {
+        margin: 0 0 6px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        opacity: 0.7;
+      }
+      .section {
+        margin: 14px 0;
+        padding-top: 12px;
+        border-top: 1px solid rgba(128, 128, 128, 0.3);
+      }
+      .section:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+      }
+      .snippet {
+        margin: 6px 0;
+        padding: 8px;
+        background: rgba(128, 128, 128, 0.12);
+        border-radius: 6px;
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        font-size: 11px;
+        white-space: pre-wrap;
+        word-break: break-all;
+        overflow-x: auto;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 6px 0;
+        flex-wrap: wrap;
+      }
+      .copy-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 22px;
+        padding: 0;
+        border: 1px solid rgba(128, 128, 128, 0.4);
+        border-radius: 5px;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        flex: none;
+      }
+      .copy-btn:hover {
+        background: rgba(128, 128, 128, 0.18);
+      }
+      .copy-btn svg {
+        width: 13px;
+        height: 13px;
+        display: block;
+      }
+      .copy-btn.ok {
+        color: green;
+        border-color: currentColor;
+      }
+      .copy-btn.fail {
+        color: crimson;
+        border-color: currentColor;
+      }
+      .notice {
+        margin: 6px 0;
+        font-size: 11px;
+        opacity: 0.85;
+        min-height: 1em;
+      }
+      .masked {
+        letter-spacing: 0.1em;
+      }
+      .about-heading {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        margin-bottom: 10px;
+      }
+      #panel-mascot {
+        flex: none;
+        width: 72px;
+        height: auto;
+        margin: 0;
+      }
+      .about-titles {
+        min-width: 0;
+      }
+      .about-titles h3 {
+        margin: 0 0 4px;
+      }
+      .about-titles .row {
+        margin: 2px 0;
       }
     </style>
   </head>
   <body>
     <div id="bar">
-      <button id="go">Open</button>
-      <input id="address" placeholder="https://…" />
-      <span id="activity"></span>
+      <div id="bar-main">
+        <div id="bar-row">
+          <select id="tabselect" title="Switch tab" aria-label="Switch tab" hidden></select>
+          <input id="address" placeholder="https://…  — Enter opens a new tab" />
+          <button id="go" title="Open" aria-label="Open">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </button>
+        </div>
+        <div id="tabs"></div>
+      </div>
+      <button id="hyppo" title="Connection &amp; MCP" aria-label="Connection &amp; MCP">
+        <img src="./hyppo.png" alt="" />
+      </button>
     </div>
-    <div id="tabs"></div>
-    <div id="mcp">MCP: starting…</div>
+    <div id="notice" hidden>
+      <span id="notice-text"></span>
+      <button id="notice-x" title="Dismiss" aria-label="Dismiss">✕</button>
+    </div>
+    <div id="panel" hidden>
+      <div id="panel-backdrop"></div>
+      <div id="panel-card">
+        <div id="panel-head">
+          <h2>Connection &amp; MCP</h2>
+          <button id="panel-close" title="Close" aria-label="Close">✕</button>
+        </div>
+        <div id="panel-body"></div>
+      </div>
+    </div>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

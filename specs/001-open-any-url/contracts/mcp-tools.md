@@ -6,6 +6,13 @@ The complete interface HyppoVisor exposes. Seven tools, no others (`read_form_fi
 was added by feature 005). Entity shapes are in
 [data-model.md](../data-model.md); error codes are defined there too.
 
+> **Runtime configuration (feature 007).** The HTTP listening port and the optional bearer
+> token are now configurable at runtime from the in-app connection panel (opened via the 🦛
+> button or the bottom `MCP` line), and persist in `settings.json` in the app's user-data
+> directory. `HYPPO_MCP_PORT` / `HYPPO_MCP_TOKEN` remain the override for headless launches
+> (precedence: env var > `settings.json` > default). This changes neither the tool set nor
+> any tool's contract below.
+
 **Contract invariants**, true of every tool:
 
 - No tool submits a form, sends a message, or completes an application (FR-012, Principle I).

@@ -1,5 +1,7 @@
 # HyppoVisor
 
+<img src="assets/hyppovisor.png" alt="HyppoVisor" width="300" align="right">
+
 An Electron companion app that opens **any URL you give it** in an embedded browser tab
 carrying your own logged-in session, and exposes those tabs to a connected agent over an
 embedded **MCP server**.
@@ -52,39 +54,45 @@ The app is a long-lived thing you set up once; the agent connects to it.
    npm start
    ```
 
-   The window opens and its bottom edge shows the address:
+   The window opens with the default endpoint `http://127.0.0.1:7357/mcp` ready.
 
-   ```
-   MCP: http://127.0.0.1:7357/mcp
-   ```
+2. **Open the connection panel.** Click the mascot button in the top bar. The panel opens
+   with a header **✕** to close it (Esc or a click outside also close it), and shows:
 
-2. **Register it with Claude Code (one time):**
+   - the endpoint, with a copy button;
+   - a ready-to-run `claude mcp add --transport http --scope user hyppovisor <url>` command;
+   - a JSON `mcpServers` block for editing a config file by hand;
+   - a **Listening port** field — change it and click **Apply**; the server rebinds
+     immediately (no restart) and the new port is remembered;
+   - a **Require a bearer token** toggle — turns on a generated token, shown masked, with
+     **Reveal** / **Regenerate**; the snippets pick it up automatically;
+   - an **About** section: a plain-language description of what HyppoVisor is and every tool
+     it exposes, copyable to paste into an agent's context.
 
-   ```bash
-   claude mcp add --transport http hyppovisor http://127.0.0.1:7357/mcp
-   ```
+3. **Register it** by pasting the command from the panel, then `claude mcp list` (or `/mcp`
+   in a session) to verify.
 
-3. **Verify the connection:**
+4. **Use it.** Log into whatever sites you need in the HyppoVisor window, then ask the agent
+   to `open_url`, `read_page`, `interact`, and so on. The app keeps running across sessions.
 
-   ```bash
-   claude mcp list          # → hyppovisor  ✓ connected
-   ```
+A port or token set in the panel persists in `settings.json` under the app's user-data
+directory, so it survives a restart. That file is plain JSON and safe to delete.
 
-   or run `/mcp` inside a session.
+#### Configuration (headless / scripted launches)
 
-4. **Use it.** Log into whatever sites you need in the HyppoVisor window, then in a Claude Code
-   session ask the agent to `open_url`, `read_page`, `interact`, and so on. The app keeps
-   running across sessions.
-
-#### Configuration
+The panel is the normal way to configure the endpoint. For launches with no chance to touch
+the UI — CI, a wrapper script, the stdio transport — these environment variables override
+the panel and `settings.json` for that run:
 
 | Env var | Default | Effect |
 |---|---|---|
-| `HYPPO_MCP_PORT` | `7357` | Port the HTTP server listens on (always bound to `127.0.0.1`) |
-| `HYPPO_MCP_TOKEN` | _unset_ | If set, callers must send `Authorization: Bearer <token>`. Add `--header "Authorization: Bearer <token>"` to the `claude mcp add` command. |
+| `HYPPO_MCP_PORT` | `7357` | Port the HTTP server listens on (always bound to `127.0.0.1`). While set, the panel's port field is read-only. |
+| `HYPPO_MCP_TOKEN` | _unset_ | If set, callers must send `Authorization: Bearer <token>`. While set, the panel's token controls are read-only. |
 | `HYPPO_MCP_STDIO` | _unset_ | Set to `1` to use stdio instead of HTTP (see below) |
 
-Set them inline, e.g. `HYPPO_MCP_PORT=8080 HYPPO_MCP_TOKEN=s3cret npm start`.
+Set them inline, e.g. `HYPPO_MCP_PORT=8080 HYPPO_MCP_TOKEN=s3cret npm start`. Precedence is
+**environment variable > `settings.json` > built-in default**; an env-set value is applied
+but the persisted value is kept for a later launch without the override.
 
 > **Security note.** The HTTP transport is a loopback port that can drive whatever you're
 > logged into in the app. It is bound to `127.0.0.1` only (never `0.0.0.0`) and can require a
@@ -138,6 +146,15 @@ named rule (`REFUSED_EXTERNAL_ACT`), any target that would perform an external a
   `click` and `space`)
 - **credential inputs** (`fill` or `space` on a password / one-time-code field)
 - **the Enter key** — never available on any operation (it can trigger an implicit submit)
+
+A page cannot open a free-standing window on its own. A plain http(s) `window.open` /
+`target="_blank"` link you clicked (a job posting, say) opens as a **new tab** instead
+(rate-limited so a scripted loop can't flood the strip). A sign-in popup you triggered to a
+known identity provider (Google, Microsoft, Apple, GitHub, Okta/Auth0, …) opens as a small
+**modal window attached to the main window** — it shares the tab's session and closes itself
+when the login finishes, so you can complete an OAuth "Continue with …" flow
+(`src/main/tabs/auth-popups.ts` holds the allowlist). Downloads, and anything non-http or
+autonomous, stay blocked and are shown in the notice line.
 
 `fill` **is** allowed to type a value into a plain, non-credential, non-consent field
 (`text` / `email` / `tel` / `url` / `search` / `number`, `<textarea>`, `contenteditable`),

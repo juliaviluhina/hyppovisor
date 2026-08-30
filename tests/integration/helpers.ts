@@ -2,8 +2,9 @@
 // app with the test handle enabled, and serve the local fixtures over http so
 // open_url's http(s)-only policy is satisfied (FR-004) without live traffic.
 
-import { createServer, type Server } from "node:http";
-import { readFile } from "node:fs/promises";
+import { createServer, request as httpRequest, type Server } from "node:http";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron, type ElectronApplication } from "@playwright/test";
@@ -56,6 +57,127 @@ export async function launchApp(
     await new Promise((r) => setTimeout(r, 100));
   }
   return app;
+}
+
+/** A throwaway user-data directory for a test that relaunches into the same dir. */
+export function tempUserDataDir(): Promise<string> {
+  return mkdtemp(join(tmpdir(), "hyppo-e2e-"));
+}
+
+/**
+ * Launch the built app the way a person runs it — no `HYPPO_E2E`, so the real
+ * HTTP MCP server and the connection IPC handlers are live — with an isolated,
+ * throwaway `HYPPO_USER_DATA_DIR` so `settings.json` and the interaction log do
+ * not touch dev state. Used by the connection-panel spec (feature 007).
+ */
+export async function launchAppFull(
+  extraEnv: Record<string, string> = {},
+  reuseDir?: string,
+): Promise<{
+  app: ElectronApplication;
+  userDataDir: string;
+  /** Stop the app. Deletes the temp user-data dir only if this call created it. */
+  close: () => Promise<void>;
+}> {
+  const userDataDir = reuseDir ?? (await mkdtemp(join(tmpdir(), "hyppo-e2e-")));
+  const app = await electron.launch({
+    args: [mainEntry],
+    env: { ...process.env, HYPPO_USER_DATA_DIR: userDataDir, ...extraEnv },
+  });
+  const page = await app.firstWindow();
+
+  // Wait until the renderer has its connection state and — for the HTTP
+  // transport — the listener is actually accepting, so a test can hit it
+  // immediately after launch.
+  const conn = (await page.evaluate(() =>
+    (
+      window as unknown as { hyppo: { getConnection: () => Promise<{ transport: string; port: number }> } }
+    ).hyppo.getConnection(),
+  )) as { transport: string; port: number };
+  if (conn.transport === "http") {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const { status } = await mcpPost(conn.port, { jsonrpc: "2.0", id: 0, method: "ping" });
+      if (status !== 0) break;
+      if (Date.now() > deadline) throw new Error(`MCP HTTP server never came up on ${conn.port}`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
+  return {
+    app,
+    userDataDir,
+    close: async () => {
+      await app.close();
+      if (!reuseDir) await rm(userDataDir, { recursive: true, force: true });
+    },
+  };
+}
+
+/** POST a JSON body to a running MCP HTTP server on loopback and read the reply. */
+export function mcpPost(
+  port: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; json: unknown }> {
+  const payload = Buffer.from(JSON.stringify(body));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
+    const parse = (text: string, status: number) => {
+      let json: unknown = text;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        const line = text.split("\n").find((l) => l.startsWith("data:"));
+        if (line) {
+          try {
+            json = JSON.parse(line.slice(5).trim());
+          } catch {
+            /* leave json as the raw text */
+          }
+        }
+      }
+      return { status, json };
+    };
+    const req = httpRequest(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/mcp",
+        method: "POST",
+        agent: false,
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          "content-length": String(payload.length),
+          ...headers,
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c as Buffer));
+        res.on("end", () =>
+          done(() => resolve(parse(Buffer.concat(chunks).toString("utf8"), res.statusCode ?? 0))),
+        );
+        // A mid-stream abort (server tore the transport down) still counts as a
+        // reply if we have a status — never let it become an unhandled 'error'.
+        res.on("error", () =>
+          done(() => {
+            if (res.statusCode) resolve(parse(Buffer.concat(chunks).toString("utf8"), res.statusCode));
+            else reject(new Error("response stream error"));
+          }),
+        );
+      },
+    );
+    req.on("error", (e) => done(() => resolve({ status: 0, json: String(e) })));
+    req.setTimeout(5000, () => done(() => resolve({ status: 0, json: "timeout" })));
+    req.end(payload);
+  });
 }
 
 /** Call a method on the main-process test handle (`globalThis.__hyppo`). */

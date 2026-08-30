@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pairs = [
   ["src/renderer/index.html", "dist/renderer/index.html"],
+  ["src/renderer/mascot.png", "dist/renderer/mascot.png"],
+  ["src/renderer/hyppo.png", "dist/renderer/hyppo.png"],
   ["src/preload/chrome.cjs", "dist/preload/chrome.cjs"],
 ];
 

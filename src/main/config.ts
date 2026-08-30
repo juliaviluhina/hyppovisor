@@ -31,3 +31,8 @@ export const config = {
   /** Chrome height reserved at the top of the window for the renderer UI. */
   chromeHeight: 104,
 };
+
+/** Default HTTP MCP listening port when nothing overrides it (feature 007). */
+export const defaultMcpPort = 7357;
+/** The MCP HTTP server binds loopback only — never a routable interface (FR-015). */
+export const mcpHost = "127.0.0.1";

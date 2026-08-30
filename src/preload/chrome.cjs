@@ -11,5 +11,12 @@ contextBridge.exposeInMainWorld("hyppo", {
   onTabsChanged: (cb) => ipcRenderer.on("tabs:changed", (_e, tabs) => cb(tabs)),
   onActivity: (cb) => ipcRenderer.on("tabs:activity", (_e, a) => cb(a)),
   onBlockedAction: (cb) => ipcRenderer.on("tabs:blocked-action", (_e, a) => cb(a)),
-  onMcpReady: (cb) => ipcRenderer.on("mcp:ready", (_e, a) => cb(a)),
+
+  // Connection panel (feature 007).
+  getConnection: () => ipcRenderer.invoke("chrome:get-connection"),
+  setPort: (p) => ipcRenderer.invoke("chrome:set-port", p),
+  setTokenRequired: (b) => ipcRenderer.invoke("chrome:set-token-required", b),
+  regenerateToken: () => ipcRenderer.invoke("chrome:regenerate-token"),
+  setPanelOpen: (o) => ipcRenderer.invoke("chrome:set-panel-open", o),
+  onConnectionChanged: (cb) => ipcRenderer.on("connection:changed", (_e, c) => cb(c)),
 });

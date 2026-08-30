@@ -16,7 +16,26 @@ export interface ToolDeps {
   queue: ActionQueue;
   tabs: TabManager;
   log: InteractionLog;
+  /** Feature 007: notified with the tool name at the start of every invocation,
+   *  so the connection panel can show a last-request line. Metadata only. */
+  onToolInvoked?: (name: string) => void;
 }
+
+/**
+ * The canonical MCP tool names, in registration order. Single source for the
+ * connection panel's About text consistency guard (feature 007,
+ * tests/unit/connection-snippets.test.ts) — keep in sync with the
+ * `server.tool(...)` calls below.
+ */
+export const TOOL_NAMES = [
+  "open_url",
+  "list_open_tabs",
+  "read_page",
+  "navigate",
+  "interact",
+  "read_form_fields",
+  "wait_for_selector",
+] as const;
 
 function ok(payload: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
@@ -34,6 +53,7 @@ function fail(e: unknown) {
 
 export function registerTools(server: McpServer, deps: ToolDeps): void {
   const { queue, tabs, log } = deps;
+  const seen = (name: string) => deps.onToolInvoked?.(name);
 
   server.tool(
     "open_url",
@@ -41,6 +61,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       "Does not log in, submit, or follow links on its own.",
     { url: z.string().describe("Absolute http or https URL") },
     async ({ url }) => {
+      seen("open_url");
       try {
         const { value, queueDepth } = await queue.run(() => tabs.open(url, "orchestrator"));
         return ok({ ...value, queueDepth });
@@ -55,6 +76,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     "List every open tab with its id, current URL, title, and load state.",
     {},
     async () => {
+      seen("list_open_tabs");
       try {
         const { value, queueDepth } = await queue.run(async () => tabs.list());
         return ok({ tabs: value, queueDepth });
@@ -73,6 +95,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       includeDom: z.boolean().optional().default(false).describe("Include document HTML"),
     },
     async ({ tabId, includeDom }) => {
+      seen("read_page");
       try {
         const { value } = await queue.run((depth) => {
           const wc = tabs.webContentsFor(tabId);
@@ -90,6 +113,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     "Point an existing tab at a new http(s) URL.",
     { tabId: z.string(), url: z.string() },
     async ({ tabId, url }) => {
+      seen("navigate");
       try {
         const { value, queueDepth } = await queue.run(() => tabs.navigate(tabId, url));
         return ok({ ...value, queueDepth });
@@ -138,6 +162,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         .describe("Batch fill: ordered { selector, value } pairs (fill only, max 50)"),
     },
     async ({ tabId, operation, selector, value, label, fields }) => {
+      seen("interact");
       try {
         if (operation === "fill") {
           const shapeError = checkFillInputShape(selector, value, fields);
@@ -192,6 +217,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         .describe("Scope to controls inside this element; omitted → whole page"),
     },
     async ({ tabId, containerSelector }) => {
+      seen("read_form_fields");
       try {
         const { value } = await queue.run((depth) => {
           const wc = tabs.webContentsFor(tabId);
@@ -209,6 +235,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     "Wait until a selector appears in a tab, up to a timeout. On timeout the tab is left unchanged.",
     { tabId: z.string(), selector: z.string(), timeoutMs: z.number().int().positive().optional() },
     async ({ tabId, selector, timeoutMs }) => {
+      seen("wait_for_selector");
       try {
         const { queueDepth } = await queue.run(async () => {
           const wc = tabs.webContentsFor(tabId);

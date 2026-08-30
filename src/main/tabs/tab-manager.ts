@@ -6,6 +6,7 @@ import { config } from "../config.js";
 import { HyppoError } from "../errors.js";
 import type { LoadState, OpenedBy, TabDetail, TabSummary } from "../../shared/types.js";
 import { validateUrl } from "./url-policy.js";
+import { isAuthPopupUrl, authPopupLabel } from "./auth-popups.js";
 
 interface Tab {
   id: string;
@@ -28,6 +29,12 @@ export class TabManager {
   private tabs = new Map<string, Tab>();
   private seq = 0;
   private activeId: string | null = null;
+  /** While true, every tab view is hidden so the renderer's full-window overlay
+   *  (the connection panel, feature 007) is unobstructed — still one window. */
+  private overlay = false;
+  /** Last time a `window.open` / `target=_blank` was turned into a tab — a cheap
+   *  rate limit so a scripted `window.open` loop can't flood the strip. */
+  private lastPopupTabAt = 0;
 
   constructor(
     private readonly win: BrowserWindow,
@@ -105,6 +112,13 @@ export class TabManager {
     this.events.onChange();
   }
 
+  /** Hide (or restore) every tab web view so a renderer overlay can cover the
+   *  whole window. Idempotent; leaves tab/active state untouched (feature 007). */
+  setChromeOverlay(on: boolean): void {
+    this.overlay = on;
+    this.layout();
+  }
+
   private require(tabId: string): Tab {
     const tab = this.tabs.get(tabId);
     if (!tab) {
@@ -136,10 +150,70 @@ export class TabManager {
 
   private wireView(tab: Tab): void {
     const wc = tab.view.webContents;
-    // Never let a page spawn windows on its own (FR-006, FR-017).
+    // A page may not spawn windows on its own (FR-006, FR-017). The one
+    // exception: a sign-in popup to a known identity provider, which the human
+    // summoned and needs to establish their own session (Principle IV). It must
+    // be a real child window — OAuth `ux_mode=popup` flows (Google GSI) rely on
+    // `window.opener` + cross-window postMessage to return the result and close
+    // themselves, which a detached tab/view cannot do. We make it a **modal
+    // child of the main window** (moves with it, no separate taskbar entry,
+    // closes with the app) so it reads as part of the one window, not a
+    // stray second app surface.
     wc.setWindowOpenHandler(({ url }) => {
+      if (isAuthPopupUrl(url)) {
+        this.events.onActivity(tab.id, `sign-in popup → ${authPopupLabel(url)}`);
+        return {
+          action: "allow",
+          overrides: {
+            parent: this.win,
+            modal: true,
+            width: 520,
+            height: 640,
+            resizable: true,
+            minimizable: false,
+            maximizable: false,
+            fullscreenable: false,
+            skipTaskbar: true,
+            autoHideMenuBar: true,
+            title: `Sign in — ${authPopupLabel(url)}`,
+            webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+          },
+        };
+      }
+      // A plain http(s) popup / `target="_blank"` link is a navigation the person
+      // asked for — open it as a new tab in the one window (standard browser
+      // behaviour), under the same URL policy as `open_url`. Rate-limited so a
+      // scripted `window.open` loop can't flood the tab strip.
+      if (/^https?:\/\//i.test(url)) {
+        const now = Date.now();
+        if (now - this.lastPopupTabAt < 700) {
+          this.events.onBlockedAction("popup", `${url} (too many in a row)`);
+          return { action: "deny" };
+        }
+        this.lastPopupTabAt = now;
+        this.events.onActivity(tab.id, `opened in new tab → ${url}`);
+        void this.open(url, "person").catch((e) => {
+          this.events.onBlockedAction(
+            "popup",
+            `${url} (${e instanceof Error ? e.message : String(e)})`,
+          );
+        });
+        return { action: "deny" };
+      }
       this.events.onBlockedAction("popup", url);
       return { action: "deny" };
+    });
+    // Lock down whatever child window the auth popup produced: centre it on the
+    // parent, no menu bar, and gate its own popups by the same allowlist.
+    // Downloads are already blocked session-wide (constructor).
+    wc.on("did-create-window", (child) => {
+      child.setMenuBarVisibility(false);
+      child.center();
+      child.webContents.setWindowOpenHandler(({ url }) => {
+        if (isAuthPopupUrl(url)) return { action: "allow" };
+        this.events.onBlockedAction("popup", url);
+        return { action: "deny" };
+      });
     });
     wc.on("did-start-loading", () => {
       tab.loadState = "loading";
@@ -171,7 +245,7 @@ export class TabManager {
     const [width, height] = this.win.getContentSize();
     const top = config.chromeHeight;
     for (const tab of this.tabs.values()) {
-      const visible = tab.id === this.activeId;
+      const visible = !this.overlay && tab.id === this.activeId;
       tab.view.setVisible(visible);
       if (visible) {
         tab.view.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
