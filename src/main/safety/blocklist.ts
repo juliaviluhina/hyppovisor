@@ -5,7 +5,7 @@
 // in-page (see targetDescriptorScript), so the rules themselves stay pure and
 // individually unit-testable.
 
-import type { InteractOperation } from "../../shared/types.js";
+import type { FieldVerdict, InteractOperation } from "../../shared/types.js";
 
 export interface TargetDescriptor {
   tagName: string; // lowercase, e.g. "button"
@@ -239,30 +239,85 @@ export function listBlocklistRules(): Array<
 }
 
 /**
+ * The verdict `interact`'s `fill` path produces for a target (feature 005, R8).
+ * Replays the exact two-step check: blocklist(`fill`) then the safe-fill-type
+ * allowlist. Pure — the reader (`read_form_fields`) and `interact` compute from
+ * this one function so their verdicts cannot diverge (SC-004).
+ */
+export function fillVerdictFor(d: TargetDescriptor): FieldVerdict {
+  const blocked = matchBlocklist(d, "fill");
+  if (blocked.blocked) {
+    return { verdict: "refused", ruleId: blocked.ruleId, ruleDescription: blocked.description };
+  }
+  const safe = isSafeFillTarget(d);
+  if (!safe.ok) {
+    return {
+      verdict: "refused",
+      ruleId: "unsafe-fill-type",
+      ruleDescription: `Not a safe value field: ${safe.reason}.`,
+    };
+  }
+  return { verdict: "permitted" };
+}
+
+/** The verdict `interact`'s `click` path produces for a target (feature 005, R8). Pure. */
+export function clickVerdictFor(d: TargetDescriptor): FieldVerdict {
+  const blocked = matchBlocklist(d, "click");
+  if (blocked.blocked) {
+    return { verdict: "refused", ruleId: blocked.ruleId, ruleDescription: blocked.description };
+  }
+  return { verdict: "permitted" };
+}
+
+/**
+ * Shared in-page snippet: given a bound `el`, declare the raw accessible-name
+ * source strings as locals (`__forLabelText`, `__wrapLabelText`, `__ariaLabelText`,
+ * `__ariaLabelledbyText`, `__placeholderText`, `__titleText`) — case preserved,
+ * not joined. Two consumers: `DESCRIPTOR_BODY` joins + lowercases them for the
+ * safety `name`; the feature-005 reader picks the first non-empty as a *verbatim*
+ * label. One source list keeps the two from diverging (FR-004 / FR-011, R8).
+ */
+export const ACCESSIBLE_NAME_SOURCES_BODY = `
+    const __forLabelText = (() => {
+      if (!el.id) return "";
+      const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+      return l ? (l.innerText || l.textContent || "") : "";
+    })();
+    const __wrapLabelText = (() => {
+      const l = el.closest("label");
+      return l ? (l.innerText || l.textContent || "") : "";
+    })();
+    const __ariaLabelText = el.getAttribute("aria-label") || "";
+    const __ariaLabelledbyText = (() => {
+      const ids = el.getAttribute("aria-labelledby");
+      if (!ids) return "";
+      const out = [];
+      for (const lid of ids.split(/\\s+/)) {
+        const n = document.getElementById(lid);
+        if (n) out.push(n.innerText || n.textContent || "");
+      }
+      return out.join(" ");
+    })();
+    const __placeholderText = el.getAttribute("placeholder") || "";
+    const __titleText = el.getAttribute("title") || "";`;
+
+/**
  * Shared in-page body: given a bound `el`, assemble a TargetDescriptor.
  * `name` combines every accessible-name source so a bare checkbox picks up its
  * associated <label> text (which lives outside the element itself).
  */
-const DESCRIPTOR_BODY = `
-    const parts = [];
-    parts.push(el.innerText || "");
-    parts.push(el.value || "");
-    parts.push(el.getAttribute("aria-label") || "");
-    parts.push(el.getAttribute("title") || "");
-    parts.push(el.getAttribute("placeholder") || "");
-    if (el.id) {
-      const forLabel = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
-      if (forLabel) parts.push(forLabel.innerText || forLabel.textContent || "");
-    }
-    const wrapLabel = el.closest("label");
-    if (wrapLabel) parts.push(wrapLabel.innerText || wrapLabel.textContent || "");
-    const labelledby = el.getAttribute("aria-labelledby");
-    if (labelledby) {
-      for (const lid of labelledby.split(/\\s+/)) {
-        const n = document.getElementById(lid);
-        if (n) parts.push(n.innerText || n.textContent || "");
-      }
-    }
+export const DESCRIPTOR_BODY = `
+    ${ACCESSIBLE_NAME_SOURCES_BODY}
+    const parts = [
+      el.innerText || "",
+      el.value || "",
+      __ariaLabelText,
+      __titleText,
+      __placeholderText,
+      __forLabelText,
+      __wrapLabelText,
+      __ariaLabelledbyText,
+    ];
     if (!parts.join("").trim()) parts.push(el.textContent || "");
     return {
       tagName: el.tagName.toLowerCase(),
