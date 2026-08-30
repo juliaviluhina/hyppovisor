@@ -7,6 +7,7 @@ import type { Server } from "node:http";
 import { readFileSync } from "node:fs";
 import { startFixtureServer, launchApp, callHandle, handleValue } from "./helpers.js";
 import type { ElectronApplication } from "@playwright/test";
+import type { FormFieldMap } from "../../src/shared/types.js";
 
 let app: ElectronApplication;
 let server: Server;
@@ -326,4 +327,29 @@ test("US4/T023: a widget that swallows the option click fails read-back, control
   expect(added.length).toBe(1);
   expect(added[0].outcome).toBe("refused");
   expect(added[0].reason).toBe("option-not-appeared");
+});
+
+test("SC-007: read_form_fields → choose_option → batch fill produces a draft, nothing submitted", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  // 005: discover the options for #country
+  const map = await callHandle<FormFieldMap>(app, "readFormFields", [tabId, "#theform"]);
+  const country = map.records.find((r) => r.selector === "#country")!;
+  expect(country.kind).toBe("select");
+  const wanted = country.options.find((o) => o.value !== "")!;
+
+  // 006: choose that option
+  const chose = await choose(tabId, "#country", { label: wanted.label });
+  expect(chose.outcome).toBe("permitted");
+  expect(await probe<string>(tabId, `document.querySelector("#country").value`)).toBe(wanted.value);
+
+  // 004: batch fill the plain fields discovered as fill-permitted
+  const plain = map.records
+    .filter((r) => r.fillVerdict?.verdict === "permitted" && r.selector && r.visible && r.kind === "text")
+    .slice(0, 4)
+    .map((r) => [r.selector as string, "draft"] as [string, string]);
+  const batch = await callHandle<{ outcome: string }>(app, "fillBatch", [tabId, plain]);
+  expect(batch.outcome).toBe("permitted");
+
+  expect(await probe<boolean>(tabId, "window.__submitted")).toBe(false);
 });

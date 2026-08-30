@@ -116,7 +116,7 @@ In a session, the agent can call:
 | `read_page` | Return one tab's verbatim visible text; DOM only when asked. Nothing is stored. |
 | `read_form_fields` | Return the tab's form controls in document order — selector, kind, verbatim label, current value (omitted for credentials), `<select>`/combobox options, and the `fill` / `click` verdict `interact` would give each. Read-only, derived view; `read_page` is unchanged. |
 | `navigate` | Point an existing tab at a new URL |
-| `interact` | `click` / `fill` / `scroll` / `space` — reveal content and prepare a draft; never submit, send, apply, or press Enter. `fill` also takes a batch form (an ordered `fields` list, max 50) that drafts a whole form in one call |
+| `interact` | `click` / `fill` / `scroll` / `space` / `choose_option` — reveal content and prepare a draft; never submit, send, apply, or press Enter. `fill` also takes a batch form (an ordered `fields` list, max 50) that drafts a whole form in one call. `choose_option` selects an option in a `<select>` or combobox by exact `label` / `value` and re-reads the control to confirm it stuck |
 | `wait_for_selector` | Wait for an element, up to a timeout |
 
 Full contract: [`specs/001-open-any-url/contracts/mcp-tools.md`](specs/001-open-any-url/contracts/mcp-tools.md).
@@ -151,6 +151,18 @@ is reported and the rest still fill. The batch adds no new permission and never 
 `space` activates the focused element (a plain checkbox, a highlighted listbox option, a
 non-submit button) under exactly the rules above; it inserts a single space when a text field
 has focus and can never submit.
+
+`choose_option` selects one option in a dropdown — a single-select `<select>`, an element
+with `role="combobox"` / `role="listbox"`, or an element owning a `role="listbox"` via
+`aria-controls` / `aria-owns`. The option is identified by exact `label` (case-insensitive,
+whitespace-collapsed) and/or `value` (exact); no fuzzy or prefix matching, no option
+creation. For a custom combobox the app opens the menu, may type the label into its filter
+input, activates the one matching option, closes the widget, and re-reads the control to
+confirm the value stuck — reporting `option-not-appeared` if it did not. `in-form` does not
+gate it (choosing is preparation, like `fill`); a submit/consent/credential/outward-action
+target, a non-chooser, a `<select multiple>`, an ambiguous or disabled or missing option are
+each refused, and every refusal leaves the control unchanged. It never opens a submit path
+and never presses Enter.
 
 The blocklist is defined in one file (`src/main/safety/blocklist.ts`) and is enumerable. It
 permits by default, so every interaction — permitted or refused — is appended to

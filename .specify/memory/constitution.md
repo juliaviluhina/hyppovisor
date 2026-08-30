@@ -27,7 +27,10 @@ navigating, and preparing drafts or checklists.
   draft the human reviews. Submitting, sending, applying, connecting, and authenticating
   remain human-only. Submit controls, consent/agreement toggles, credential fields, and
   anything whose label reads as an outward action stay refused for every operation, and no
-  operation may press Enter (which can trigger an implicit submit).
+  operation may press Enter (which can trigger an implicit submit). Choosing an option in a
+  plain, non-credential, non-consent `<select>` or combobox — by the option's visible name
+  or its value, with the app locating the option only within that one control's own list —
+  is preparation on the same footing: it builds a draft and cannot submit.
 - Any future capability that would perform an external act MUST be added to this document as
   an explicit, separately approved amendment before it is built.
 
@@ -194,6 +197,11 @@ capture of a page the human opened is both defensible and sufficient for the pip
 One or two lines per version. Records why a bump type was judged as it was — git holds the
 diffs.
 
+- **1.3.0** (2026-08-30) — Principle I: added the "choosing an option is preparation" clause
+  for `<select>` / combobox selection via the `choose_option` operation. MINOR: same
+  reasoning as 1.2.0 — a binding clarification that expands existing guidance (Principle I
+  already blessed "pick a highlighted option" via Space), redefines no principle, and
+  invalidates no conforming artifact. Recorded in feature `006-select-dropdown-option`.
 - **1.2.0** (2026-08-29) — Principle I: added the "value entry is preparation" clause —
   `fill` on a plain non-credential/non-consent field inside a `<form>`, and a new `space`
   operation for plain checkboxes / listbox options, are permitted; submit/consent/credential
@@ -216,4 +224,4 @@ diffs.
   `specs/initial/business-logic.md`, plus Architecture Constraints, Development Workflow, and
   Governance.
 
-**Version**: 1.2.0 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-08-29
+**Version**: 1.3.0 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-08-30
