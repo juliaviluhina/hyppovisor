@@ -48,7 +48,10 @@ test("US1: panel shows the endpoint, a claude mcp add command, and a JSON block;
     expect(parsed.mcpServers.hyppovisor.url).toBe("http://127.0.0.1:7357/mcp");
     expect(parsed.mcpServers.hyppovisor.headers).toBeUndefined();
 
-    const readClip = () => app.evaluate(({ clipboard }) => clipboard.readText());
+    // Windows normalises clipboard line endings to CRLF on read-back; the
+    // snippets are authored with LF, so compare on LF.
+    const readClip = () =>
+      app.evaluate(({ clipboard }) => clipboard.readText()).then((s) => s.replace(/\r\n/g, "\n"));
     for (const [kind, expected] of [
       ["endpoint", "http://127.0.0.1:7357/mcp"],
       ["command", "claude mcp add --transport http --scope user hyppovisor http://127.0.0.1:7357/mcp"],
@@ -233,7 +236,10 @@ test("US4: the About block names the app, every tool, and the guarantees; Copy i
     expect(about).not.toMatch(/Bearer|HyppoGraph|orchestrator|dashboard|queue|pipeline/i);
 
     await page.locator('[data-copy="about"]').click();
-    const clip = await app.evaluate(({ clipboard }) => clipboard.readText());
+    const clip = (await app.evaluate(({ clipboard }) => clipboard.readText())).replace(
+      /\r\n/g,
+      "\n",
+    );
     expect(clip).toBe(about);
     expect(clip).not.toContain("Apache-2.0");
 
