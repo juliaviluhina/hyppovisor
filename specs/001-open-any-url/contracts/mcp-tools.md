@@ -96,6 +96,9 @@ Bounded interaction to reveal content. **Cannot** submit, send, or apply.
 - `label` (feature 006) — `choose_option` only: the target option's visible label
   (case-insensitive, whitespace-collapsed). Supply `label` and/or `value`; with both, `value`
   selects and `label` must also match. `choose_option` never presses Enter and never submits.
+- `fill` non-goals (feature 008): `fill` on `<input type="file">` stays **refused** —
+  attaching a file is a human step. `fill` types the **literal** text and stops; choosing
+  among an address / place autocomplete suggestion list is a human step.
 - `list_options` (feature 008) — read-only enumeration of a dropdown's current choices.
   Takes `tabId` + `selector`; `value` / `label` / `fields` are ignored. Valid targets are the
   same as `choose_option` (single-select `<select>`, `role=combobox`/`listbox`, or a

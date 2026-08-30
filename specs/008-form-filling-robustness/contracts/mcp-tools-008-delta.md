@@ -1,8 +1,13 @@
 # Contract Delta — Feature 008 (Form-Filling Robustness)
 
-Exact changes to the MCP tool surface. Merge into
-`specs/001-open-any-url/contracts/mcp-tools.md` on implement. Nothing here removes or renames
-an existing parameter, field, or error.
+> **Folded in.** Every change below is now part of the canonical contract,
+> `specs/001-open-any-url/contracts/mcp-tools.md` (the `interact` `list_options`
+> operation, the `INVALID_SELECTOR` error, the `read_form_fields` params/records,
+> the new `screenshot` tool, and the `fill` non-goals). This file is retained for
+> traceability of the feature-008 delta only.
+
+Exact changes to the MCP tool surface. Nothing here removes or renames an existing
+parameter, field, or error.
 
 ---
 

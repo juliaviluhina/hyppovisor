@@ -1,6 +1,7 @@
-// The complete MCP tool surface (contracts/mcp-tools.md). Seven tools, no others.
-// Every call goes through the app-wide queue (FR-013); errors return a named
-// code (FR-014); no tool submits, sends, applies, or interprets content.
+// The complete MCP tool surface (contracts/mcp-tools.md). Eight tools, no others
+// (feature 008 added `screenshot`). Every call goes through the app-wide queue
+// (FR-013); errors return a named code (FR-014); no tool submits, sends, applies,
+// or interprets content.
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -143,10 +144,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
 
   server.tool(
     "interact",
-    "Bounded interaction: click, fill, scroll, space, or choose_option. `fill` sets a value " +
-      "on a plain field (text/email/tel/url/search/number, textarea, contenteditable) — " +
-      "including one inside a <form> and a combobox's filter input — but never a credential, " +
-      "consent, or file field. `fill` also takes a batch form: instead of `selector` + " +
+    "Bounded interaction: click, fill, scroll, space, choose_option, or list_options. `fill` " +
+      "sets a value on a plain field (text/email/tel/url/search/number, textarea, " +
+      "contenteditable) — including one inside a <form> and a combobox's filter input — but " +
+      "never a credential, consent, or file field (attaching a file is a human step). `fill` " +
+      "types the literal text and stops: choosing among address / place autocomplete " +
+      "suggestions a site pops up is a human step. `fill` also takes a batch form: instead of `selector` + " +
       "`value`, pass `fields` — an ordered list of { selector, value } pairs (max 50) applied " +
       "in one call. Every target is checked first; if any is forbidden or unresolved the " +
       "whole batch is refused (BATCH_REJECTED) with nothing written and every offender named. " +

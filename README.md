@@ -147,6 +147,11 @@ named rule (`REFUSED_EXTERNAL_ACT`), any target that would perform an external a
   `click` and `space`)
 - **credential inputs** (`fill` or `space` on a password / one-time-code field)
 - **the Enter key** — never available on any operation (it can trigger an implicit submit)
+- **attaching a file** to an `<input type="file">` — not supported; picking a file is a human
+  step. `read_form_fields` lists the control as `kind: "file"` with a refusing `fillVerdict`
+  so the hand-off is explicit.
+- **picking an address / place autocomplete suggestion** — `fill` types the literal text into
+  the field and stops; choosing among the suggestion list a site pops up is a human step.
 
 A page cannot open a free-standing window on its own. A plain http(s) `window.open` /
 `target="_blank"` link you clicked (a job posting, say) opens as a **new tab** instead

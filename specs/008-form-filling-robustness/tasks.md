@@ -304,18 +304,18 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
 
 ## Phase 8: Polish & cross-cutting
 
-- [ ] T039 [P] `README.md` "What the app will not do": add a line that attaching files to a
+- [x] T039 [P] `README.md` "What the app will not do": add a line that attaching files to a
   file-upload control is not supported and is a human step (FR-029); keep the existing
   `kind: "file"` + refusing `fillVerdict` behaviour as the hand-off signal.
-- [ ] T040 [P] `README.md` and the `interact` `fill` description in `src/main/mcp/tools.ts`:
+- [x] T040 [P] `README.md` and the `interact` `fill` description in `src/main/mcp/tools.ts`:
   add that choosing among address / place autocomplete suggestions is a human step —
   `fill` types the literal text and stops (FR-030).
-- [ ] T041 Fold `specs/008-form-filling-robustness/contracts/mcp-tools-008-delta.md` fully
+- [x] T041 Fold `specs/008-form-filling-robustness/contracts/mcp-tools-008-delta.md` fully
   into `specs/001-open-any-url/contracts/mcp-tools.md`; replace any "seven tools" / "six
   tools" phrasing with eight and reconcile the tool list.
-- [ ] T042 Run `specs/008-form-filling-robustness/quickstart.md` §1–§7 end to end against a
+- [x] T042 Run `specs/008-form-filling-robustness/quickstart.md` §1–§7 end to end against a
   built app; fix any drift between the docs and behaviour.
-- [ ] T043 Full gate: `npm run build && npm run lint && npm test && npm run test:e2e`
+- [x] T043 Full gate: `npm run build && npm run lint && npm test && npm run test:e2e`
   (ensure local port 7357 is free for the connection-panel e2e).
 
 ---
