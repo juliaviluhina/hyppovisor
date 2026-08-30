@@ -22,7 +22,16 @@ test.afterAll(async () => {
 });
 
 function readLog(logPath: string) {
-  return readFileSync(logPath, "utf8")
+  let raw: string;
+  try {
+    raw = readFileSync(logPath, "utf8");
+  } catch (e) {
+    // On a fresh machine the log file is created lazily on the first record();
+    // before then it simply has no entries.
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw e;
+  }
+  return raw
     .split("\n")
     .filter(Boolean)
     .map((l) => JSON.parse(l) as Record<string, unknown>);
