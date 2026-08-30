@@ -51,9 +51,15 @@ Boundaries kept from the constitution:
 
 ### Session 2026-08-30
 
-_None yet — run `/speckit-clarify`. Four decisions were made by informed default and are
-recorded in Assumptions: single-select only (v1), exact label match (no fuzzy), no option
-creation in creatable comboboxes, and a one-line Principle I clarifying amendment._
+- Q: What should the new `interact` operation be named (tool schema, `InteractOperation` type, audit `operation` field)? → A: `choose_option`.
+- Q: How is a target with no `<select>` tag and no `role="combobox"`/`role="listbox"` recognised as a valid chooser? → A: It is not — a valid chooser is a `<select>`, an element with `role="combobox"`/`role="listbox"`, or an element that owns a `role="listbox"` via `aria-controls`/`aria-owns`. No class-name or structural guessing; anything else is refused "not a dropdown".
+- Q: What error code do the non-rule refusals carry? → A: A new `ErrorCode` `CHOOSE_OPTION_FAILED` with `details.reason` ∈ {`not-a-dropdown`, `no-option-match`, `ambiguous-option`, `option-disabled`, `option-not-appeared`, `multi-select`}. Rule-match refusals keep `REFUSED_EXTERNAL_ACT`.
+- Q: Does `choose_option` verify the selection stuck, or return optimistically? → A: Verify — re-read the control after activation; on mismatch refuse with `CHOOSE_OPTION_FAILED` / `option-not-appeared` and report no change. A permitted result is returned only when the read-back matches.
+- Q: When both `label` and `value` are supplied, how are they combined? → A: `value` is the primary key; the option is chosen by exact `value`, and its visible label must also match the given `label` (case-insensitive, trimmed) or the call is refused `no-option-match`.
+
+Decisions still carried by informed default (see Assumptions): single-select only (v1),
+exact label match (no fuzzy), no option creation in creatable comboboxes, and a one-line
+Principle I clarifying amendment (1.2.0 → 1.3.0).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -131,9 +137,10 @@ none changes a control.
 
 **Acceptance Scenarios**:
 
-1. **Given** a target that is not a `<select>`, `role="combobox"`, `role="listbox"`, or a
-   recognised custom-combobox container, **When** choose-option is called, **Then** it is
-   refused with a "not a dropdown" reason.
+1. **Given** a target that is not a `<select>`, not `role="combobox"` / `role="listbox"`,
+   and does not own a `role="listbox"` via `aria-controls` / `aria-owns`, **When**
+   choose-option is called, **Then** it is refused with `CHOOSE_OPTION_FAILED` /
+   `reason: "not-a-dropdown"`.
 2. **Given** a chooser whose accessible name matches an outward-action or consent rule,
    **When** choose-option is called, **Then** it is refused with that `ruleId`
    (`external-act-label` / `consent-toggle`).
@@ -200,12 +207,16 @@ value for the permitted one.
 
 #### The choose-option operation
 
-- **FR-001**: `interact` MUST accept a new operation that selects an option in a dropdown,
-  given a control selector and a target option identified by `label` and/or `value`. It
-  takes a `tabId`, the control `selector`, and the option identifier.
-- **FR-002**: The target control MUST be a *chooser*: a `<select>`, an element with role
-  `combobox` or `listbox`, or a recognised custom-combobox container. Any other target MUST
-  be refused with a "not a dropdown" reason.
+- **FR-001**: `interact` MUST accept a new operation, `choose_option`, that selects an option
+  in a dropdown, given a control selector and a target option identified by `label` and/or
+  `value`. It takes a `tabId`, the control `selector`, and the option identifier. The name
+  `choose_option` is used in the tool schema, the `InteractOperation` type, and the audit
+  log's `operation` field.
+- **FR-002**: The target control MUST be a *chooser*, defined exactly as: a `<select>`, an
+  element with `role="combobox"` or `role="listbox"`, or an element that owns a
+  `role="listbox"` via `aria-controls` or `aria-owns`. No class-name, framework-name, or
+  structural guessing is used. Any other target MUST be refused with
+  `CHOOSE_OPTION_FAILED` / `reason: "not-a-dropdown"`.
 - **FR-003**: The control MUST be evaluated against the existing blocklist rules
   (`submit-control`, `consent-toggle`, `external-act-label`, `credential-field`). On a
   match, the operation MUST be refused with that rule's id and description. The `in-form`
@@ -214,18 +225,25 @@ value for the permitted one.
 
 #### Matching
 
-- **FR-004**: The app MUST match the target option **exactly**: case-insensitive and
-  whitespace-trimmed on the visible label, or an exact match on the option value when
-  `value` is supplied. No fuzzy, prefix, or substring matching.
-- **FR-005**: If no option matches, the operation MUST be refused with a "no option matches"
-  reason and the control MUST be left unchanged.
-- **FR-006**: If more than one option matches and no `value` disambiguates, the operation
-  MUST be refused as ambiguous, listing the matching option labels, and the control MUST be
-  left unchanged.
-- **FR-007**: If the matching option is disabled, the operation MUST be refused with an
-  "option is disabled" reason.
+- **FR-004**: The app MUST match the target option **exactly**, with no fuzzy, prefix, or
+  substring matching:
+  - `label` only → the option whose visible label equals `label` (case-insensitive,
+    whitespace-trimmed).
+  - `value` only → the option whose value equals `value` exactly.
+  - both `label` and `value` → `value` is the primary key; the option is chosen by exact
+    `value`, and that option's visible label MUST also match `label` (case-insensitive,
+    whitespace-trimmed) or the call is refused `CHOOSE_OPTION_FAILED` /
+    `reason: "no-option-match"`.
+- **FR-005**: If no option matches, the operation MUST be refused with
+  `CHOOSE_OPTION_FAILED` / `reason: "no-option-match"` and the control MUST be left
+  unchanged.
+- **FR-006**: If more than one option matches the `label` and no `value` disambiguates, the
+  operation MUST be refused with `CHOOSE_OPTION_FAILED` / `reason: "ambiguous-option"`,
+  listing the matching option labels, and the control MUST be left unchanged.
+- **FR-007**: If the matching option is disabled, the operation MUST be refused with
+  `CHOOSE_OPTION_FAILED` / `reason: "option-disabled"`.
 - **FR-008**: The app MUST NOT create a new option (creatable comboboxes): a label that is
-  not among the existing options is a "no option matches" refusal (FR-005).
+  not among the existing options is an FR-005 `no-option-match` refusal.
 
 #### Mechanics
 
@@ -233,49 +251,63 @@ value for the permitted one.
   into the control's filter input to narrow the list, but MUST activate only the single
   exactly-matching option, and MUST leave the widget closed afterward.
 - **FR-010**: When the option list populates asynchronously, the app MUST wait a bounded
-  time for the matching option to appear; if it does not, the operation MUST be refused with
-  an "option did not appear" reason and the control left unchanged.
+  time (the existing wait-for-selector budget) for the matching option to appear; if it does
+  not, the operation MUST be refused with `CHOOSE_OPTION_FAILED` /
+  `reason: "option-not-appeared"` and the control left unchanged.
 - **FR-011**: A completed selection MUST NOT trigger navigation or form submission by the
   app; the app performs only the selection and the change events a real option choice
   produces.
 - **FR-012**: Selecting on a control that already has a value MUST replace it; repeated
-  choose-option calls with the same target and option MUST be idempotent.
+  `choose_option` calls with the same target and option MUST be idempotent.
+- **FR-013**: After activating the matching option, the app MUST re-read the control's
+  current value (native `<select>.value`, or the combobox's displayed value / selected
+  `role="option"`). If it does not equal the chosen option, the operation MUST be refused
+  with `CHOOSE_OPTION_FAILED` / `reason: "option-not-appeared"` and reported as leaving the
+  control unchanged. A permitted result is returned only when the read-back matches.
 
 #### Result and audit
 
-- **FR-013**: A permitted choose-option MUST return the chosen option as `{ label, value }`
+- **FR-014**: A permitted `choose_option` MUST return the chosen option as `{ label, value }`
   alongside the standard permitted result shape.
-- **FR-014**: Every choose-option call — permitted or refused — MUST append exactly one
-  entry to the interaction audit log, recording the operation, the control selector, the
-  outcome, and the `ruleId` or refusal reason.
-- **FR-015**: A refusal payload MUST keep the existing shape — an error code, a
-  human-readable message, and (for a rule match) `ruleId` + `ruleDescription`.
+- **FR-015**: Every `choose_option` call — permitted or refused — MUST append exactly one
+  entry to the interaction audit log, recording the operation (`choose_option`), the control
+  selector, the outcome, and the `ruleId` (rule match) or `reason` (non-rule refusal).
+- **FR-016**: A refusal payload MUST keep the existing shape — an error code, a
+  human-readable message, and either `ruleId` + `ruleDescription` (a `submit-control` /
+  `consent-toggle` / `external-act-label` / `credential-field` match, code
+  `REFUSED_EXTERNAL_ACT`) or `reason` (code `CHOOSE_OPTION_FAILED`, `reason` ∈
+  `not-a-dropdown` / `no-option-match` / `ambiguous-option` / `option-disabled` /
+  `option-not-appeared` / `multi-select`). `CHOOSE_OPTION_FAILED` is a new `ErrorCode`.
 
 #### Scope of the change
 
-- **FR-016**: `.specify/memory/constitution.md` Principle I MUST be extended with one clause
+- **FR-017**: `.specify/memory/constitution.md` Principle I MUST be extended with one clause
   making explicit that *choosing an option in a non-credential, non-consent `<select>` or
   combobox* is permitted preparation, on the same footing as entering a value. The amendment
-  MUST be recorded in the constitution's amendment history with a version bump.
-- **FR-017**: The `interact` tool description MUST be updated to document the choose-option
-  operation: valid targets (single-select `<select>` / combobox / listbox), exact-match
-  semantics, whole-operation refusal for non-choosers and rule matches, and that it never
-  submits.
-- **FR-018**: `click`, `fill`, `scroll`, and `space` MUST be unchanged. `<select>` remains
-  refused for `fill` (`003`'s `unsafe-fill-type`); choose-option is the path for a
+  MUST be recorded in the constitution's amendment history with a version bump (1.2.0 →
+  1.3.0, MINOR).
+- **FR-018**: The `interact` tool description MUST be updated to document the `choose_option`
+  operation: valid targets (single-select `<select>` / `role="combobox"` / `role="listbox"` /
+  an element owning a `role="listbox"` via `aria-controls`/`aria-owns`), exact-match
+  semantics, read-back verification, whole-operation refusal for non-choosers and rule
+  matches, and that it never submits.
+- **FR-019**: `click`, `fill`, `scroll`, and `space` MUST be unchanged. `<select>` remains
+  refused for `fill` (`003`'s `unsafe-fill-type`); `choose_option` is the path for a
   `<select>`.
-- **FR-019**: `<select multiple>` and multi-value comboboxes MUST be refused with a
-  "multi-select not supported" reason.
+- **FR-020**: `<select multiple>` and multi-value comboboxes MUST be refused with
+  `CHOOSE_OPTION_FAILED` / `reason: "multi-select"`.
 
 ### Key Entities
 
 - **Choose-option request**: a control `selector` plus a target option identified by
   `label` and/or `value`.
-- **Chooser control**: the only valid targets — a single-select `<select>`, or an element
-  with role `combobox` / `listbox`, or a recognised custom-combobox container.
+- **Chooser control**: the only valid targets — a single-select `<select>`, an element with
+  `role="combobox"` or `role="listbox"`, or an element that owns a `role="listbox"` via
+  `aria-controls` / `aria-owns`. Nothing else qualifies.
 - **Option**: a `(label, value)` pair, plus a disabled flag.
-- **Selection result**: the chosen `{ label, value }` and the outcome; or a refusal with a
-  code, message, and (for a rule match) `ruleId` + `ruleDescription`.
+- **Selection result**: the chosen `{ label, value }` and the outcome; or a refusal —
+  `REFUSED_EXTERNAL_ACT` with `ruleId` + `ruleDescription` for a blocklist-rule match, or
+  `CHOOSE_OPTION_FAILED` with `reason` for a non-rule failure.
 
 ## Success Criteria *(mandatory)*
 
@@ -303,13 +335,20 @@ value for the permitted one.
 ## Assumptions
 
 - **Single-select only (v1).** `<select multiple>` and multi-value comboboxes are refused
-  (FR-019). Adding/removing multiple values is a later feature.
+  (FR-020). Adding/removing multiple values is a later feature.
 - **Exact match, no fuzzy.** Case-insensitive, whitespace-trimmed label match, or an exact
   `value` match. Ambiguity and no-match both refuse rather than guess (FR-004–FR-006).
 - **No option creation.** Creatable comboboxes are treated as fixed lists; an unknown label
   refuses.
 - **Bounded async wait.** The app waits a fixed short interval (reuse the existing
   wait-for-selector budget) for an option to render before refusing (FR-010).
+- **Read-back verification.** A permitted result is only returned after re-reading the
+  control and confirming it holds the chosen option; a mismatch is refused
+  `CHOOSE_OPTION_FAILED` / `option-not-appeared` with the control reported unchanged (FR-013).
+- **Operation name.** The operation is `choose_option` everywhere — tool schema,
+  `InteractOperation` type, audit `operation` field.
+- **Non-rule failures share one code.** `CHOOSE_OPTION_FAILED` (a new `ErrorCode`) with a
+  `reason` discriminator; blocklist-rule matches still use `REFUSED_EXTERNAL_ACT`.
 - **One operation for native and custom dropdowns.** A `<select>` and a react-select
   combobox are the same operation to the caller; the app handles the mechanics.
   `003`'s refusal of `fill` on a `<select>` is unchanged.
