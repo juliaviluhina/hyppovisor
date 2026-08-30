@@ -18,3 +18,6 @@ playwright-report/
 
 # design-phase reference material — kept locally, not published
 specs/initial/
+
+# field-captured issue notes / activity logs — kept locally, not published
+specs/issues/
