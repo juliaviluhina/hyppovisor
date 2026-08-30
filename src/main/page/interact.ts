@@ -22,6 +22,7 @@ import {
   type TargetDescriptor,
 } from "../safety/blocklist.js";
 import { chooseOption, listOptions } from "./choose-option.js";
+import { SELECTOR_SYNTAX_HELPER, assertSelectorValid } from "./selector-syntax.js";
 import type {
   InteractOperation,
   InteractionLogEntry,
@@ -36,14 +37,15 @@ async function descriptorFor(wc: WebContents, selector: string): Promise<TargetD
   const d = (await wc.executeJavaScript(
     targetDescriptorScript(selector),
     true,
-  )) as TargetDescriptor | null;
+  )) as TargetDescriptor | { __invalidSelector: true } | null;
+  assertSelectorValid(d); // non-CSS selector → INVALID_SELECTOR, before "not found"
   if (!d) {
     throw new HyppoError(
       "TARGET_NOT_FOUND",
       `No element matches selector ${JSON.stringify(selector)}.`,
     );
   }
-  return d;
+  return d as TargetDescriptor;
 }
 
 /** Short, page-text-free label for the resolved `space` target in the audit log. */
@@ -172,16 +174,18 @@ export async function resolveFillTarget(
   const d = (await wc.executeJavaScript(
     targetDescriptorScript(selector),
     true,
-  )) as TargetDescriptor | null;
+  )) as TargetDescriptor | { __invalidSelector: true } | null;
+  assertSelectorValid(d); // non-CSS selector → INVALID_SELECTOR, before "not found"
   if (!d) {
     return { ok: false, offender: { selector, reason: "no element matches" } };
   }
+  const desc = d as TargetDescriptor;
   // Batch only: check the click blocklist first so a submit control / consent
   // toggle is attributed to its precise rule (both would otherwise fall through
   // to `external-act-label` or `unsafe-fill-type`). `in-form` is ignored — it
   // never gates a fill (FR-004).
   if (gateActivation) {
-    const clickVerdict = matchBlocklist(d, "click");
+    const clickVerdict = matchBlocklist(desc, "click");
     if (clickVerdict.blocked && clickVerdict.ruleId !== "in-form") {
       return {
         ok: false,
@@ -193,14 +197,14 @@ export async function resolveFillTarget(
       };
     }
   }
-  const verdict = matchBlocklist(d, "fill");
+  const verdict = matchBlocklist(desc, "fill");
   if (verdict.blocked) {
     return {
       ok: false,
       offender: { selector, ruleId: verdict.ruleId, ruleDescription: verdict.description },
     };
   }
-  const safe = isSafeFillTarget(d);
+  const safe = isSafeFillTarget(desc);
   if (!safe.ok) {
     return {
       ok: false,
@@ -212,7 +216,7 @@ export async function resolveFillTarget(
       },
     };
   }
-  return { ok: true, descriptor: d };
+  return { ok: true, descriptor: desc };
 }
 
 /** Payload for a permitted `list_options` (feature 008, US1). */
@@ -223,22 +227,20 @@ export interface ListOptionsPayload {
 }
 
 /**
- * Resolve a target descriptor, swallowing the `SyntaxError` a non-CSS selector
- * rejects with (that case is surfaced downstream as `INVALID_SELECTOR`). Returns
- * `null` for "no match" and for "bad syntax" alike.
+ * Resolve a target descriptor for the blocklist gate. Throws `INVALID_SELECTOR`
+ * for a non-CSS selector (via `assertSelectorValid`); returns `null` for a
+ * no-match (surfaced downstream as `TARGET_NOT_FOUND` by `listOptions`).
  */
 async function descriptorOrNull(
   wc: WebContents,
   selector: string,
 ): Promise<TargetDescriptor | null> {
-  try {
-    return (await wc.executeJavaScript(
-      targetDescriptorScript(selector),
-      true,
-    )) as TargetDescriptor | null;
-  } catch {
-    return null;
-  }
+  const d = (await wc.executeJavaScript(
+    targetDescriptorScript(selector),
+    true,
+  )) as TargetDescriptor | { __invalidSelector: true } | null;
+  assertSelectorValid(d);
+  return (d as TargetDescriptor | null) ?? null;
 }
 
 export async function interact(
@@ -600,16 +602,25 @@ export async function waitForSelector(
   timeoutMs = config.defaultWaitMs,
 ): Promise<void> {
   const url = wc.getURL();
-  const script = `new Promise((resolve) => {
-    if (document.querySelector(${JSON.stringify(selector)})) return resolve(true);
-    const obs = new MutationObserver(() => {
-      if (document.querySelector(${JSON.stringify(selector)})) { obs.disconnect(); resolve(true); }
+  const SEL = JSON.stringify(selector);
+  // A non-CSS selector is rejected up front (INVALID_SELECTOR) rather than
+  // spending the whole timeout window and then reporting WAIT_TIMEOUT (FR-018).
+  const script = `(() => {${SELECTOR_SYNTAX_HELPER}
+    try { __querySafe(document, ${SEL}); }
+    catch (e) { if (e && e.__invalidSelector) return Promise.resolve({ __invalidSelector: true }); throw e; }
+    return new Promise((resolve) => {
+      if (document.querySelector(${SEL})) return resolve(true);
+      const obs = new MutationObserver(() => {
+        if (document.querySelector(${SEL})) { obs.disconnect(); resolve(true); }
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      setTimeout(() => { obs.disconnect(); resolve(false); }, ${timeoutMs});
     });
-    obs.observe(document.documentElement, { childList: true, subtree: true });
-    setTimeout(() => { obs.disconnect(); resolve(false); }, ${timeoutMs});
-  })`;
+  })()`;
 
-  const found = (await wc.executeJavaScript(script, true)) as boolean;
+  const result = (await wc.executeJavaScript(script, true)) as boolean | { __invalidSelector: true };
+  assertSelectorValid(result);
+  const found = result as boolean;
   if (!found) {
     log.record({
       tabId,

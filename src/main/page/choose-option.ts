@@ -14,7 +14,12 @@ import { HyppoError } from "../errors.js";
 import { InteractionLog } from "../safety/interaction-log.js";
 import { matchBlocklist, targetDescriptorScript, type TargetDescriptor } from "../safety/blocklist.js";
 import { capList } from "./form-fields.js";
-import { SELECTOR_SYNTAX_HELPER, assertSelectorValid } from "./selector-syntax.js";
+import {
+  SELECTOR_SYNTAX_HELPER,
+  assertSelectorValid,
+  isInvalidSelectorMarker,
+  INVALID_SELECTOR_MESSAGE,
+} from "./selector-syntax.js";
 import type { ChooseOptionReason, ChosenOption, ListedOption } from "../../shared/types.js";
 
 /** Internal — never crosses the MCP boundary. */
@@ -532,7 +537,11 @@ export async function chooseOption(
   const descriptor = (await wc.executeJavaScript(
     targetDescriptorScript(selector),
     true,
-  )) as TargetDescriptor | null;
+  )) as TargetDescriptor | { __invalidSelector: true } | null;
+  if (isInvalidSelectorMarker(descriptor)) {
+    record("error", { error: INVALID_SELECTOR_MESSAGE });
+    throw new HyppoError("INVALID_SELECTOR", INVALID_SELECTOR_MESSAGE);
+  }
   if (!descriptor) {
     record("error", { error: `No element matches selector ${JSON.stringify(selector)}.` });
     throw new HyppoError(
@@ -540,7 +549,7 @@ export async function chooseOption(
       `No element matches selector ${JSON.stringify(selector)}.`,
     );
   }
-  const verdict = matchBlocklist(descriptor, "choose_option");
+  const verdict = matchBlocklist(descriptor as TargetDescriptor, "choose_option");
   if (verdict.blocked) {
     record("refused", { ruleId: verdict.ruleId ?? null });
     throw new HyppoError(

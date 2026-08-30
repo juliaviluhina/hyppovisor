@@ -279,22 +279,22 @@ under 256 KB; `userData` gains no file and the audit log is unchanged.
 
 ### Tests for User Story 5
 
-- [ ] T035 [P] [US5] Extend `tests/integration/interaction.spec.ts`: `interact` `click`
+- [x] T035 [P] [US5] Extend `tests/integration/interaction.spec.ts`: `interact` `click`
   (and one more op) with `a:has-text('Apply')` → `INVALID_SELECTOR` whose message names the
   unsupported forms; `wait_for_selector` with the same → `INVALID_SELECTOR`;
   `#definitely-not-here` (valid CSS) still → `TARGET_NOT_FOUND`.
-- [ ] T036 [P] [US5] Extend `tests/integration/read-form-fields.spec.ts`: a bad
+- [x] T036 [P] [US5] Extend `tests/integration/read-form-fields.spec.ts`: a bad
   `containerSelector` and a bad entry in `fields` each → `INVALID_SELECTOR`.
 
 ### Implementation for User Story 5
 
-- [ ] T037 [US5] `src/main/page/interact.ts`: wrap the caller-selector `querySelector`
+- [x] T037 [US5] `src/main/page/interact.ts`: wrap the caller-selector `querySelector`
   calls in `targetDescriptorScript` / `activeElementDescriptorScript` and the
   `waitForSelector` poll script with the `SyntaxError` catch from `selector-syntax.ts`;
   call `assertSelectorValid` on the marker so every `interact` operation (`click`, `fill`,
   `scroll`, `space`, `choose_option`, `list_options`) and `wait_for_selector` return
   `INVALID_SELECTOR` before the "not found" path.
-- [ ] T038 [US5] Audit the US1 (`choose-option.ts` `probeScript`) and US2/US3
+- [x] T038 [US5] Audit the US1 (`choose-option.ts` `probeScript`) and US2/US3
   (`form-fields.ts` collector) invalid-selector paths added earlier: confirm they route
   through the one shared module + message; add any missing call site.
 

@@ -474,6 +474,30 @@ test("US3: the hidden mirror appears only when named or under includeNonInteract
   expect(mirror.mirrors).toBe("#roleCombo");
 });
 
+// ─── feature 008 US5: INVALID_SELECTOR on the reader's selector inputs (T036) ─
+
+test("US5: a bad containerSelector and a bad fields entry each → INVALID_SELECTOR", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const badContainer = await callHandle(app, "readFormFields", [tabId, "div:has-text('x')"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(badContainer)).toContain("INVALID_SELECTOR");
+
+  const badField = await callHandle(app, "readFormFields", [
+    tabId,
+    undefined,
+    { fields: ["#first_name", "a >> b"] },
+  ]).catch((e: Error) => e.message);
+  expect(String(badField)).toContain("INVALID_SELECTOR");
+
+  // a valid containerSelector that matches nothing still → TARGET_NOT_FOUND
+  const noMatch = await callHandle(app, "readFormFields", [tabId, "#no-such-container"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(noMatch)).toContain("TARGET_NOT_FOUND");
+});
+
 test("US4: more controls than the cap truncates to the first cap-many with the flag", async () => {
   const small = await startFixtureServer();
   const capped = await launchApp({ HYPPO_FORM_FIELD_CONTROL_CAP: "4" });

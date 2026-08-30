@@ -6,6 +6,7 @@
 // individually unit-testable.
 
 import type { FieldVerdict, InteractOperation } from "../../shared/types.js";
+import { SELECTOR_SYNTAX_HELPER } from "../page/selector-syntax.js";
 
 export interface TargetDescriptor {
   tagName: string; // lowercase, e.g. "button"
@@ -355,20 +356,27 @@ export const DESCRIPTOR_BODY = `
 
 /**
  * JS expression evaluated in-page: given a CSS `selector`, returns a
- * TargetDescriptor or null when nothing matches. Injected by interact.ts.
+ * TargetDescriptor, `null` when nothing matches, or `{ __invalidSelector: true }`
+ * when the selector is not valid CSS (feature 008 — the caller raises
+ * `INVALID_SELECTOR` via `assertSelectorValid`). Injected by interact.ts.
  */
 export function targetDescriptorScript(selector: string): string {
-  return `(() => {
-    const el = document.querySelector(${JSON.stringify(selector)});
+  return `(() => {${SELECTOR_SYNTAX_HELPER}
+   try {
+    const el = __querySafe(document, ${JSON.stringify(selector)});
     if (!el) return null;
     ${DESCRIPTOR_BODY}
+   } catch (e) {
+     if (e && e.__invalidSelector) return { __invalidSelector: true };
+     throw e;
+   }
   })()`;
 }
 
 /**
  * JS expression evaluated in-page for the `space` operation: describe
  * `document.activeElement`, or return null when nothing meaningful is focused
- * (no element, or focus rests on <body> / <html>).
+ * (no element, or focus rests on <body> / <html>). Takes no caller selector.
  */
 export function activeElementDescriptorScript(): string {
   return `(() => {
