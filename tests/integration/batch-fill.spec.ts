@@ -182,3 +182,59 @@ test("US2: a submit control, a consent toggle, or an unresolved selector each bo
   // every one of the three left the form untouched
   expect(await probe<string>(tabId, "document.querySelector('#first_name').value")).toBe("");
 });
+
+// ─── US3: a mid-write failure is per-field, not fatal ────────────────────────
+
+test("US3: a field removed mid-batch is error; the rest fill; batch outcome is partial (T017, SC-005)", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  // arm the fixture: the first #email `input` removes #phone from the DOM.
+  await probe<boolean>(tabId, "window.__armPhoneRemoval = true");
+  const n0 = readLog(lp).length;
+
+  const r = await callHandle<BatchResult>(app, "fillBatch", [
+    tabId,
+    [
+      ["#first_name", "A"],
+      ["#email", "a@b.co"],
+      ["#phone", "555"],
+      ["#website", "https://z.co"],
+      ["#age", "9"],
+    ],
+  ]);
+
+  expect(r.outcome).toBe("partial");
+  expect(r.summary).toEqual({ requested: 5, written: 4, errored: 1 });
+  const bySelector = Object.fromEntries(r.fields.map((f) => [f.selector, f]));
+  expect(bySelector["#phone"].outcome).toBe("error");
+  expect(typeof bySelector["#phone"].message).toBe("string");
+  expect(bySelector["#phone"].message!.length).toBeGreaterThan(0);
+  for (const sel of ["#first_name", "#email", "#website", "#age"]) {
+    expect(bySelector[sel].outcome, sel).toBe("permitted");
+  }
+
+  for (const [sel, val] of [
+    ["#first_name", "A"],
+    ["#email", "a@b.co"],
+    ["#website", "https://z.co"],
+    ["#age", "9"],
+  ] as const) {
+    expect(await probe<string>(tabId, `document.querySelector(${JSON.stringify(sel)}).value`)).toBe(
+      val,
+    );
+  }
+  expect(await probe<boolean>(tabId, "window.__submitted")).toBe(false);
+
+  const added = readLog(lp).slice(n0);
+  expect(added).toHaveLength(6);
+  const perField = added.slice(0, 5);
+  expect(perField.filter((e) => e.outcome === "permitted")).toHaveLength(4);
+  const errLine = perField.find((e) => e.outcome === "error")!;
+  expect(errLine.operation).toBe("fill");
+  expect(errLine.target).toBe("#phone");
+  expect(typeof errLine.error).toBe("string");
+  const summary = added[5];
+  expect(summary.operation).toBe("fill_batch");
+  expect(summary.outcome).toBe("partial");
+  expect(summary.batch).toEqual({ requested: 5, written: 4, errored: 1, refused: 0 });
+});
