@@ -412,6 +412,68 @@ test("US2: a lowered byte budget trims tail records in document order with trunc
   }
 });
 
+// ─── feature 008 US3: one selector + operation per control (T023) ─────────────
+
+test("US3: a scripted dropdown collapses to one record whose selector choose_option accepts", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+
+  const map = await callHandle<FormFieldMap>(app, "readFormFields", [tabId]);
+  const roleRecs = map.records.filter((r) => r.selector === "#roleCombo");
+  expect(roleRecs.length).toBe(1);
+  expect(roleRecs[0].kind).toBe("combobox");
+  expect(roleRecs[0].operation).toBe("choose");
+  // the hidden value-mirror is NOT in a default read
+  expect(map.records.map((r) => r.selector)).not.toContain("#q_role");
+
+  // that selector, fed straight into choose_option, succeeds on the first try
+  const chosen = await callHandle<{ chosenOption?: { label: string; value: string } }>(app, "interact", [
+    tabId,
+    "choose_option",
+    "#roleCombo",
+    undefined,
+    "Frontend Engineer",
+  ]);
+  expect(chosen.chosenOption).toEqual({ label: "Frontend Engineer", value: "fe" });
+});
+
+test("US3: each record's operation matches its kind", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+  const map = await callHandle<FormFieldMap>(app, "readFormFields", [
+    tabId,
+    undefined,
+    { includeNonInteractive: true },
+  ]);
+  const op = (sel: string) => map.records.find((r) => r.selector === sel)?.operation;
+  expect(op("#cfirst")).toBe("fill");
+  expect(op("#roleCombo")).toBe("choose");
+  expect(op("#plainSelect")).toBe("choose");
+  expect(op("#cnews")).toBe("activate");
+  expect(op("#cfile")).toBe("none");
+});
+
+test("US3: the hidden mirror appears only when named or under includeNonInteractive, tagged interactive:false", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+
+  const named = await callHandle<FormFieldMap>(app, "readFormFields", [
+    tabId,
+    undefined,
+    { fields: ["#q_role"] },
+  ]);
+  expect(named.records.length).toBe(1);
+  expect(named.records[0].interactive).toBe(false);
+  expect(named.records[0].mirrors).toBe("#roleCombo");
+
+  const withAll = await callHandle<FormFieldMap>(app, "readFormFields", [
+    tabId,
+    undefined,
+    { includeNonInteractive: true },
+  ]);
+  const mirror = withAll.records.find((r) => r.selector === "#q_role")!;
+  expect(mirror).toBeTruthy();
+  expect(mirror.interactive).toBe(false);
+  expect(mirror.mirrors).toBe("#roleCombo");
+});
+
 test("US4: more controls than the cap truncates to the first cap-many with the flag", async () => {
   const small = await startFixtureServer();
   const capped = await launchApp({ HYPPO_FORM_FIELD_CONTROL_CAP: "4" });

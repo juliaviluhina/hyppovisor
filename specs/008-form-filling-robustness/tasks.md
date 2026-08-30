@@ -182,14 +182,14 @@ whose `selector` `choose_option` accepts; every record states its `operation` an
 
 ### Tests for User Story 3
 
-- [ ] T022 [P] [US3] Extend `tests/unit/form-fields.test.ts`: the mirror classifier tags a
+- [x] T022 [P] [US3] Extend `tests/unit/form-fields.test.ts`: the mirror classifier tags a
   hidden same-`name` input beside a combobox `interactive: false` + `mirrors:
   "<combobox selector>"`; the combobox record's synthesised `selector` is the chooser
   element, never the `[name]` input; `operation` derivation matches the `data-model.md`
   table. Extend `tests/unit/blocklist.test.ts`: `chooseVerdictFor` refuses exactly the
   `submit-control` / `consent-toggle` / `credential-field` / `external-act-label` targets
   and permits an in-form plain field.
-- [ ] T023 [P] [US3] Extend `tests/integration/read-form-fields.spec.ts`: `combobox.html`'s
+- [x] T023 [P] [US3] Extend `tests/integration/read-form-fields.spec.ts`: `combobox.html`'s
   scripted widget appears as one record; that `selector` passed to
   `interact { operation: "choose_option" }` succeeds first try (no `not-a-dropdown`); each
   record's `operation` matches its kind; the hidden mirror appears only under
@@ -197,21 +197,21 @@ whose `selector` `choose_option` accepts; every record states its `operation` an
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] `src/main/safety/blocklist.ts`: add `chooseVerdictFor(descriptor)` — apply
+- [x] T024 [US3] `src/main/safety/blocklist.ts`: add `chooseVerdictFor(descriptor)` — apply
   the `choose_option` gate (`submit-control`, `consent-toggle`, `credential-field`,
   `external-act-label` refuse; `in-form` does not gate), returning the same
   `{ allowed, ruleId?, description? }` shape as `fillVerdictFor` / `clickVerdictFor`.
-- [ ] T025 [US3] `src/main/page/form-fields.ts` collector: cluster pass — for each
+- [x] T025 [US3] `src/main/page/form-fields.ts` collector: cluster pass — for each
   `role="combobox"` / `role="listbox"` / listbox-owner candidate, find an associated hidden
   `<input>` (shares `name`, or the combobox sits inside the input's nearest widget
   container); tag that input `interactive: false` + `mirrors: "<combobox selector>"`, and
   constrain `synthesizeSelector` for the combobox record to the chooser element (never the
   `[name]` input).
-- [ ] T026 [US3] `src/main/page/form-fields.ts` main process: set `operation` on every
+- [x] T026 [US3] `src/main/page/form-fields.ts` main process: set `operation` on every
   record from `kind` (`data-model.md` R8 table) and `chooseVerdict` from
   `chooseVerdictFor(descriptor)`; extend the default non-interactive exclusion to also drop
   `interactive === false` records (unless named in `fields` or `includeNonInteractive`).
-- [ ] T027 [US3] Update `specs/001-open-any-url/contracts/mcp-tools.md`: the new record
+- [x] T027 [US3] Update `specs/001-open-any-url/contracts/mcp-tools.md`: the new record
   fields (`operation`, `chooseVerdict`, `interactive`, `mirrors`) and the "one record per
   scripted dropdown, chooser selector" guarantee.
 

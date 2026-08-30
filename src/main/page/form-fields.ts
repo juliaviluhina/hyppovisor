@@ -18,6 +18,7 @@ import { HyppoError } from "../errors.js";
 import {
   fillVerdictFor,
   clickVerdictFor,
+  chooseVerdictFor,
   DESCRIPTOR_BODY,
   ACCESSIBLE_NAME_SOURCES_BODY,
   type TargetDescriptor,
@@ -160,6 +161,19 @@ interface RawRecord {
   maxLength?: number;
   pattern?: string;
   inputMode?: string;
+  /**
+   * feature 008 (R7) — set on a hidden value-mirror record: the index (in the
+   * pre-filter record list) of the combobox whose value this input carries,
+   * present only when that combobox is itself in the list.
+   */
+  mirrorOfIndex?: number;
+  /**
+   * feature 008 (R7) — set on any hidden value-mirror record: an in-page-computed
+   * selector for its combobox. Used for `mirrors` when the combobox is not in the
+   * record list (e.g. a `fields`-projected read that named only the mirror), and
+   * as the signal that the record is a mirror (⇒ `interactive: false`).
+   */
+  mirrorComboHint?: string;
 }
 
 type CollectorResult =
@@ -373,6 +387,92 @@ export function formFieldsScript(
   const hardCeilingHit = candidates.length > HARD_CEILING;
   const chosen = hardCeilingHit ? candidates.slice(0, HARD_CEILING) : candidates;
 
+  // feature 008 (R7): value-mirror cluster pass. Pair each combobox / listbox /
+  // listbox-owner with a hidden input that carries its value: same cluster means
+  // it shares the name attribute, or the combobox sits inside a marked
+  // (class or data-* bearing) container that also holds the input.
+  const roleOf = (el) => (el.getAttribute("role") || "").toLowerCase();
+  const ownsListbox = (el) => {
+    for (const attr of ["aria-controls", "aria-owns"]) {
+      const ref = el.getAttribute(attr);
+      if (ref) for (const id of ref.split(/\\s+/)) {
+        const n = document.getElementById(id);
+        if (n && roleOf(n) === "listbox") return true;
+      }
+    }
+    return false;
+  };
+  const isComboEl = (el) => {
+    const r = roleOf(el);
+    return r === "combobox" || r === "listbox" || ownsListbox(el);
+  };
+  const isHiddenMirrorInput = (el) => {
+    if (el.tagName.toLowerCase() !== "input") return false;
+    const t = (el.getAttribute("type") || "").toLowerCase();
+    const hidden = t === "hidden" || !isVisible(el);
+    return hidden && (t === "hidden" || !!el.getAttribute("name"));
+  };
+  const markedAncestor = (el, has) => {
+    let a = el.parentElement, hops = 0;
+    while (a && hops < 3) {
+      const tag = a.tagName.toLowerCase();
+      if (tag === "form" || tag === "body") break;
+      const marked = !!a.className ||
+        [].some.call(a.attributes, (at) => at.name.indexOf("data-") === 0);
+      if (marked) { const c = has(a); if (c) return c; }
+      a = a.parentElement; hops++;
+    }
+    return null;
+  };
+  // A stable selector for a combobox that is NOT itself in the record list
+  // (fallback for a value-mirror mirrors field): id, then name, then structural.
+  const selectorHintFor = (el) => {
+    if (el.id) {
+      const s = "#" + esc(el.id);
+      try { if (document.querySelectorAll(s).length === 1) return s; } catch (_) {}
+    }
+    const nm = el.getAttribute("name");
+    if (nm) {
+      const s = '[name="' + esc(nm) + '"]';
+      try { if (document.querySelectorAll(s).length === 1) return s; } catch (_) {}
+      const st = el.tagName.toLowerCase() + s;
+      try { if (document.querySelectorAll(st).length === 1) return st; } catch (_) {}
+    }
+    return structuralPath(el);
+  };
+  // For a hidden mirror input, find the combobox whose value it carries:
+  // shares the name attribute, or sits in a shared marked container.
+  const comboForMirror = (mirror) => {
+    const nm = mirror.getAttribute("name");
+    if (nm) {
+      const byName = [].slice.call(document.querySelectorAll('[name="' + esc(nm) + '"]'))
+        .find((x) => x !== mirror && isComboEl(x));
+      if (byName) return byName;
+    }
+    return markedAncestor(mirror, (a) => {
+      const c = a.querySelector('[role="combobox"], [role="listbox"]');
+      return c && c !== mirror ? c : null;
+    });
+  };
+
+  const chosenIndexOf = new Map();
+  chosen.forEach((el, i) => chosenIndexOf.set(el, i));
+
+  const mirrorOfIndexByChosen = {}; // chosenIndex(mirror) -> chosenIndex(combo), both in the list
+  const mirrorComboHint = {};       // chosenIndex(mirror) -> in-page selector hint for its combo
+  const comboHasMirror = new Set();  // chosenIndex(combo) that a mirror points at
+  chosen.forEach((el, i) => {
+    if (!isHiddenMirrorInput(el)) return;
+    const combo = comboForMirror(el);
+    if (!combo) return;
+    mirrorComboHint[i] = selectorHintFor(combo);
+    const ci = chosenIndexOf.get(combo);
+    if (ci !== undefined) {
+      mirrorOfIndexByChosen[i] = ci;
+      comboHasMirror.add(ci);
+    }
+  });
+
   const records = chosen.map((el, idx) => {
     const id = el.id || "";
     const nm = el.getAttribute("name") || "";
@@ -387,16 +487,20 @@ export function formFieldsScript(
       el.getAttribute("aria-required") === "true" ||
       /\\*/.test(label);
     const opt = optionsFor(el);
-    return Object.assign({
+    // A combobox that has a value-mirror must NOT synthesise a name-attribute
+    // selector (it would also match the hidden input) — force id / structural
+    // (R7 / FR-015).
+    const suppressName = comboHasMirror.has(idx);
+    const rec = Object.assign({
       descriptor: descriptorFor(el),
       selectorCounts: {
         id: id ? esc(id) : null,
-        name: nm ? esc(nm) : null,
+        name: suppressName ? null : (nm ? esc(nm) : null),
         tagName: tagName,
         structuralPath: path,
         idCount: idSel ? document.querySelectorAll(idSel).length : 0,
-        nameBareCount: nameBare ? document.querySelectorAll(nameBare).length : 0,
-        nameTaggedCount: nameTagged ? document.querySelectorAll(nameTagged).length : 0,
+        nameBareCount: suppressName ? 0 : (nameBare ? document.querySelectorAll(nameBare).length : 0),
+        nameTaggedCount: suppressName ? 0 : (nameTagged ? document.querySelectorAll(nameTagged).length : 0),
         structuralCount: path ? document.querySelectorAll(path).length : 0,
       },
       label: label,
@@ -409,6 +513,13 @@ export function formFieldsScript(
       optionsAvailable: opt.optionsAvailable,
       optionsTruncated: opt.optionsTruncated,
     }, constraintsFor(el));
+    if (Object.prototype.hasOwnProperty.call(mirrorOfIndexByChosen, idx)) {
+      rec.mirrorOfIndex = mirrorOfIndexByChosen[idx];
+    }
+    if (Object.prototype.hasOwnProperty.call(mirrorComboHint, idx)) {
+      rec.mirrorComboHint = mirrorComboHint[idx];
+    }
+    return rec;
   });
 
   return {
@@ -438,6 +549,30 @@ export interface ReadFormFieldsOptions {
   includeNonInteractive?: boolean;
   /** Return only records that are `required` and whose current value is empty. */
   only?: "required-unfilled";
+}
+
+/**
+ * Which `interact` operation applies to a control, from its `kind` alone
+ * (data-model.md R8). Pure. Mechanical restatement — no judgement (Principle II).
+ */
+export function operationForKind(
+  kind: FormFieldRecord["kind"],
+): NonNullable<FormFieldRecord["operation"]> {
+  switch (kind) {
+    case "text":
+    case "textarea":
+    case "richtext":
+      return "fill";
+    case "select":
+    case "combobox":
+      return "choose";
+    case "checkbox":
+    case "radio":
+    case "button":
+      return "activate";
+    default:
+      return "none";
+  }
 }
 
 /**
@@ -518,12 +653,13 @@ export async function readFormFields(
     const sel = synthesizeSelector(r.selectorCounts);
     const fillVerdict = fillVerdictFor(d);
     const clickVerdict = clickVerdictFor(d);
+    const kind = kindFor(d.tagName, d.type, d.role, d.isContentEditable);
     const opts_ = capList(r.options, config.formFieldOptionCap);
     const record: FormFieldRecord = {
       selector: sel.selector,
       selectorSynthesised: sel.selectorSynthesised,
       duplicateId: sel.duplicateId,
-      kind: kindFor(d.tagName, d.type, d.role, d.isContentEditable),
+      kind,
       type: d.type,
       label: r.label,
       required: r.required,
@@ -535,6 +671,8 @@ export async function readFormFields(
       optionsTruncated: opts_.truncated,
       fillVerdict,
       clickVerdict,
+      operation: operationForKind(kind),
+      chooseVerdict: chooseVerdictFor(d),
     };
     // A credential field's value never enters the payload — the key is omitted
     // entirely, not set to null / a placeholder, so payload length cannot leak
@@ -545,14 +683,30 @@ export async function readFormFields(
     if (r.maxLength !== undefined) record.maxLength = r.maxLength;
     if (r.pattern !== undefined) record.pattern = r.pattern;
     if (r.inputMode !== undefined) record.inputMode = r.inputMode;
+    // A plain button is non-interactive for a fill workflow.
+    if (kind === "button") record.interactive = false;
     return record;
   });
 
-  // Default-read exclusion: plain buttons. Skipped when the read was
-  // `fields`-projected (an explicit selector overrides the exclusion, FR-010) or
-  // `includeNonInteractive: true`.
+  // Value-mirror cluster (R7): a hidden input carrying a combobox's value is
+  // marked non-interactive and points at that combobox's selector — the
+  // synthesised one when the combobox is also in the list, else the in-page hint.
+  // Resolved before any filtering so the index alignment with `full.records` holds.
+  mapped.forEach((rec, i) => {
+    const raw = full.records[i];
+    if (raw.mirrorComboHint === undefined && raw.mirrorOfIndex === undefined) return;
+    rec.interactive = false;
+    const canonical =
+      raw.mirrorOfIndex !== undefined ? mapped[raw.mirrorOfIndex]?.selector : undefined;
+    const target = canonical ?? raw.mirrorComboHint;
+    if (target != null) rec.mirrors = target;
+  });
+
+  // Default-read exclusion: plain buttons and non-interactive records (value
+  // mirrors). Skipped when the read was `fields`-projected (an explicit selector
+  // overrides the exclusion, FR-010) or `includeNonInteractive: true`.
   if (!full.fieldsProjected && !includeNonInteractive) {
-    mapped = mapped.filter((rec) => rec.kind !== "button");
+    mapped = mapped.filter((rec) => rec.kind !== "button" && rec.interactive !== false);
   }
 
   if (only === "required-unfilled") {

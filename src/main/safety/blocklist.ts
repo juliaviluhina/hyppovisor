@@ -275,6 +275,25 @@ export function clickVerdictFor(d: TargetDescriptor): FieldVerdict {
 }
 
 /**
+ * The verdict `interact`'s `choose_option` / `list_options` path produces for a
+ * target (feature 008, R8). Applies the same rule set those ops use —
+ * `submit-control`, `consent-toggle`, `credential-field`, `external-act-label`
+ * refuse; `in-form` does **not** gate (it is `click`-only). Returns the
+ * `{ allowed, ruleId?, description? }` shape the reader attaches as `chooseVerdict`.
+ */
+export function chooseVerdictFor(d: TargetDescriptor): {
+  allowed: boolean;
+  ruleId?: string;
+  description?: string;
+} {
+  const blocked = matchBlocklist(d, "choose_option");
+  if (blocked.blocked) {
+    return { allowed: false, ruleId: blocked.ruleId, description: blocked.description };
+  }
+  return { allowed: true };
+}
+
+/**
  * Shared in-page snippet: given a bound `el`, declare the raw accessible-name
  * source strings as locals (`__forLabelText`, `__wrapLabelText`, `__ariaLabelText`,
  * `__ariaLabelledbyText`, `__placeholderText`, `__titleText`) — case preserved,

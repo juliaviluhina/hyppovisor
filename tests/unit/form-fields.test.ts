@@ -12,6 +12,7 @@ import {
   capList,
   isRequiredUnfilled,
   checkReadFormFieldsShape,
+  operationForKind,
   type SelectorCounts,
 } from "../../src/main/page/form-fields.js";
 import {
@@ -201,6 +202,103 @@ const desc = (o: Partial<TargetDescriptor>): TargetDescriptor => ({
 });
 
 // ─── feature 008 US2 ────────────────────────────────────────────────────────
+
+describe("operationForKind — data-model.md R8 table", () => {
+  it("maps every kind to its interact operation", () => {
+    expect(operationForKind("text")).toBe("fill");
+    expect(operationForKind("textarea")).toBe("fill");
+    expect(operationForKind("richtext")).toBe("fill");
+    expect(operationForKind("select")).toBe("choose");
+    expect(operationForKind("combobox")).toBe("choose");
+    expect(operationForKind("checkbox")).toBe("activate");
+    expect(operationForKind("radio")).toBe("activate");
+    expect(operationForKind("button")).toBe("activate");
+    expect(operationForKind("file")).toBe("none");
+    expect(operationForKind("other")).toBe("none");
+  });
+});
+
+describe("readFormFields — every record carries operation + chooseVerdict (R8)", () => {
+  it("derives operation from kind and chooseVerdict from the blocklist", async () => {
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        hardCeilingHit: false,
+        fieldsProjected: false,
+        records: [
+          rawRecord(desc({ tagName: "input", type: "text", name: "first name" })),
+          rawRecord(desc({ tagName: "select", type: null }), { options: [], optionsAvailable: true }),
+          rawRecord(desc({ tagName: "input", type: "checkbox", name: "i agree to the terms" })),
+        ],
+      }),
+      "tab-1",
+      undefined,
+      0,
+      { includeNonInteractive: true },
+    );
+    expect(map.records[0].operation).toBe("fill");
+    expect(map.records[0].chooseVerdict).toEqual({ allowed: true });
+    expect(map.records[1].operation).toBe("choose");
+    // the consent checkbox: choose_option would refuse it (consent-toggle)
+    expect(map.records[2].chooseVerdict).toMatchObject({ allowed: false, ruleId: "consent-toggle" });
+  });
+});
+
+describe("readFormFields — value-mirror cluster collapse (R7 / FR-015)", () => {
+  it("tags the hidden mirror interactive:false + mirrors:<combo selector>; combo record stays interactive", async () => {
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        hardCeilingHit: false,
+        fieldsProjected: true, // fields-projected so both survive for the assertion
+        records: [
+          // index 0: the combobox (role=combobox), id → selector #roleCombo
+          {
+            ...rawRecord(desc({ tagName: "div", type: null, role: "combobox" })),
+            selectorCounts: {
+              id: "roleCombo",
+              name: null,
+              tagName: "div",
+              structuralPath: "",
+              idCount: 1,
+              nameBareCount: 0,
+              nameTaggedCount: 0,
+              structuralCount: 0,
+            },
+          },
+          // index 1: the hidden mirror, pointing back at index 0
+          {
+            ...rawRecord(desc({ tagName: "input", type: "hidden" })),
+            visible: false,
+            mirrorOfIndex: 0,
+            selectorCounts: {
+              id: "q_role",
+              name: "q_role",
+              tagName: "input",
+              structuralPath: "",
+              idCount: 1,
+              nameBareCount: 1,
+              nameTaggedCount: 1,
+              structuralCount: 0,
+            },
+          },
+        ],
+      }),
+      "tab-1",
+      undefined,
+      0,
+      { fields: ["#roleCombo", "#q_role"] },
+    );
+    const combo = map.records[0];
+    const mirror = map.records[1];
+    expect(combo.selector).toBe("#roleCombo");
+    expect("interactive" in combo).toBe(false); // genuine control ⇒ interactive absent
+    expect(mirror.interactive).toBe(false);
+    expect(mirror.mirrors).toBe("#roleCombo");
+  });
+});
 
 describe("isRequiredUnfilled — required && currently empty (data-model.md §1)", () => {
   it("true only for a required control with no value", () => {
