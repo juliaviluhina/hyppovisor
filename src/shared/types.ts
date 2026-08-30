@@ -27,12 +27,29 @@ export interface PageReadResult {
   queueDepth: number;
 }
 
-export type InteractOperation = "click" | "fill" | "scroll" | "space";
+export type InteractOperation = "click" | "fill" | "scroll" | "space" | "choose_option";
+
+/** Non-rule refusal reasons for `choose_option` (feature 006, data-model.md §4). */
+export type ChooseOptionReason =
+  | "not-a-dropdown"
+  | "no-option-match"
+  | "ambiguous-option"
+  | "option-disabled"
+  | "option-not-appeared"
+  | "multi-select";
+
+/** The matched option a permitted `choose_option` returns (feature 006, FR-014). */
+export interface ChosenOption {
+  label: string;
+  value: string;
+}
 
 export interface InteractResult {
   tabId: string;
   operation: InteractOperation | "wait_for_selector" | "navigate";
   outcome: "permitted";
+  /** Present only for a permitted `choose_option`. */
+  chosenOption?: ChosenOption;
   queueDepth: number;
 }
 
@@ -158,4 +175,9 @@ export interface InteractionLogEntry {
   error: string | null;
   /** Set only on a batch-summary entry (`operation: "fill_batch"`, feature 004). */
   batch?: { requested: number; written: number; errored: number; refused: number };
+  /**
+   * Set only on a non-rule `choose_option` refusal (feature 006) — one of
+   * `ChooseOptionReason`. `ruleId` stays `null` in that case.
+   */
+  reason?: string;
 }

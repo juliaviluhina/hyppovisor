@@ -78,24 +78,37 @@ Points an existing tab at a new URL.
 Bounded interaction to reveal content. **Cannot** submit, send, or apply.
 
 **Input**:
-`{ tabId: string, operation: "click" | "fill" | "scroll" | "space", selector?: string, value?: string, fields?: Array<{ selector: string, value: string }> }`
+`{ tabId: string, operation: "click" | "fill" | "scroll" | "space" | "choose_option", selector?: string, value?: string, label?: string, fields?: Array<{ selector: string, value: string }> }`
 
-- `selector` required for `click` and `fill` (single form); `space` acts on the focused element.
+- `selector` required for `click`, `fill` (single form), and `choose_option`; `space` acts on
+  the focused element.
 - `value` required for `fill` (single form).
 - `fields` (feature 004) — `fill` only, an alternative to `selector` + `value`: an ordered
   list of up to 50 `{ selector, value }` pairs applied in one call. Supply exactly one of the
   two forms.
+- `label` (feature 006) — `choose_option` only: the target option's visible label
+  (case-insensitive, whitespace-collapsed). Supply `label` and/or `value`; with both, `value`
+  selects and `label` must also match. `choose_option` never presses Enter and never submits.
 
 **Returns**: `{ tabId, operation, outcome: "permitted", queueDepth }`. A batch `fill`
 returns `{ tabId, operation: "fill", outcome: "permitted" | "partial", fields: Array<{ selector, outcome, message? }>, summary: { requested, written, errored }, queueDepth }`.
+A permitted `choose_option` additionally carries `chosenOption: { label, value }` — the
+matched option's verbatim label and value (feature 006).
 
-**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND`, `REFUSED_EXTERNAL_ACT`, `BATCH_REJECTED`.
+**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND`, `REFUSED_EXTERNAL_ACT`, `BATCH_REJECTED`,
+`CHOOSE_OPTION_FAILED`.
 
 **Refusal**: when the target matches a blocklist rule, returns `REFUSED_EXTERNAL_ACT` with
 `{ ruleId, description }` and a message referencing the no-external-act rule (FR-012, FR-012a).
 `fill` additionally refuses credential inputs (FR-018). A batch `fill` with any forbidden or
 unresolved target returns `BATCH_REJECTED` with a `targets[]` breakdown and writes nothing;
 cap / empty / malformed-call refusals use `BATCH_REJECTED` without `targets` (feature 004).
+`choose_option` refuses a non-chooser, an ambiguous / disabled / no-match / never-rendered
+option, or a `<select multiple>` with `CHOOSE_OPTION_FAILED` and a `reason` (`not-a-dropdown`
+/ `no-option-match` / `ambiguous-option` (+ `candidates`) / `option-disabled` /
+`option-not-appeared` / `multi-select`); a submit/consent/credential/wording chooser is
+`REFUSED_EXTERNAL_ACT`. `in-form` does not gate `choose_option`. Every refusal leaves the
+control unchanged (feature 006).
 
 ---
 

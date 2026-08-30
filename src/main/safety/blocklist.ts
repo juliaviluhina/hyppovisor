@@ -24,23 +24,28 @@ export interface BlocklistRule {
   /**
    * Which operations a rule is evaluated for:
    * - `"click"` / `"fill"` / `"space"` — that operation only
-   * - `"activation"` — a `click` or a `space` (anything that activates the target)
-   * - `"fill-or-space"` — a `fill` or a `space` (Space can type into a field too)
+   * - `"activation"` — a `click`, a `space`, or a `choose_option` (anything that
+   *   activates a control)
+   * - `"fill-or-space"` — a `fill`, a `space`, or a `choose_option` (anything that
+   *   commits a value into a control)
    * - `"both"` — every descriptor-bearing operation (`scroll` never reaches here)
    */
   appliesTo: "click" | "fill" | "space" | "activation" | "fill-or-space" | "both";
   matches: (d: TargetDescriptor, op: InteractOperation) => boolean;
 }
 
-/** Whether a rule's `appliesTo` covers the operation being evaluated. */
-function ruleCovers(appliesTo: BlocklistRule["appliesTo"], op: InteractOperation): boolean {
+/** Whether a rule's `appliesTo` covers the operation being evaluated. Exported for tests. */
+export function ruleCovers(
+  appliesTo: BlocklistRule["appliesTo"],
+  op: InteractOperation,
+): boolean {
   switch (appliesTo) {
     case "both":
       return true;
     case "activation":
-      return op === "click" || op === "space";
+      return op === "click" || op === "space" || op === "choose_option";
     case "fill-or-space":
-      return op === "fill" || op === "space";
+      return op === "fill" || op === "space" || op === "choose_option";
     default:
       return appliesTo === op;
   }

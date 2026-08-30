@@ -1,12 +1,14 @@
-// Bounded interaction: click / fill / scroll / space / wait_for_selector
-// (FR-012, FR-018; feature 003 adds `space` and permits in-form `fill`).
+// Bounded interaction: click / fill / scroll / space / choose_option /
+// wait_for_selector (FR-012, FR-018; feature 003 adds `space` and permits in-form
+// `fill`; feature 006 adds `choose_option`).
 //
 // Every attempt — permitted, refused, or errored — produces exactly one
 // interaction-log entry (FR-024a, FR-012b, feature 003 FR-013). No operation can
-// submit, send, or apply; refusals reference a named blocklist rule (FR-012a) or
-// the `unsafe-fill-type` allowlist check. Entering a value into a plain,
-// non-credential, non-consent field is permitted preparation (constitution
-// Principle I, amended), not an external act.
+// submit, send, or apply, and no operation presses Enter; refusals reference a
+// named blocklist rule (FR-012a) or the `unsafe-fill-type` allowlist check.
+// Entering a value into a plain, non-credential, non-consent field — and choosing
+// an option in a plain `<select>` / combobox (feature 006) — is permitted
+// preparation (constitution Principle I, amended), not an external act.
 
 import type { WebContents } from "electron";
 import { config } from "../config.js";
@@ -19,12 +21,14 @@ import {
   activeElementDescriptorScript,
   type TargetDescriptor,
 } from "../safety/blocklist.js";
+import { chooseOption } from "./choose-option.js";
 import type {
   InteractOperation,
   InteractionLogEntry,
   BatchFillField,
   BatchFieldResult,
   BatchFillResult,
+  ChosenOption,
 } from "../../shared/types.js";
 
 async function descriptorFor(wc: WebContents, selector: string): Promise<TargetDescriptor> {
@@ -217,10 +221,18 @@ export async function interact(
   operation: InteractOperation,
   selector: string | undefined,
   value: string | undefined,
-): Promise<void> {
+  label?: string,
+): Promise<{ chosenOption?: ChosenOption } | void> {
   const url = wc.getURL();
   const target = selector ?? null;
   let logged = false;
+
+  // choose_option manages its own single audit entry on every path (like the
+  // branches below) and is dispatched before this try/catch so a thrown refusal
+  // is not double-logged as an "error" by the outer catch.
+  if (operation === "choose_option") {
+    return chooseOption(wc, log, tabId, selector, label, value);
+  }
 
   try {
     if (operation === "scroll") {

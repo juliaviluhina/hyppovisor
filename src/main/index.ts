@@ -98,11 +98,27 @@ async function main(): Promise<void> {
             .run((d) => readPage(tabs.webContentsFor(tabId), tabId, includeDom, d))
             .then((r) => r.value),
         ),
-      interact: (tabId: string, operation: InteractOperation, selector?: string, value?: string) =>
+      interact: (
+        tabId: string,
+        operation: InteractOperation,
+        selector?: string,
+        value?: string,
+        label?: string,
+      ) =>
         withCode(() =>
           queue
-            .run(() => interact(tabs.webContentsFor(tabId), log, tabId, operation, selector, value))
-            .then((r) => ({ tabId, operation, outcome: "permitted", queueDepth: r.queueDepth })),
+            .run(() =>
+              interact(tabs.webContentsFor(tabId), log, tabId, operation, selector, value, label),
+            )
+            .then((r) => ({
+              tabId,
+              operation,
+              outcome: "permitted",
+              ...(r.value && typeof r.value === "object" && "chosenOption" in r.value
+                ? { chosenOption: r.value.chosenOption }
+                : {}),
+              queueDepth: r.queueDepth,
+            })),
         ),
       // Tests pass terse [selector, value] tuples; the MCP tool uses the
       // { selector, value } object form.
