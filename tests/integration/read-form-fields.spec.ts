@@ -199,3 +199,50 @@ test("US3: <select> lists every option; a combobox lists in-DOM options, none wh
   expect(closed.options).toEqual([]);
   expect(closed.optionsAvailable).toBe(false);
 });
+
+// ─── US4: container scoping and an oversized page (T020) ──────────────────────
+
+test("US4: a container selector scopes the read; an unresolved container errors", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const other = await read(tabId, "#otherform");
+  expect(other.records.map((r) => r.selector)).toEqual(["#other_field"]);
+
+  const scoped = await read(tabId, "#theform");
+  const sels = scoped.records.map((r) => r.selector);
+  for (const outside of ["#safeBtn", "#connectLink", "#saveBtn", "#tos", "#remoteOnly", "#other_field"]) {
+    expect(sels, outside).not.toContain(outside);
+  }
+  // controls that ARE inside #theform are present
+  for (const inside of ["#name", "#first_name", "#country", "#resume", "#submitBtn"]) {
+    expect(sels, inside).toContain(inside);
+  }
+
+  const err = await callHandle(app, "readFormFields", [tabId, "#no-such-container"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(err)).toContain("TARGET_NOT_FOUND");
+});
+
+test("US4: more controls than the cap truncates to the first cap-many with the flag", async () => {
+  const small = await startFixtureServer();
+  const capped = await launchApp({ HYPPO_FORM_FIELD_CONTROL_CAP: "4" });
+  try {
+    const { tabId } = await callHandle<{ tabId: string }>(capped, "open", [
+      `${small.base}/form.html`,
+    ]);
+    const map = await callHandle<FormFieldMap>(capped, "readFormFields", [tabId]);
+    expect(map.truncated).toBe(true);
+    expect(map.records.length).toBe(4);
+    // the first four in document order: #name, #password, #first_name, #last_name
+    expect(map.records.map((r) => r.selector)).toEqual([
+      "#name",
+      "#password",
+      "#first_name",
+      "#last_name",
+    ]);
+  } finally {
+    await capped.close();
+    small.server.close();
+  }
+});
