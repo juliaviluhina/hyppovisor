@@ -21,6 +21,7 @@ import {
 } from "../safety/blocklist.js";
 import type {
   InteractOperation,
+  InteractionLogEntry,
   BatchFillField,
   BatchFieldResult,
   BatchFillResult,
@@ -347,6 +348,157 @@ export async function interact(
       ? e
       : new HyppoError("TARGET_NOT_FOUND", `Interaction failed on ${selector}: ${message}`);
   }
+}
+
+/**
+ * Malformed-call guard for the `fill` operation (feature 004, FR-001). A call
+ * must carry exactly one of a single `(selector, value)` or a `fields` batch.
+ * Returns the error to throw, or null when the shape is valid. Shared by the
+ * MCP tool dispatch so the check is unit-testable.
+ */
+export function checkFillInputShape(
+  selector: string | undefined,
+  value: string | undefined,
+  fields: BatchFillField[] | undefined,
+): HyppoError | null {
+  const hasSingle = selector !== undefined || value !== undefined;
+  const hasBatch = fields !== undefined;
+  if (hasSingle === hasBatch) {
+    return new HyppoError(
+      "BATCH_REJECTED",
+      "fill requires either (selector, value) or fields, not both.",
+    );
+  }
+  return null;
+}
+
+/**
+ * Batch `fill` (feature 004): an ordered list of `(selector, value)` pairs
+ * applied in one queued operation. All-or-nothing pre-write check (resolve +
+ * rule-check every target with the same logic a single `fill` uses; any
+ * forbidden or unresolved target refuses the whole batch, nothing written),
+ * then a best-effort write pass (a field that fails mid-write is `error` and the
+ * batch continues). One audit entry per field plus one `fill_batch` summary.
+ */
+export async function fillBatch(
+  wc: WebContents,
+  log: InteractionLog,
+  tabId: string,
+  fields: BatchFillField[],
+  queueDepth = 0,
+): Promise<BatchFillResult> {
+  const url = wc.getURL();
+  const requested = fields.length;
+
+  const summaryEntry = (
+    outcome: InteractionLogEntry["outcome"],
+    counts: { written: number; errored: number; refused: number },
+  ) =>
+    log.record({
+      tabId,
+      url,
+      operation: "fill_batch",
+      target: null,
+      outcome,
+      ruleId: null,
+      error: null,
+      batch: { requested, ...counts },
+    });
+
+  // cap / empty guards (FR-003) — no `targets` breakdown.
+  if (requested === 0) {
+    summaryEntry("refused", { written: 0, errored: 0, refused: 0 });
+    throw new HyppoError("BATCH_REJECTED", "Batch fill requires at least one field.");
+  }
+  if (requested > config.batchFillCap) {
+    summaryEntry("refused", { written: 0, errored: 0, refused: 0 });
+    throw new HyppoError(
+      "BATCH_REJECTED",
+      `Batch fill accepts at most ${config.batchFillCap} fields; ${requested} supplied. ` +
+        `Nothing was written.`,
+    );
+  }
+
+  // Pre-write pass (FR-004 / FR-005): resolve + rule-check every target, collect
+  // every offender. Any offender → refuse the whole batch, write nothing.
+  const offenders: FillOffender[] = [];
+  for (const { selector } of fields) {
+    const resolved = await resolveFillTarget(wc, selector);
+    if (!resolved.ok) offenders.push(resolved.offender);
+  }
+  if (offenders.length > 0) {
+    for (const off of offenders) {
+      log.record({
+        tabId,
+        url,
+        operation: "fill",
+        target: off.selector,
+        outcome: "refused",
+        ruleId: off.ruleId ?? null,
+        error: off.ruleId ? null : (off.reason ?? null),
+      });
+    }
+    summaryEntry("refused", { written: 0, errored: 0, refused: offenders.length });
+    throw new HyppoError(
+      "BATCH_REJECTED",
+      `${offenders.length} target(s) refused; no fields were written.`,
+      {
+        targets: offenders.map((o) => ({
+          selector: o.selector,
+          ...(o.ruleId ? { ruleId: o.ruleId } : {}),
+          ...(o.ruleDescription ? { ruleDescription: o.ruleDescription } : {}),
+          ...(o.reason ? { reason: o.reason } : {}),
+        })),
+      },
+    );
+  }
+
+  // Write pass (FR-007 / FR-008): best-effort, in order. A field whose element
+  // vanished after the check is `error`; the batch continues.
+  const results: BatchFieldResult[] = [];
+  let written = 0;
+  let errored = 0;
+  for (const { selector, value } of fields) {
+    try {
+      await wc.executeJavaScript(fillScript(selector, value), true);
+      results.push({ selector, outcome: "permitted" });
+      written++;
+      log.record({
+        tabId,
+        url,
+        operation: "fill",
+        target: selector,
+        outcome: "permitted",
+        ruleId: null,
+        error: null,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      results.push({ selector, outcome: "error", message });
+      errored++;
+      log.record({
+        tabId,
+        url,
+        operation: "fill",
+        target: selector,
+        outcome: "error",
+        ruleId: null,
+        error: message,
+      });
+    }
+  }
+
+  const outcome: "permitted" | "partial" = errored === 0 ? "permitted" : "partial";
+  summaryEntry(outcome, { written, errored, refused: 0 });
+
+  return {
+    tabId,
+    operation: "fill",
+    outcome,
+    fields: results,
+    summary: { requested, written, errored },
+    queueDepth,
+  };
 }
 
 export async function waitForSelector(

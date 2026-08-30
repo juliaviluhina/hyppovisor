@@ -9,7 +9,7 @@ import type { TabManager } from "../tabs/tab-manager.js";
 import type { InteractionLog } from "../safety/interaction-log.js";
 import { HyppoError, isHyppoError } from "../errors.js";
 import { readPage } from "../page/read.js";
-import { interact, waitForSelector } from "../page/interact.js";
+import { interact, fillBatch, checkFillInputShape, waitForSelector } from "../page/interact.js";
 
 export interface ToolDeps {
   queue: ActionQueue;
@@ -103,17 +103,40 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     "Bounded interaction: click, fill, scroll, or space. `fill` sets a value on a plain " +
       "field (text/email/tel/url/search/number, textarea, contenteditable) — including one " +
       "inside a <form> and a combobox's filter input — but never a credential, consent, or " +
-      "file field. `space` activates the focused element (checkbox, listbox option, plain " +
-      "button) under the same rules a click faces. Cannot submit, send, apply, or press " +
-      "Enter — submit/consent/credential targets are refused with a named rule.",
+      "file field. `fill` also takes a batch form: instead of `selector` + `value`, pass " +
+      "`fields` — an ordered list of { selector, value } pairs (max 50) applied in one call. " +
+      "Every target is checked first; if any is forbidden or unresolved the whole batch is " +
+      "refused (BATCH_REJECTED) with nothing written and every offender named. After that " +
+      "check passes, writing is best-effort: a field whose element vanished mid-write is " +
+      "reported `error` and the rest still fill. `space` activates the focused element " +
+      "(checkbox, listbox option, plain button) under the same rules a click faces. Cannot " +
+      "submit, send, apply, or press Enter — submit/consent/credential targets are refused " +
+      "with a named rule.",
     {
       tabId: z.string(),
       operation: z.enum(["click", "fill", "scroll", "space"]),
       selector: z.string().optional(),
       value: z.string().optional(),
+      fields: z
+        .array(z.object({ selector: z.string(), value: z.string() }))
+        .optional()
+        .describe("Batch fill: ordered { selector, value } pairs (fill only, max 50)"),
     },
-    async ({ tabId, operation, selector, value }) => {
+    async ({ tabId, operation, selector, value, fields }) => {
       try {
+        if (operation === "fill") {
+          const shapeError = checkFillInputShape(selector, value, fields);
+          if (shapeError) throw shapeError;
+        }
+
+        if (operation === "fill" && fields) {
+          const { value: result } = await queue.run((depth) => {
+            const wc = tabs.webContentsFor(tabId);
+            return fillBatch(wc, log, tabId, fields, depth);
+          });
+          return ok(result);
+        }
+
         const { queueDepth } = await queue.run(async () => {
           const wc = tabs.webContentsFor(tabId);
           await interact(wc, log, tabId, operation, selector, value);
