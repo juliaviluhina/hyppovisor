@@ -119,6 +119,89 @@
     <input type="checkbox" id="remoteOnly" />
     <label for="remoteOnly">Show only remote roles</label>
 
+    <!-- feature 006: dropdown choosers for the choose_option operation -->
+    <div id="dropdowns">
+      <!-- (e) a <select> whose accessible name reads as consent / outward action -->
+      <label for="marketingSelect">I agree to receive marketing email</label>
+      <select id="marketingSelect" name="marketing">
+        <option value="">Choose…</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+      </select>
+
+      <!-- (f) two options sharing the visible label "Other", distinct values -->
+      <label for="otherSelect">Other choices</label>
+      <select id="otherSelect" name="other_choice">
+        <option value="">Choose…</option>
+        <option value="other-a">Other</option>
+        <option value="other-b">Other</option>
+      </select>
+
+      <!-- (g) a disabled option -->
+      <label for="pronounSelect">Pronoun</label>
+      <select id="pronounSelect" name="pronoun">
+        <option value="">Choose…</option>
+        <option value="they">They / them</option>
+        <option value="no-say" disabled>Prefer not to say</option>
+      </select>
+
+      <!-- (h) a multi-select -->
+      <label for="skillsSelect">Skills</label>
+      <select id="skillsSelect" name="skills" multiple>
+        <option value="js">JavaScript</option>
+        <option value="ts">TypeScript</option>
+      </select>
+
+      <!-- (a) a closed react-select-style combobox: options inserted into its
+           listbox only when it is opened by click -->
+      <div id="closedCombo" role="combobox" aria-expanded="false" aria-controls="closedComboListbox" tabindex="0">
+        <span id="closedComboValue"></span>
+      </div>
+      <ul role="listbox" id="closedComboListbox"></ul>
+
+      <!-- (b) a combobox with a filter input narrowing a >=4 option list -->
+      <div id="filterCombo" role="combobox" aria-expanded="true">
+        <input type="text" id="filterComboInput" role="combobox" aria-autocomplete="list" />
+        <ul role="listbox" id="filterComboListbox">
+          <li role="option" data-value="fr">France</li>
+          <li role="option" data-value="fi">Finland</li>
+          <li role="option" data-value="de">Germany</li>
+          <li role="option" data-value="gr">Greece</li>
+        </ul>
+      </div>
+
+      <!-- (c) a combobox whose options only ever append after a long delay -->
+      <div id="asyncCombo" role="combobox" aria-expanded="false" aria-controls="asyncComboListbox" tabindex="0">
+        <span id="asyncComboValue"></span>
+      </div>
+      <ul role="listbox" id="asyncComboListbox"></ul>
+
+      <!-- (d) read-back sabotage: renders an option but its click handler is a no-op -->
+      <div id="sabotageCombo" role="combobox" aria-expanded="false" aria-controls="sabotageComboListbox" tabindex="0">
+        <span id="sabotageComboValue"></span>
+      </div>
+      <ul role="listbox" id="sabotageComboListbox"></ul>
+
+      <!-- (i) a combobox exposing its listbox via aria-owns (sibling, not descendant) -->
+      <div id="ownedCombo" aria-owns="ownedListbox" tabindex="0">
+        <span id="ownedComboValue"></span>
+      </div>
+      <ul role="listbox" id="ownedListbox">
+        <li role="option" data-value="rome">Rome, Italy</li>
+        <li role="option" data-value="oslo">Oslo, Norway</li>
+      </ul>
+
+      <!-- (j) a "creatable" combobox: its filter input does not filter; the typed
+           label is simply not among the fixed options -->
+      <div id="creatableCombo" role="combobox" aria-expanded="true">
+        <input type="text" id="creatableComboInput" role="combobox" aria-autocomplete="list" />
+        <ul role="listbox" id="creatableComboListbox">
+          <li role="option" data-value="red">Red</li>
+          <li role="option" data-value="green">Green</li>
+        </ul>
+      </div>
+    </div>
+
     <script>
       // feature 003: record any real submission so tests can assert none occurred.
       window.__submitted = false;
@@ -176,6 +259,110 @@
           window.__chosenOption = opt.id;
         });
       }
+
+      // ─── feature 006: choose_option chooser behaviours ──────────────────────
+      window.__chosen006 = {};
+
+      // (a)/(c)/(d): comboboxes that populate their listbox on open. `mode`:
+      //   "normal"   — options render synchronously on open
+      //   "async"    — options render only after a delay well past the test budget
+      //   "sabotage" — options render, but the option click handler does nothing
+      function wireOpeningCombo(id, opts, mode) {
+        var combo = document.getElementById(id);
+        var listbox = document.getElementById(combo.getAttribute("aria-controls"));
+        var valueEl = document.getElementById(id + "Value");
+        function renderOptions() {
+          listbox.innerHTML = "";
+          opts.forEach(function (o) {
+            var li = document.createElement("li");
+            li.setAttribute("role", "option");
+            li.setAttribute("data-value", o.value);
+            li.textContent = o.label;
+            li.addEventListener("click", function () {
+              if (mode === "sabotage") return; // read-back sabotage: commit nothing
+              window.__chosen006[id] = o.value;
+              if (valueEl) valueEl.textContent = o.label;
+              combo.setAttribute("aria-expanded", "false");
+              listbox.innerHTML = "";
+            });
+            listbox.appendChild(li);
+          });
+        }
+        combo.addEventListener("click", function () {
+          if (combo.getAttribute("aria-expanded") === "true") {
+            combo.setAttribute("aria-expanded", "false");
+            listbox.innerHTML = "";
+            return;
+          }
+          combo.setAttribute("aria-expanded", "true");
+          if (mode === "async") setTimeout(renderOptions, 5000);
+          else renderOptions();
+        });
+      }
+      wireOpeningCombo(
+        "closedCombo",
+        [
+          { label: "Toronto, Canada", value: "toronto" },
+          { label: "Vancouver, Canada", value: "vancouver" },
+        ],
+        "normal",
+      );
+      wireOpeningCombo("asyncCombo", [{ label: "Late Option", value: "late" }], "async");
+      wireOpeningCombo("sabotageCombo", [{ label: "Sabotage Option", value: "sab" }], "sabotage");
+
+      // (b) filter combobox — typing removes options whose label does not start
+      // with the query; option elements are rebuilt on each keystroke.
+      (function () {
+        var input = document.getElementById("filterComboInput");
+        var listbox = document.getElementById("filterComboListbox");
+        var all = [].slice.call(listbox.children).map(function (li) {
+          return { label: li.textContent, value: li.getAttribute("data-value") };
+        });
+        function bindOption(li, o) {
+          li.addEventListener("click", function () {
+            window.__chosen006["filterCombo"] = o.value;
+            input.value = o.label;
+          });
+        }
+        [].slice.call(listbox.children).forEach(function (li, i) {
+          bindOption(li, all[i]);
+        });
+        input.addEventListener("input", function () {
+          var q = input.value.trim().toLowerCase();
+          listbox.innerHTML = "";
+          all.forEach(function (o) {
+            if (q && o.label.toLowerCase().indexOf(q) !== 0) return;
+            var li = document.createElement("li");
+            li.setAttribute("role", "option");
+            li.setAttribute("data-value", o.value);
+            li.textContent = o.label;
+            bindOption(li, o);
+            listbox.appendChild(li);
+          });
+        });
+      })();
+
+      // (i) aria-owns owned listbox — static options
+      (function () {
+        var valueEl = document.getElementById("ownedComboValue");
+        [].slice.call(document.getElementById("ownedListbox").children).forEach(function (li) {
+          li.addEventListener("click", function () {
+            window.__chosen006["ownedCombo"] = li.getAttribute("data-value");
+            valueEl.textContent = li.textContent;
+          });
+        });
+      })();
+
+      // (j) creatable combobox — the filter input does NOT filter; the fixed
+      // options never include a typed-in label, so an unknown label is no-match.
+      (function () {
+        var listbox = document.getElementById("creatableComboListbox");
+        [].slice.call(listbox.children).forEach(function (li) {
+          li.addEventListener("click", function () {
+            window.__chosen006["creatableCombo"] = li.getAttribute("data-value");
+          });
+        });
+      })();
     </script>
   </body>
 </html>
