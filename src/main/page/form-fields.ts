@@ -22,6 +22,7 @@ import {
   ACCESSIBLE_NAME_SOURCES_BODY,
   type TargetDescriptor,
 } from "../safety/blocklist.js";
+import { SELECTOR_SYNTAX_HELPER, assertSelectorValid } from "./selector-syntax.js";
 import type { FieldOption, FormFieldMap, FormFieldRecord } from "../../shared/types.js";
 
 export type FieldKind = FormFieldRecord["kind"];
@@ -155,28 +156,47 @@ interface RawRecord {
   options: FieldOption[];
   optionsAvailable: boolean;
   optionsTruncated: boolean;
+  /** feature 008 — text-like kinds only, and only when the element declares them. */
+  maxLength?: number;
+  pattern?: string;
+  inputMode?: string;
 }
 
 type CollectorResult =
+  | { __invalidSelector: true }
   | { containerFound: false }
   | {
       containerFound: true;
       observedAt: string;
       hardCeilingHit: boolean;
+      /** feature 008 — `true` when the read was scoped to an explicit `fields` list. */
+      fieldsProjected: boolean;
       records: RawRecord[];
     };
 
 /**
- * The in-page collector (isolated world). Returns `{ containerFound: false }`
- * when a container selector was given but resolved to nothing; otherwise the raw
- * record list in document order, capped at `formFieldControlCap`.
+ * The in-page collector (isolated world). Returns `{ __invalidSelector: true }`
+ * when a `containerSelector` / `fields` entry is not valid CSS,
+ * `{ containerFound: false }` when a container selector resolved to nothing;
+ * otherwise the raw record list in document order (before the config caps).
+ *
+ * When `fields` is supplied the collector emits records **only** for elements
+ * matching those selectors (unioned, deduped, document order) — including
+ * elements a default read would exclude as non-interactive (FR-010).
  */
-export function formFieldsScript(containerSelector: string | undefined): string {
+export function formFieldsScript(
+  containerSelector: string | undefined,
+  fields: string[] | undefined,
+): string {
   const containerJson = containerSelector === undefined ? "null" : JSON.stringify(containerSelector);
+  const fieldsJson = fields === undefined ? "null" : JSON.stringify(fields);
   return `(() => {
+  ${SELECTOR_SYNTAX_HELPER}
+  try {
   const HARD_CEILING = ${COLLECTOR_HARD_CEILING};
   const containerSel = ${containerJson};
-  const root = containerSel == null ? document : document.querySelector(containerSel);
+  const fieldsList = ${fieldsJson};
+  const root = containerSel == null ? document : __querySafe(document, containerSel);
   if (containerSel != null && !root) return { containerFound: false };
   const scope = root || document;
 
@@ -313,11 +333,45 @@ export function formFieldsScript(containerSelector: string | undefined): string 
 
   const esc = (s) => CSS.escape(s);
 
-  const all = [].slice.call(
-    scope.querySelectorAll("input, select, textarea, button, [contenteditable], [role]")
-  ).filter(isCandidate);
-  const hardCeilingHit = all.length > HARD_CEILING;
-  const chosen = hardCeilingHit ? all.slice(0, HARD_CEILING) : all;
+  // feature 008 — constraint hints for text-like inputs / textareas, only when
+  // the element actually declares them.
+  const constraintsFor = (el) => {
+    const tag = el.tagName.toLowerCase();
+    if (tag !== "input" && tag !== "textarea") return {};
+    const out = {};
+    const mlAttr = el.getAttribute("maxlength");
+    if (mlAttr != null && typeof el.maxLength === "number" && el.maxLength >= 0) {
+      out.maxLength = el.maxLength;
+    }
+    const pat = el.getAttribute("pattern");
+    if (pat != null) out.pattern = pat;
+    const im = el.getAttribute("inputmode");
+    if (im != null) out.inputMode = im;
+    return out;
+  };
+
+  let candidates;
+  if (fieldsList) {
+    const seen = new Set();
+    const picked = [];
+    for (const sel of fieldsList) {
+      const matches = __queryAllSafe(document, sel);
+      for (const el of matches) { if (!seen.has(el)) { seen.add(el); picked.push(el); } }
+    }
+    picked.sort((a, b) => {
+      const pos = a.compareDocumentPosition(b);
+      if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+      if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+      return 0;
+    });
+    candidates = picked;
+  } else {
+    candidates = [].slice.call(
+      scope.querySelectorAll("input, select, textarea, button, [contenteditable], [role]")
+    ).filter(isCandidate);
+  }
+  const hardCeilingHit = candidates.length > HARD_CEILING;
+  const chosen = hardCeilingHit ? candidates.slice(0, HARD_CEILING) : candidates;
 
   const records = chosen.map((el, idx) => {
     const id = el.id || "";
@@ -333,7 +387,7 @@ export function formFieldsScript(containerSelector: string | undefined): string 
       el.getAttribute("aria-required") === "true" ||
       /\\*/.test(label);
     const opt = optionsFor(el);
-    return {
+    return Object.assign({
       descriptor: descriptorFor(el),
       selectorCounts: {
         id: id ? esc(id) : null,
@@ -354,50 +408,117 @@ export function formFieldsScript(containerSelector: string | undefined): string 
       options: opt.options,
       optionsAvailable: opt.optionsAvailable,
       optionsTruncated: opt.optionsTruncated,
-    };
+    }, constraintsFor(el));
   });
 
   return {
     containerFound: true,
     observedAt: new Date().toISOString(),
     hardCeilingHit: hardCeilingHit,
+    fieldsProjected: !!fieldsList,
     records: records,
   };
+  } catch (e) {
+    if (e && e.__invalidSelector) return { __invalidSelector: true };
+    throw e;
+  }
 })()`;
 }
 
+/** Options a `read_form_fields` call may carry (feature 008). */
+export interface ReadFormFieldsOptions {
+  /**
+   * Return records only for controls matching these selectors, document order.
+   * An explicit selector is returned even for a non-interactive element
+   * (overrides the default exclusion, FR-010). Mutually exclusive with
+   * `containerSelector`.
+   */
+  fields?: string[];
+  /** Include plain buttons and hidden value-mirror inputs (default `false`). */
+  includeNonInteractive?: boolean;
+  /** Return only records that are `required` and whose current value is empty. */
+  only?: "required-unfilled";
+}
+
 /**
- * Read one tab's form controls (feature 005). Runs the collector in an isolated
- * world, then in the main process attaches the fill / click verdicts from the
- * same `blocklist.ts` functions `interact` uses and omits a credential field's
- * `currentValue` key. No `log.record` call (FR-014); nothing persisted (FR-013).
+ * A record is `required` and currently holds no value: empty string / unchecked
+ * / no option chosen / never set. Pure — the byte-budget and `only` filters and
+ * the unit tests all compute from this one predicate (data-model.md §1).
+ */
+export function isRequiredUnfilled(
+  rec: Pick<FormFieldRecord, "required" | "currentValue">,
+): boolean {
+  if (rec.required !== true) return false;
+  const v = rec.currentValue;
+  if (v === undefined || v === null) return true;
+  if (v === "") return true;
+  if (v === false) return true;
+  if (Array.isArray(v)) return v.length === 0;
+  return false;
+}
+
+/**
+ * Malformed-call guard (feature 008, research.md R6): `fields` and
+ * `containerSelector` are mutually exclusive. Returns the error to throw, or
+ * `null` when the shape is valid. Shared by the MCP dispatch and `readFormFields`
+ * so a direct call is guarded too.
+ */
+export function checkReadFormFieldsShape(
+  containerSelector: string | undefined,
+  fields: string[] | undefined,
+): HyppoError | null {
+  if (containerSelector !== undefined && fields !== undefined) {
+    return new HyppoError(
+      "BATCH_REJECTED",
+      "read_form_fields accepts either `fields` or `containerSelector`, not both.",
+    );
+  }
+  return null;
+}
+
+/**
+ * Read one tab's form controls (feature 005 + 008). Runs the collector in an
+ * isolated world, then in the main process attaches the fill / click / choose
+ * verdicts from the same `blocklist.ts` functions `interact` uses, omits a
+ * credential field's `currentValue` key, applies the `includeNonInteractive` /
+ * `only` filters, and trims the payload to a byte budget (FR-011). No
+ * `log.record` call (FR-014); nothing persisted (FR-013).
  */
 export async function readFormFields(
   wc: WebContents,
   tabId: string,
   containerSelector: string | undefined,
   queueDepth: number,
+  opts: ReadFormFieldsOptions = {},
 ): Promise<FormFieldMap> {
+  const { fields, includeNonInteractive = false, only } = opts;
+
+  const shapeError = checkReadFormFieldsShape(containerSelector, fields);
+  if (shapeError) throw shapeError;
+
   const raw = (await wc.executeJavaScript(
-    formFieldsScript(containerSelector),
+    formFieldsScript(containerSelector, fields),
     true,
   )) as CollectorResult;
 
-  if (!raw.containerFound) {
+  // A non-CSS `containerSelector` or `fields` entry → INVALID_SELECTOR (before
+  // any "not found" interpretation, FR-018).
+  assertSelectorValid(raw);
+
+  const full = raw as Extract<CollectorResult, { containerFound: true }>;
+  if (!full.containerFound) {
     throw new HyppoError(
       "TARGET_NOT_FOUND",
       `No element matches container selector ${JSON.stringify(containerSelector)}.`,
     );
   }
 
-  const capped = capList(raw.records, config.formFieldControlCap);
-
-  const records: FormFieldRecord[] = capped.items.map((r) => {
+  let mapped: FormFieldRecord[] = full.records.map((r) => {
     const d = r.descriptor;
     const sel = synthesizeSelector(r.selectorCounts);
     const fillVerdict = fillVerdictFor(d);
     const clickVerdict = clickVerdictFor(d);
-    const opts = capList(r.options, config.formFieldOptionCap);
+    const opts_ = capList(r.options, config.formFieldOptionCap);
     const record: FormFieldRecord = {
       selector: sel.selector,
       selectorSynthesised: sel.selectorSynthesised,
@@ -409,9 +530,9 @@ export async function readFormFields(
       group: r.group,
       inFormAncestor: r.inFormAncestor,
       visible: r.visible,
-      options: opts.items,
+      options: opts_.items,
       optionsAvailable: r.optionsAvailable,
-      optionsTruncated: opts.truncated,
+      optionsTruncated: opts_.truncated,
       fillVerdict,
       clickVerdict,
     };
@@ -421,15 +542,42 @@ export async function readFormFields(
     if (fillVerdict.ruleId !== "credential-field") {
       record.currentValue = r.currentValue;
     }
+    if (r.maxLength !== undefined) record.maxLength = r.maxLength;
+    if (r.pattern !== undefined) record.pattern = r.pattern;
+    if (r.inputMode !== undefined) record.inputMode = r.inputMode;
     return record;
   });
 
-  return {
-    tabId,
-    url: wc.getURL(),
-    observedAt: raw.observedAt,
-    truncated: capped.truncated || raw.hardCeilingHit,
-    records,
-    queueDepth,
-  };
+  // Default-read exclusion: plain buttons. Skipped when the read was
+  // `fields`-projected (an explicit selector overrides the exclusion, FR-010) or
+  // `includeNonInteractive: true`.
+  if (!full.fieldsProjected && !includeNonInteractive) {
+    mapped = mapped.filter((rec) => rec.kind !== "button");
+  }
+
+  if (only === "required-unfilled") {
+    mapped = mapped.filter(isRequiredUnfilled);
+  }
+
+  const capped = capList(mapped, config.formFieldControlCap);
+  let records = capped.items;
+  let truncated = capped.truncated || full.hardCeilingHit;
+
+  // Byte budget (FR-011, R5): drop the last record while the serialised payload
+  // exceeds `formFieldReadMaxBytes`. Document order is preserved; a single flag
+  // covers count-cap + option-cap + byte-budget trimming together.
+  const url = wc.getURL();
+  const measure = () =>
+    Buffer.byteLength(
+      JSON.stringify({ tabId, url, observedAt: full.observedAt, truncated: true, records, queueDepth }),
+      "utf8",
+    );
+  if (records.length > 0 && measure() > config.formFieldReadMaxBytes) {
+    while (records.length > 0 && measure() > config.formFieldReadMaxBytes) {
+      records = records.slice(0, -1);
+    }
+    truncated = true;
+  }
+
+  return { tabId, url, observedAt: full.observedAt, truncated, records, queueDepth };
 }

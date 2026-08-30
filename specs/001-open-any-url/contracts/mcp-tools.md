@@ -141,22 +141,46 @@ interaction-audit entry.
 
 Read-only, derived view for building a batch `fill`. `read_page` is unchanged.
 
-**Input**: `{ tabId: string, containerSelector?: string }` — omit `containerSelector`
-for the whole page; give it to scope to controls inside that element.
+**Input**: `{ tabId: string, containerSelector?: string, fields?: string[],
+includeNonInteractive?: boolean, only?: "required-unfilled" }`.
+
+- `containerSelector` — omit for the whole page; give it to scope to controls inside that
+  element. Mutually exclusive with `fields` (supplying both → `BATCH_REJECTED`).
+- `fields` (feature 008) — return records only for controls matching these selectors, in
+  document order. An explicit selector is returned **even for a non-interactive element**
+  (overrides the default exclusion). A non-matching entry is silently absent; all-miss ⇒
+  empty `records`. A non-CSS entry → `INVALID_SELECTOR`.
+- `includeNonInteractive` (feature 008, default `false`) — when `false`, plain buttons and
+  hidden value-mirror inputs are omitted. When `true`, they are included (a mirror carries
+  `interactive: false` + `mirrors`).
+- `only: "required-unfilled"` (feature 008) — return only records that are `required` and
+  whose current value is empty (empty string / unchecked / no option chosen).
 
 **Returns**: `FormFieldMap` — `{ tabId, url, observedAt, truncated, records[], queueDepth }`.
 Each record: `selector` (usable by `interact`, verified unique at call time; `null` only when
 none could be built), `selectorSynthesised` / `duplicateId`, `kind`, raw `type`, verbatim
 `label`, `required`, `group` (radios), `inFormAncestor`, `visible`, `currentValue` (**omitted
 entirely** for a credential field), `options` + `optionsAvailable` + `optionsTruncated`
-(`<select>` and in-DOM combobox menus), and `fillVerdict` / `clickVerdict` — identical in
-shape and content to what `interact` returns for that target.
+(`<select>` and in-DOM combobox menus), `fillVerdict` / `clickVerdict` — identical in shape
+and content to what `interact` returns for that target — and (feature 008) `operation`
+(`"fill" | "choose" | "activate" | "none"`, derived from `kind`), `chooseVerdict`
+(`{ allowed, ruleId?, description? }` — what `choose_option` would return; `in-form` does not
+gate it), `interactive: false` on a surfaced plain button / value-mirror, `mirrors` on a
+value-mirror (the combobox `selector` it carries the value for), and `maxLength` / `pattern`
+/ `inputMode` on a text-like record that declares them. A scripted dropdown backed by a
+hidden same-named input collapses to **one** record whose `selector` is the one
+`choose_option` / `list_options` accept (the `role=combobox` element), not the hidden
+`[name]` input.
 
-**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND` (a container selector that resolves to nothing).
+**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND` (a container selector that resolves to
+nothing), `INVALID_SELECTOR` (a non-CSS `containerSelector` or `fields` entry),
+`BATCH_REJECTED` (`fields` and `containerSelector` supplied together).
 
 **Notes**: performs no interaction, writes nothing to the shared data directory, adds no
-interaction-audit-log entry. Bounded by `formFieldControlCap` (result-level `truncated`) and
-`formFieldOptionCap` (per-record `optionsTruncated`).
+interaction-audit-log entry. Bounded by `formFieldControlCap` (control count),
+`formFieldOptionCap` (per-record `optionsTruncated`), and a `formFieldReadMaxBytes` byte
+budget (64 KB default) that drops tail records in document order — the single result-level
+`truncated` flag covers all three.
 
 ---
 

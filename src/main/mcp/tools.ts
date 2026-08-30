@@ -235,22 +235,47 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       "`label`, `required`, `group` (radios), `inFormAncestor`, `visible`, `currentValue` " +
       "(omitted for credential fields), `options` for a <select> or an in-DOM combobox menu, " +
       "and the `fillVerdict` / `clickVerdict` `interact` would return for that target. " +
-      "Bounded (control + option caps) with a `truncated` flag. Performs no interaction, " +
-      "writes nothing, adds no audit-log entry. `read_page` is unchanged — this is a " +
-      "derived view for building a batch `fill`.",
+      "Bounded (control cap, per-record option cap, and a 64 KB byte budget) with a single " +
+      "`truncated` flag covering all three. Each record also carries `operation` " +
+      "(fill/choose/activate/none) and `chooseVerdict` (what choose_option would return; " +
+      "in-form does not gate it); a scripted dropdown backed by a hidden same-named input " +
+      "collapses to ONE record whose `selector` choose_option / list_options accept; " +
+      "text-like records carry `maxLength` / `pattern` / `inputMode` when declared. Optional " +
+      "`fields` returns records only for the named selectors (document order; an explicit " +
+      "selector is returned even for a non-interactive element; mutually exclusive with " +
+      "`containerSelector`). `includeNonInteractive: true` also returns plain buttons and " +
+      "hidden value-mirror inputs. `only: \"required-unfilled\"` returns only empty required " +
+      "controls. A non-CSS selector anywhere returns INVALID_SELECTOR. Performs no " +
+      "interaction, writes nothing, adds no audit-log entry. `read_page` is unchanged.",
     {
       tabId: z.string(),
       containerSelector: z
         .string()
         .optional()
         .describe("Scope to controls inside this element; omitted → whole page"),
+      fields: z
+        .array(z.string())
+        .optional()
+        .describe("Return records only for these selectors (document order); excludes containerSelector"),
+      includeNonInteractive: z
+        .boolean()
+        .optional()
+        .describe("Also include plain buttons and hidden value-mirror inputs"),
+      only: z
+        .enum(["required-unfilled"])
+        .optional()
+        .describe("Return only records that are required and currently empty"),
     },
-    async ({ tabId, containerSelector }) => {
+    async ({ tabId, containerSelector, fields, includeNonInteractive, only }) => {
       seen("read_form_fields");
       try {
         const { value } = await queue.run((depth) => {
           const wc = tabs.webContentsFor(tabId);
-          return readFormFields(wc, tabId, containerSelector, depth);
+          return readFormFields(wc, tabId, containerSelector, depth, {
+            fields,
+            includeNonInteractive,
+            only,
+          });
         });
         return ok(value);
       } catch (e) {

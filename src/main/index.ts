@@ -315,10 +315,20 @@ async function main(): Promise<void> {
             .run((depth) => fillBatch(tabs.webContentsFor(tabId), log, tabId, pairs, depth))
             .then((r) => r.value);
         }),
-      readFormFields: (tabId: string, containerSelector?: string) =>
+      readFormFields: (
+        tabId: string,
+        containerSelector?: string,
+        opts?: {
+          fields?: string[];
+          includeNonInteractive?: boolean;
+          only?: "required-unfilled";
+        },
+      ) =>
         withCode(() =>
           queue
-            .run((d) => readFormFields(tabs.webContentsFor(tabId), tabId, containerSelector, d))
+            .run((d) =>
+              readFormFields(tabs.webContentsFor(tabId), tabId, containerSelector, d, opts ?? {}),
+            )
             .then((r) => r.value),
         ),
       waitFor: (tabId: string, selector: string, timeoutMs?: number) =>

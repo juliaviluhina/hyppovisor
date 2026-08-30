@@ -128,12 +128,12 @@ read stays ≤ 64 KB and flags trimming; a plain button is absent by default.
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Extend `tests/unit/form-fields.test.ts`: byte-budget tail-drop is
+- [x] T014 [P] [US2] Extend `tests/unit/form-fields.test.ts`: byte-budget tail-drop is
   order-stable and sets `truncated`; `required-unfilled` predicate (empty string / unchecked
   / no option chosen / placeholder-only count as empty); `maxLength` / `pattern` /
   `inputMode` extraction only when the attribute is present; `fields` + `containerSelector`
   together is rejected as an argument error.
-- [ ] T015 [P] [US2] Extend `tests/integration/read-form-fields.spec.ts`: `fields:
+- [x] T015 [P] [US2] Extend `tests/integration/read-form-fields.spec.ts`: `fields:
   ["#first_name","#email","#q_role"]` returns exactly those three in document order and
   includes `#q_role` though it is a hidden mirror (explicit selector overrides exclusion);
   default read omits the plain `<button type="button">`; `includeNonInteractive: true`
@@ -143,28 +143,28 @@ read stays ≤ 64 KB and flags trimming; a plain button is absent by default.
 
 ### Implementation for User Story 2
 
-- [ ] T016 [US2] `src/main/page/form-fields.ts` collector: accept a `fields: string[]`
+- [x] T016 [US2] `src/main/page/form-fields.ts` collector: accept a `fields: string[]`
   argument — for each entry run `document.querySelectorAll` inside the `SyntaxError` catch,
   union + dedupe matched elements in document order, and when `fields` is present emit
   records only for those elements (skipping the non-interactive exclusion for named
   elements); return `{ __invalidSelector: true }` on a bad entry.
-- [ ] T017 [US2] `src/main/page/form-fields.ts` collector: for text-like kinds read
+- [x] T017 [US2] `src/main/page/form-fields.ts` collector: for text-like kinds read
   `el.maxLength` (emit when ≥ 0 and set), `getAttribute("pattern")`,
   `getAttribute("inputmode")`; attach to the record only when present.
-- [ ] T018 [US2] `src/main/page/form-fields.ts` main process: add `includeNonInteractive`
+- [x] T018 [US2] `src/main/page/form-fields.ts` main process: add `includeNonInteractive`
   (default `false`) — filter out `kind === "button"` records unless set or named in
   `fields`; after the count cap, run the byte-budget trim against
   `config.formFieldReadMaxBytes` (measure `Buffer.byteLength(JSON.stringify(payload))`, drop
   the last record while over budget, set `truncated`); reject `fields` + `containerSelector`
   supplied together.
-- [ ] T019 [US2] `src/main/page/form-fields.ts` main process: add `only: "required-unfilled"`
+- [x] T019 [US2] `src/main/page/form-fields.ts` main process: add `only: "required-unfilled"`
   — keep only records where `required === true` and the current value is empty per the
   `data-model.md` definition.
-- [ ] T020 [US2] `src/main/mcp/tools.ts` `read_form_fields`: add `fields` (`z.array(z.string())`),
+- [x] T020 [US2] `src/main/mcp/tools.ts` `read_form_fields`: add `fields` (`z.array(z.string())`),
   `includeNonInteractive` (`z.boolean().optional()`), `only` (`z.enum(["required-unfilled"]).optional()`)
   params + description text; thread them to `readFormFields`; convert the invalid-selector
   marker to `INVALID_SELECTOR` via `assertSelectorValid`.
-- [ ] T021 [US2] Update `specs/001-open-any-url/contracts/mcp-tools.md`: `read_form_fields`
+- [x] T021 [US2] Update `specs/001-open-any-url/contracts/mcp-tools.md`: `read_form_fields`
   new params + the `truncated`-now-covers-byte-budget note from the delta doc.
 
 **Checkpoint**: US1 and US2 both work independently.

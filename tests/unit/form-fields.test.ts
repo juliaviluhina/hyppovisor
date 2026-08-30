@@ -10,6 +10,8 @@ import {
   synthesizeSelector,
   readFormFields,
   capList,
+  isRequiredUnfilled,
+  checkReadFormFieldsShape,
   type SelectorCounts,
 } from "../../src/main/page/form-fields.js";
 import {
@@ -146,13 +148,17 @@ describe("readFormFields applies both caps from config", () => {
         containerFound: true,
         observedAt: "2026-08-30T00:00:00.000Z",
         hardCeilingHit: false,
+        fieldsProjected: false,
         records: many,
       }),
       "tab-1",
       undefined,
       0,
     );
-    expect(map.records.length).toBe(config.formFieldControlCap);
+    // Post-feature-008 the 64 KB byte budget may trim further than the count cap;
+    // either way the list is bounded and the single flag is set.
+    expect(map.records.length).toBeLessThanOrEqual(config.formFieldControlCap);
+    expect(map.records.length).toBeGreaterThan(0);
     expect(map.truncated).toBe(true);
   });
 
@@ -192,6 +198,145 @@ const desc = (o: Partial<TargetDescriptor>): TargetDescriptor => ({
   autocomplete: null,
   isContentEditable: false,
   ...o,
+});
+
+// ─── feature 008 US2 ────────────────────────────────────────────────────────
+
+describe("isRequiredUnfilled — required && currently empty (data-model.md §1)", () => {
+  it("true only for a required control with no value", () => {
+    expect(isRequiredUnfilled({ required: true, currentValue: "" })).toBe(true);
+    expect(isRequiredUnfilled({ required: true, currentValue: null })).toBe(true);
+    expect(isRequiredUnfilled({ required: true, currentValue: undefined })).toBe(true);
+    expect(isRequiredUnfilled({ required: true, currentValue: false })).toBe(true); // unchecked
+    expect(isRequiredUnfilled({ required: true, currentValue: [] })).toBe(true); // no option chosen
+  });
+  it("false when not required, or when a value is present", () => {
+    expect(isRequiredUnfilled({ required: false, currentValue: "" })).toBe(false);
+    expect(isRequiredUnfilled({ required: true, currentValue: "x" })).toBe(false);
+    expect(isRequiredUnfilled({ required: true, currentValue: true })).toBe(false); // checked
+    expect(isRequiredUnfilled({ required: true, currentValue: ["a"] })).toBe(false);
+  });
+});
+
+describe("checkReadFormFieldsShape — fields ⨯ containerSelector are mutually exclusive (R6)", () => {
+  it("rejects both supplied together as an argument error", () => {
+    const err = checkReadFormFieldsShape("#form", ["#a"]);
+    expect(err).not.toBeNull();
+    expect(err!.code).toBe("BATCH_REJECTED");
+  });
+  it("permits either alone or neither", () => {
+    expect(checkReadFormFieldsShape("#form", undefined)).toBeNull();
+    expect(checkReadFormFieldsShape(undefined, ["#a"])).toBeNull();
+    expect(checkReadFormFieldsShape(undefined, undefined)).toBeNull();
+  });
+  it("readFormFields itself throws when both are passed", async () => {
+    await expect(
+      readFormFields(wcYielding({ containerFound: true }), "tab-1", "#form", 0, { fields: ["#a"] }),
+    ).rejects.toMatchObject({ code: "BATCH_REJECTED" });
+  });
+});
+
+describe("readFormFields — byte budget tail-drop (FR-011, R5)", () => {
+  const bigRaw = (i: number) =>
+    rawRecord(desc({ type: "text" }), {
+      label: `field ${i} ${"x".repeat(600)}`,
+      currentValue: "y".repeat(600),
+      selectorCounts: {
+        id: `f${i}`,
+        name: null,
+        tagName: "input",
+        structuralPath: "",
+        idCount: 1,
+        nameBareCount: 0,
+        nameTaggedCount: 0,
+        structuralCount: 0,
+      },
+    });
+
+  it("drops the last records in document order until the payload fits, and sets truncated", async () => {
+    const records = Array.from({ length: 120 }, (_, i) => bigRaw(i)); // ~150 KB of labels/values
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        hardCeilingHit: false,
+        fieldsProjected: false,
+        records,
+      }),
+      "tab-1",
+      undefined,
+      0,
+    );
+    expect(map.truncated).toBe(true);
+    expect(map.records.length).toBeLessThan(120);
+    expect(map.records.length).toBeGreaterThan(0);
+    // order-stable: the kept records are the FIRST n, by id
+    const keptIds = map.records.map((r) => r.selector);
+    expect(keptIds).toEqual(
+      Array.from({ length: keptIds.length }, (_, i) => `#f${i}`),
+    );
+    // and the serialised payload is within budget
+    expect(Buffer.byteLength(JSON.stringify(map), "utf8")).toBeLessThanOrEqual(65536);
+  });
+
+  it("a small read is untouched — truncated stays false", async () => {
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        hardCeilingHit: false,
+        fieldsProjected: false,
+        records: [rawRecord(desc({ type: "text" }), { currentValue: "" })],
+      }),
+      "tab-1",
+      undefined,
+      0,
+    );
+    expect(map.truncated).toBe(false);
+    expect(map.records.length).toBe(1);
+  });
+});
+
+describe("readFormFields — maxLength / pattern / inputMode pass through only when present", () => {
+  it("carries the constraint hints from the raw record", async () => {
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        hardCeilingHit: false,
+        fieldsProjected: false,
+        records: [
+          rawRecord(desc({ type: "text" }), {
+            maxLength: 20,
+            pattern: "[0-9]*",
+            inputMode: "numeric",
+          }),
+        ],
+      }),
+      "tab-1",
+      undefined,
+      0,
+    );
+    expect(map.records[0]).toMatchObject({ maxLength: 20, pattern: "[0-9]*", inputMode: "numeric" });
+  });
+  it("omits the keys entirely when the raw record has none", async () => {
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        hardCeilingHit: false,
+        fieldsProjected: false,
+        records: [rawRecord(desc({ type: "text" }))],
+      }),
+      "tab-1",
+      undefined,
+      0,
+    );
+    const rec = map.records[0];
+    expect("maxLength" in rec).toBe(false);
+    expect("pattern" in rec).toBe(false);
+    expect("inputMode" in rec).toBe(false);
+  });
 });
 
 describe("fill / click verdicts match interact's rule set (FR-006, FR-007, SC-004)", () => {
