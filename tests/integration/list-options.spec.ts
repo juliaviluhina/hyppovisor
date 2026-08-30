@@ -127,6 +127,42 @@ test.describe("list_options", () => {
     );
   });
 
+  test("a faithful react-select DOM (menu deep, value 2 levels up) is enumerated", async () => {
+    const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+    const r = await list(tabId, "#dsInput");
+    expect(r.optionsPresent).toBe(true);
+    expect(r.options).toEqual([
+      { label: "Norway +47", value: "no", disabled: false },
+      { label: "Sweden +46", value: "se", disabled: false },
+      { label: "Finland +358", value: "fi", disabled: true },
+    ]);
+    // read-only: menu closed, value never set
+    expect(
+      await probe<string>(tabId, `document.querySelector('#dsInput').getAttribute('aria-expanded')`),
+    ).toBe("false");
+    expect(await probe<string>(tabId, `document.querySelector('#dsValue').textContent`)).toBe("");
+  });
+
+  test("choose_option commits on the deep react-select via the menu-closed+value-changed fallback", async () => {
+    const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+    const res = await callHandle<{ chosenOption?: { label: string; value: string } }>(app, "interact", [
+      tabId,
+      "choose_option",
+      "#dsInput",
+      undefined,
+      "Norway +47",
+    ]);
+    expect(res.chosenOption).toEqual({ label: "Norway +47", value: "no" });
+    // the widget shows an abbreviated value that is NOT a substring of the label,
+    // so the permitted verdict came from the "menu closed + value changed" path
+    expect(await probe<string>(tabId, `document.querySelector('#dsValue').textContent`)).toBe(
+      "+47 (NO)",
+    );
+    expect(
+      await probe<string>(tabId, `document.querySelector('#dsInput').getAttribute('aria-expanded')`),
+    ).toBe("false");
+  });
+
   test("a widget that never populates: options: [], optionsPresent: false, no error", async () => {
     const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
     const r = await list(tabId, "#deadCombo");

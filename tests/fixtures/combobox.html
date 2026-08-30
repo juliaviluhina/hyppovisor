@@ -80,6 +80,42 @@
       <div id="msMenu" class="rs-select__menu" hidden></div>
     </div>
 
+    <!-- feature 008 fix (deep react-select): a faithful react-select DOM — the
+         open menu (a [role="listbox"]) is a SIBLING of .ds-select__control,
+         several levels above #dsInput; the committed value renders in a
+         .ds-select__single-value two levels up; and the on-select display text
+         ("+47 (NO)") is NOT a substring of the option label ("Norway +47"), so a
+         permitted call must rely on the "menu closed + value changed" fallback,
+         not text matching. Exercises __optionNodes' deep [role=listbox] climb,
+         closeReadbackScript's multi-level single-value climb, and the `committed`
+         read-back path. -->
+    <div id="dsWidget" class="ds-select">
+      <label id="dsLabel" for="dsInput">Region code</label>
+      <div class="ds-select__container">
+        <div class="ds-select__shell">
+          <div class="ds-select__control">
+            <div class="ds-select__value-container">
+              <div class="ds-select__single-value" id="dsValue"></div>
+              <div class="ds-select__input-container">
+                <input
+                  id="dsInput"
+                  role="combobox"
+                  aria-labelledby="dsLabel"
+                  aria-expanded="false"
+                  aria-autocomplete="list"
+                  class="ds-select__input"
+                />
+              </div>
+            </div>
+            <div class="ds-select__indicators">▾</div>
+          </div>
+          <div class="ds-select__menu" id="dsMenu" hidden>
+            <div class="ds-select__menu-list" role="listbox" id="dsListbox"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- feature 008 US1: blocklist parity targets for list_options -->
     <form id="cformguard" action="/x" method="post">
       <label for="cpassword">Password</label>
@@ -202,6 +238,60 @@
           if (e.key === "Escape") close();
         });
         // a click on the inner input is intentionally inert
+      })();
+
+      // #dsWidget: faithful react-select DOM. Opens on mousedown on
+      // .ds-select__control; the menu ([role=listbox]) is a sibling of the
+      // control, 3 ancestors above #dsInput. On select, #dsValue (two levels
+      // above the input) shows an abbreviated "+47 (NO)" that is NOT a substring
+      // of the option label "Norway +47".
+      (function () {
+        var widget = document.getElementById("dsWidget");
+        var control = widget.querySelector(".ds-select__control");
+        var input = document.getElementById("dsInput");
+        var menu = document.getElementById("dsMenu");
+        var listbox = document.getElementById("dsListbox");
+        var valueEl = document.getElementById("dsValue");
+        var opts = [
+          { label: "Norway +47", value: "no", short: "+47 (NO)" },
+          { label: "Sweden +46", value: "se", short: "+46 (SE)" },
+          { label: "Finland +358", value: "fi", short: "+358 (FI)", disabled: true },
+        ];
+        function close() {
+          input.setAttribute("aria-expanded", "false");
+          menu.hidden = true;
+          listbox.innerHTML = "";
+        }
+        function render() {
+          listbox.innerHTML = "";
+          opts.forEach(function (o) {
+            var d = document.createElement("div");
+            d.setAttribute("role", "option");
+            d.setAttribute("data-value", o.value);
+            if (o.disabled) d.setAttribute("aria-disabled", "true");
+            d.className = "ds-select__option";
+            d.textContent = o.label;
+            d.addEventListener("mousedown", function (e) {
+              if (o.disabled) return;
+              e.preventDefault();
+              valueEl.textContent = o.short; // abbreviated — not a substring of label
+              close();
+            });
+            listbox.appendChild(d);
+          });
+          menu.hidden = false;
+        }
+        control.addEventListener("mousedown", function () {
+          if (input.getAttribute("aria-expanded") === "true") {
+            close();
+            return;
+          }
+          input.setAttribute("aria-expanded", "true");
+          render();
+        });
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") close();
+        });
       })();
     </script>
   </body>
