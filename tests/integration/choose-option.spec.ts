@@ -274,3 +274,56 @@ test("US3 SC-004: in-form does not gate choose_option, but still gates a raw cli
   const lp = await logPath();
   expect(readLog(lp).at(-1)!.ruleId).toBe("in-form");
 });
+
+// ─── US4: audited and verifiable (T022, T023) ───────────────────────────────
+
+test("US4: one permitted + one refused call grow the log by exactly two lines", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const n0 = readLog(lp).length;
+  const ok = await choose(tabId, "#country", { label: "United States" });
+  expect(ok.outcome).toBe("permitted");
+  await callHandle(app, "interact", [tabId, "choose_option", "#country", undefined, "Nowhere"]).catch(
+    () => {},
+  );
+
+  const added = readLog(lp).slice(n0);
+  expect(added.length).toBe(2);
+  expect(added.map((e) => e.outcome)).toEqual(["permitted", "refused"]);
+  expect(added[0].operation).toBe("choose_option");
+  expect(added[0].target).toBe("#country");
+  expect(added[0].ruleId).toBeNull();
+  expect(added[1].reason).toBe("no-option-match");
+
+  // SC-002: after the permitted call the control reports the chosen value
+  expect(await probe<string>(tabId, `document.querySelector("#country").value`)).toBe("us");
+});
+
+test("US4/T023: a widget that swallows the option click fails read-back, control unchanged", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const n0 = readLog(lp).length;
+  const err = await callHandle(app, "interact", [
+    tabId,
+    "choose_option",
+    "#sabotageCombo",
+    undefined,
+    "Sabotage Option",
+  ]).catch((e: Error) => e.message);
+  expect(String(err)).toContain("CHOOSE_OPTION_FAILED");
+  expect(String(err)).toContain("option-not-appeared");
+
+  expect(await probe<string>(tabId, `document.querySelector("#sabotageComboValue").textContent`)).toBe(
+    "",
+  );
+  expect(
+    await probe<string>(tabId, `document.querySelector("#sabotageCombo").getAttribute("aria-expanded")`),
+  ).toBe("false");
+
+  const added = readLog(lp).slice(n0);
+  expect(added.length).toBe(1);
+  expect(added[0].outcome).toBe("refused");
+  expect(added[0].reason).toBe("option-not-appeared");
+});
