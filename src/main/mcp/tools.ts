@@ -101,29 +101,43 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
 
   server.tool(
     "interact",
-    "Bounded interaction: click, fill, scroll, or space. `fill` sets a value on a plain " +
-      "field (text/email/tel/url/search/number, textarea, contenteditable) — including one " +
-      "inside a <form> and a combobox's filter input — but never a credential, consent, or " +
-      "file field. `fill` also takes a batch form: instead of `selector` + `value`, pass " +
-      "`fields` — an ordered list of { selector, value } pairs (max 50) applied in one call. " +
-      "Every target is checked first; if any is forbidden or unresolved the whole batch is " +
-      "refused (BATCH_REJECTED) with nothing written and every offender named. After that " +
-      "check passes, writing is best-effort: a field whose element vanished mid-write is " +
-      "reported `error` and the rest still fill. `space` activates the focused element " +
-      "(checkbox, listbox option, plain button) under the same rules a click faces. Cannot " +
-      "submit, send, apply, or press Enter — submit/consent/credential targets are refused " +
-      "with a named rule.",
+    "Bounded interaction: click, fill, scroll, space, or choose_option. `fill` sets a value " +
+      "on a plain field (text/email/tel/url/search/number, textarea, contenteditable) — " +
+      "including one inside a <form> and a combobox's filter input — but never a credential, " +
+      "consent, or file field. `fill` also takes a batch form: instead of `selector` + " +
+      "`value`, pass `fields` — an ordered list of { selector, value } pairs (max 50) applied " +
+      "in one call. Every target is checked first; if any is forbidden or unresolved the " +
+      "whole batch is refused (BATCH_REJECTED) with nothing written and every offender named. " +
+      "After that check passes, writing is best-effort: a field whose element vanished " +
+      "mid-write is reported `error` and the rest still fill. `space` activates the focused " +
+      "element (checkbox, listbox option, plain button) under the same rules a click faces. " +
+      "`choose_option` selects an option in a dropdown: valid targets are a single-select " +
+      "<select>, an element with role=combobox/listbox, or an element owning a role=listbox " +
+      "via aria-controls/aria-owns. Identify the option by `label` (case-insensitive, " +
+      "whitespace-collapsed) and/or `value` (exact); when both are given `value` selects and " +
+      "`label` must also match. Exact match only — no fuzzy/prefix, no option creation. For a " +
+      "custom combobox the app opens the menu, may type `label` into its filter input, " +
+      "activates the one matching option, closes the widget, and re-reads the control to " +
+      "confirm the value stuck. A non-chooser / no-match / ambiguous label / disabled option " +
+      "/ option-that-never-rendered / multi-select control is refused CHOOSE_OPTION_FAILED " +
+      "with a `reason`; a permitted call returns `chosenOption: { label, value }`. `in-form` " +
+      "does not gate choose_option. Cannot submit, send, apply, or press Enter — " +
+      "submit/consent/credential targets are refused with a named rule.",
     {
       tabId: z.string(),
-      operation: z.enum(["click", "fill", "scroll", "space"]),
+      operation: z.enum(["click", "fill", "scroll", "space", "choose_option"]),
       selector: z.string().optional(),
       value: z.string().optional(),
+      label: z
+        .string()
+        .optional()
+        .describe("choose_option: the target option's visible label (case-insensitive)"),
       fields: z
         .array(z.object({ selector: z.string(), value: z.string() }))
         .optional()
         .describe("Batch fill: ordered { selector, value } pairs (fill only, max 50)"),
     },
-    async ({ tabId, operation, selector, value, fields }) => {
+    async ({ tabId, operation, selector, value, label, fields }) => {
       try {
         if (operation === "fill") {
           const shapeError = checkFillInputShape(selector, value, fields);
@@ -138,11 +152,21 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           return ok(result);
         }
 
-        const { queueDepth } = await queue.run(async () => {
+        const { value: result, queueDepth } = await queue.run(() => {
           const wc = tabs.webContentsFor(tabId);
-          await interact(wc, log, tabId, operation, selector, value);
+          return interact(wc, log, tabId, operation, selector, value, label);
         });
-        return ok({ tabId, operation, outcome: "permitted", queueDepth });
+        const chosenOption =
+          result && typeof result === "object" && "chosenOption" in result
+            ? result.chosenOption
+            : undefined;
+        return ok({
+          tabId,
+          operation,
+          outcome: "permitted",
+          ...(chosenOption ? { chosenOption } : {}),
+          queueDepth,
+        });
       } catch (e) {
         return fail(e);
       }

@@ -8,7 +8,8 @@ export type ErrorCode =
   | "TARGET_NOT_FOUND"
   | "WAIT_TIMEOUT"
   | "REFUSED_EXTERNAL_ACT"
-  | "BATCH_REJECTED";
+  | "BATCH_REJECTED"
+  | "CHOOSE_OPTION_FAILED";
 
 export interface ErrorDetails {
   /** Blocklist rule id, set only for REFUSED_EXTERNAL_ACT. */
@@ -28,6 +29,10 @@ export interface ErrorDetails {
     ruleDescription?: string;
     reason?: string;
   }>;
+  /** Non-rule refusal reason for CHOOSE_OPTION_FAILED (feature 006) — a ChooseOptionReason. */
+  reason?: string;
+  /** Colliding option labels for CHOOSE_OPTION_FAILED / "ambiguous-option" (feature 006). */
+  candidates?: string[];
 }
 
 export class HyppoError extends Error {
