@@ -27,7 +27,7 @@ export interface PageReadResult {
   queueDepth: number;
 }
 
-export type InteractOperation = "click" | "fill" | "scroll";
+export type InteractOperation = "click" | "fill" | "scroll" | "space";
 
 export interface InteractResult {
   tabId: string;

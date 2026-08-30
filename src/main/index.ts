@@ -109,6 +109,43 @@ async function main(): Promise<void> {
             .run(() => waitForSelector(tabs.webContentsFor(tabId), log, tabId, selector, timeoutMs))
             .then((r) => ({ tabId, selector, found: true, queueDepth: r.queueDepth })),
         ),
+      // Test-only scaffolding (never wired to MCP): move focus / read a value
+      // back out of the tab so assertions can check what `fill` and `space` did.
+      focus: (tabId: string, selector: string) =>
+        withCode(() =>
+          queue
+            .run(() =>
+              tabs
+                .webContentsFor(tabId)
+                .executeJavaScript(
+                  `(() => { const el = document.querySelector(${JSON.stringify(selector)});
+                     if (!el) return false; el.focus(); return document.activeElement === el; })()`,
+                  true,
+                ),
+            )
+            .then((r) => r.value),
+        ),
+      blur: (tabId: string) =>
+        withCode(() =>
+          queue
+            .run(() =>
+              tabs
+                .webContentsFor(tabId)
+                .executeJavaScript(
+                  `(() => { if (document.activeElement && document.activeElement.blur)
+                     document.activeElement.blur(); return document.activeElement &&
+                     document.activeElement.tagName; })()`,
+                  true,
+                ),
+            )
+            .then((r) => r.value),
+        ),
+      probe: (tabId: string, expr: string) =>
+        withCode(() =>
+          queue
+            .run(() => tabs.webContentsFor(tabId).executeJavaScript(expr, true))
+            .then((r) => r.value),
+        ),
     };
     return; // e2e drives the test handle; the stdio MCP server is not used here
   }

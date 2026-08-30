@@ -115,7 +115,7 @@ In a session, the agent can call:
 | `list_open_tabs` | List open tabs (id, URL, title, load state) |
 | `read_page` | Return one tab's verbatim visible text; DOM only when asked. Nothing is stored. |
 | `navigate` | Point an existing tab at a new URL |
-| `interact` | `click` / `fill` / `scroll` to reveal content — never to submit, send, or apply |
+| `interact` | `click` / `fill` / `scroll` / `space` — reveal content and prepare a draft; never submit, send, apply, or press Enter |
 | `wait_for_selector` | Wait for an element, up to a timeout |
 
 Full contract: [`specs/001-open-any-url/contracts/mcp-tools.md`](specs/001-open-any-url/contracts/mcp-tools.md).
@@ -125,13 +125,26 @@ Full contract: [`specs/001-open-any-url/contracts/mcp-tools.md`](specs/001-open-
 No tool submits a form, enters credentials, or accepts a download. `interact` refuses, with a
 named rule (`REFUSED_EXTERNAL_ACT`), any target that would perform an external act:
 
-- **submit controls** — a `<button>`/`<input>` that submits a form
-- **anything inside a `<form>`**
+- **submit controls** — a `<button>`/`<input>` that submits a form (refused for `click` and
+  `space`)
+- **clicking anything inside a `<form>`** — `click` on a form control is refused; `fill`ing a
+  value into a plain field is **not** (see below), and `space` is gated by the rules here,
+  not by the form boundary
 - **buttons or links labelled** save, confirm, submit, apply, send, delete, remove, connect,
   message, subscribe, pay, checkout, or **log in / sign in / sign up / register**
 - **consent checkboxes / switches** labelled accept, agree, consent, terms, privacy, opt in,
-  subscribe (the label is read even when it's a separate `<label for>` element)
-- **credential inputs** (`fill` on a password / one-time-code field)
+  subscribe (the label is read even when it's a separate `<label for>` element; refused for
+  `click` and `space`)
+- **credential inputs** (`fill` or `space` on a password / one-time-code field)
+- **the Enter key** — never available on any operation (it can trigger an implicit submit)
+
+`fill` **is** allowed to type a value into a plain, non-credential, non-consent field
+(`text` / `email` / `tel` / `url` / `search` / `number`, `<textarea>`, `contenteditable`),
+including one inside a `<form>` and the filter input of a combobox — this prepares a draft
+the human reviews and submits. It stays refused on `<input type="file">`, `<select>`, a
+listbox, and a combobox container. `space` activates the focused element (a plain checkbox, a
+highlighted listbox option, a non-submit button) under exactly the rules above; it inserts a
+single space when a text field has focus and can never submit.
 
 The blocklist is defined in one file (`src/main/safety/blocklist.ts`) and is enumerable. It
 permits by default, so every interaction — permitted or refused — is appended to
