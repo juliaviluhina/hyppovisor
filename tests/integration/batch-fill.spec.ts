@@ -238,3 +238,55 @@ test("US3: a field removed mid-batch is error; the rest fill; batch outcome is p
   expect(summary.outcome).toBe("partial");
   expect(summary.batch).toEqual({ requested: 5, written: 4, errored: 1, refused: 0 });
 });
+
+// ─── US4: an oversized or empty batch is refused ─────────────────────────────
+
+test("US4: an empty batch is refused with an 'at least one' message; one summary line, nothing written (T019, SC-006)", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const n0 = readLog(lp).length;
+
+  const message = await callHandle(app, "fillBatch", [tabId, []]).then(
+    () => {
+      throw new Error("expected the empty batch to be refused");
+    },
+    (e: Error) => e.message,
+  );
+  expect(message).toContain("BATCH_REJECTED");
+  expect(message.toLowerCase()).toContain("at least one");
+
+  const added = readLog(lp).slice(n0);
+  expect(added).toHaveLength(1);
+  expect(added[0].operation).toBe("fill_batch");
+  expect(added[0].outcome).toBe("refused");
+  expect(added[0].batch).toEqual({ requested: 0, written: 0, errored: 0, refused: 0 });
+  expect(await probe<string>(tabId, "document.querySelector('#first_name').value")).toBe("");
+});
+
+test("US4: a batch over the 50-pair cap is refused naming the cap and the count; nothing written (T019, SC-006)", async () => {
+  const lp = await logPath();
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const n0 = readLog(lp).length;
+
+  // 51 well-formed, resolvable pairs — the cap check fires before the pre-write pass.
+  const oversized: Array<[string, string]> = Array.from({ length: 51 }, () => [
+    "#first_name",
+    "x",
+  ]);
+  const message = await callHandle(app, "fillBatch", [tabId, oversized]).then(
+    () => {
+      throw new Error("expected the oversized batch to be refused");
+    },
+    (e: Error) => e.message,
+  );
+  expect(message).toContain("BATCH_REJECTED");
+  expect(message).toContain("50");
+  expect(message).toContain("51");
+
+  const added = readLog(lp).slice(n0);
+  expect(added).toHaveLength(1);
+  expect(added[0].operation).toBe("fill_batch");
+  expect(added[0].outcome).toBe("refused");
+  expect(added[0].batch).toEqual({ requested: 51, written: 0, errored: 0, refused: 0 });
+  expect(await probe<string>(tabId, "document.querySelector('#first_name').value")).toBe("");
+});

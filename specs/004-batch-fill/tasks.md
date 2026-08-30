@@ -100,8 +100,8 @@ Single-project Electron layout: `src/main/`, `src/shared/`, `tests/` at reposito
 
 **Independent Test**: `fillBatch(tabId, [])` → `BATCH_REJECTED` "at least one"; `fillBatch(tabId, <cap+1 pairs>)` → `BATCH_REJECTED` naming the cap and the count; no field changed; one `fill_batch` `refused` audit line, no `targets`.
 
-- [ ] T018 [US4] Verify/confirm the cap and empty guards from T008 emit the exact messages FR-003 requires (cap + count for oversized; "no fields" reason for empty) and append exactly one `{ operation: "fill_batch", target: null, outcome: "refused", batch: { requested, written: 0, errored: 0, refused: 0 } }` entry with **no** `targets` (data-model.md §6 table row 4). Adjust the message strings in `fillBatch` if they do not already match.
-- [ ] T019 [US4] Extend `tests/integration/batch-fill.spec.ts` with the US4 cases (quickstart §5): `fillBatch(tabId, [])` → `BATCH_REJECTED` "at least one", log grew by 1 `fill_batch` `refused`, no field changed; with `HYPPO_BATCH_FILL_CAP=3` in the test env, a 4-pair batch → `BATCH_REJECTED` naming `3` / `4`, nothing written.
+- [x] T018 [US4] Verify/confirm the cap and empty guards from T008 emit the exact messages FR-003 requires (cap + count for oversized; "no fields" reason for empty) and append exactly one `{ operation: "fill_batch", target: null, outcome: "refused", batch: { requested, written: 0, errored: 0, refused: 0 } }` entry with **no** `targets` (data-model.md §6 table row 4). Adjust the message strings in `fillBatch` if they do not already match.
+- [x] T019 [US4] Extend `tests/integration/batch-fill.spec.ts` with the US4 cases (quickstart §5): `fillBatch(tabId, [])` → `BATCH_REJECTED` "at least one", log grew by 1 `fill_batch` `refused`, no field changed; with `HYPPO_BATCH_FILL_CAP=3` in the test env, a 4-pair batch → `BATCH_REJECTED` naming `3` / `4`, nothing written.
 
 **Checkpoint**: All four user stories pass independently.
 
