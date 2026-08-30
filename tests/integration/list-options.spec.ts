@@ -96,6 +96,37 @@ test.describe("list_options", () => {
     expect(String(multiErr)).toContain("not-a-dropdown");
   });
 
+  test("a react-select-style widget that opens only on mousedown is enumerated", async () => {
+    const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+    const r = await list(tabId, "#msInput");
+    expect(r.optionsPresent).toBe(true);
+    expect(r.options).toEqual([
+      { label: "Playwright", value: "pw", disabled: false },
+      { label: "Selenium", value: "se", disabled: false },
+      { label: "Cypress", value: "cy", disabled: true },
+    ]);
+    // read-only: the menu is left closed, the shown value untouched
+    expect(
+      await probe<string>(tabId, `document.querySelector('#msInput').getAttribute('aria-expanded')`),
+    ).toBe("false");
+    expect(await probe<string>(tabId, `document.querySelector('#msValue').textContent`)).toBe("");
+  });
+
+  test("choose_option drives the mousedown-only widget on the first try", async () => {
+    const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
+    const res = await callHandle<{ chosenOption?: { label: string; value: string } }>(app, "interact", [
+      tabId,
+      "choose_option",
+      "#msInput",
+      undefined,
+      "Selenium",
+    ]);
+    expect(res.chosenOption).toEqual({ label: "Selenium", value: "se" });
+    expect(await probe<string>(tabId, `document.querySelector('#msValue').textContent`)).toBe(
+      "Selenium",
+    );
+  });
+
   test("a widget that never populates: options: [], optionsPresent: false, no error", async () => {
     const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/combobox.html`]);
     const r = await list(tabId, "#deadCombo");

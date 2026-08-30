@@ -143,6 +143,23 @@ const OPTION_SOURCES_FN = `
     if (sib && (sib.getAttribute("role") || "").toLowerCase() === "listbox") {
       add(sib.querySelectorAll('[role="option"]'));
     }
+    // react-select / MUI / downshift: the menu is a sibling of the CONTROL (an
+    // ancestor of a role=combobox <input>), not of the input. Walk up a couple of
+    // levels and take a menu-like container's options — bounded, and only a
+    // container that holds exactly ONE combobox, so a shared wrapper full of
+    // sibling widgets (the test fixture) is never scraped.
+    if (out.length === 0) {
+      let anc = el.parentElement;
+      for (let i = 0; i < 3 && anc && anc.querySelectorAll; i++) {
+        if (anc.querySelectorAll('[role="combobox"], input.select__input, [class*="combobox"]').length <= 1) {
+          const menu = anc.querySelector(
+            '[class*="menu"] [role="option"], [class*="listbox"] [role="option"], [class*="options"] [role="option"]',
+          );
+          if (menu) { add(anc.querySelectorAll('[role="option"]')); break; }
+        }
+        anc = anc.parentElement;
+      }
+    }
     return out;
   }
   function __optionSnap(n) {
@@ -255,14 +272,61 @@ function revertNativeScript(selector: string, value: string): string {
   })()`;
 }
 
-/** click the chooser to open its menu. */
+/**
+ * Open the chooser's menu. Escalating and **idempotent** — each step is skipped
+ * once the widget reports open, so a plain toggle-on-click widget is never
+ * double-toggled:
+ *   1. `el.click()` — simple widgets, `<button>` triggers, the fixtures.
+ *   2. `mousedown` (+ pointer) on the widget's control container — react-select /
+ *      downshift / MUI open on `mousedown` on the control, not a `click` on the
+ *      inner `<input>`.
+ *   3. focus the inner input + `ArrowDown` — the keyboard-combobox path.
+ */
 function openScript(selector: string): string {
   const SEL = JSON.stringify(selector);
   return `(() => {
     const el = document.querySelector(${SEL});
     if (!el) return { gone: true };
+    // Idempotency signal: this widget's own expanded state. Deliberately NOT a
+    // page-wide '[role="option"]' probe — another widget may already be open.
+    const isOpen = () => {
+      if (el.getAttribute("aria-expanded") === "true") return true;
+      const inner = el.querySelector && el.querySelector('[role="combobox"][aria-expanded="true"], [aria-expanded="true"]');
+      return !!inner;
+    };
+    if (isOpen()) return { ok: true, via: "already" };
+
     if (typeof el.click === "function") el.click();
-    return { ok: true };
+    if (isOpen()) return { ok: true, via: "click" };
+    if (!document.querySelector(${SEL})) return { gone: true };
+
+    const control =
+      (el.closest && el.closest('[class*="control"], [class*="select"], [class*="combobox"], [class*="dropdown"], [class*="Autocomplete"]')) ||
+      el.parentElement ||
+      el;
+    const fireMouse = (t) => {
+      try { t.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); } catch (_) {}
+      t.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window, button: 0 }));
+      try { t.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true })); } catch (_) {}
+      t.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window, button: 0 }));
+    };
+    fireMouse(control);
+    if (isOpen()) return { ok: true, via: "mousedown" };
+    if (!document.querySelector(${SEL})) return { gone: true };
+
+    const input =
+      el.tagName && el.tagName.toLowerCase() === "input"
+        ? el
+        : (el.querySelector && el.querySelector("input"));
+    if (input && typeof input.focus === "function") {
+      input.focus();
+      for (const type of ["keydown", "keyup"]) {
+        input.dispatchEvent(new KeyboardEvent(type, {
+          key: "ArrowDown", code: "ArrowDown", keyCode: 40, which: 40, bubbles: true,
+        }));
+      }
+    }
+    return { ok: true, via: isOpen() ? "arrowdown" : "attempted" };
   })()`;
 }
 

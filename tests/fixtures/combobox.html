@@ -59,6 +59,27 @@
     <!-- a plain <div>: not a dropdown at all -->
     <div id="plainDiv">just text</div>
 
+    <!-- feature 008 fix: a react-select-style widget that opens ONLY on mousedown
+         on the control container (a click on the inner input does nothing), and
+         whose menu is a sibling of the control (no aria-controls, no id handed to
+         us) — exercises openScript's mousedown escalation + the ancestor-climb
+         option source. -->
+    <div id="msWidget" class="rs-select">
+      <label id="msLabel" for="msInput">Preferred stack</label>
+      <div id="msControl" class="rs-select__control">
+        <input
+          id="msInput"
+          role="combobox"
+          aria-labelledby="msLabel"
+          aria-expanded="false"
+          aria-autocomplete="list"
+          class="rs-select__input"
+        />
+        <span id="msValue" class="rs-select__value"></span>
+      </div>
+      <div id="msMenu" class="rs-select__menu" hidden></div>
+    </div>
+
     <!-- feature 008 US1: blocklist parity targets for list_options -->
     <form id="cformguard" action="/x" method="post">
       <label for="cpassword">Password</label>
@@ -127,6 +148,57 @@
             combo.getAttribute("aria-expanded") === "true" ? "false" : "true",
           );
         });
+      })();
+
+      // #msWidget: react-select-style. A click on #msInput does nothing; the menu
+      // renders only on mousedown on #msControl. Options are plain <div role=option>
+      // in #msMenu, a sibling of the control — no aria-controls, no shared id.
+      (function () {
+        var control = document.getElementById("msControl");
+        var input = document.getElementById("msInput");
+        var menu = document.getElementById("msMenu");
+        var valueEl = document.getElementById("msValue");
+        var opts = [
+          { label: "Playwright", value: "pw" },
+          { label: "Selenium", value: "se" },
+          { label: "Cypress", value: "cy", disabled: true },
+        ];
+        function render() {
+          menu.innerHTML = "";
+          opts.forEach(function (o) {
+            var d = document.createElement("div");
+            d.setAttribute("role", "option");
+            d.setAttribute("data-value", o.value);
+            if (o.disabled) d.setAttribute("aria-disabled", "true");
+            d.textContent = o.label;
+            d.addEventListener("click", function () {
+              if (o.disabled) return;
+              valueEl.textContent = o.label;
+              input.setAttribute("aria-expanded", "false");
+              menu.hidden = true;
+              menu.innerHTML = "";
+            });
+            menu.appendChild(d);
+          });
+          menu.hidden = false;
+        }
+        function close() {
+          input.setAttribute("aria-expanded", "false");
+          menu.hidden = true;
+          menu.innerHTML = "";
+        }
+        control.addEventListener("mousedown", function () {
+          if (input.getAttribute("aria-expanded") === "true") {
+            close();
+            return;
+          }
+          input.setAttribute("aria-expanded", "true");
+          render();
+        });
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") close();
+        });
+        // a click on the inner input is intentionally inert
       })();
     </script>
   </body>

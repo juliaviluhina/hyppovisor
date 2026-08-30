@@ -179,7 +179,7 @@ function fakeWc(handlers: {
         calls.push("close");
         return handlers.close ?? { shown: "", expanded: "false" };
       }
-      if (src.includes('typeof el.click === "function"') && src.includes("return { ok: true }")) {
+      if (src.includes("const isOpen") && src.includes("fireMouse")) {
         calls.push("open");
         return handlers.open ?? { ok: true };
       }
