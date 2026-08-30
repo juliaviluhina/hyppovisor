@@ -7,7 +7,8 @@ export type ErrorCode =
   | "TAB_NOT_FOUND"
   | "TARGET_NOT_FOUND"
   | "WAIT_TIMEOUT"
-  | "REFUSED_EXTERNAL_ACT";
+  | "REFUSED_EXTERNAL_ACT"
+  | "BATCH_REJECTED";
 
 export interface ErrorDetails {
   /** Blocklist rule id, set only for REFUSED_EXTERNAL_ACT. */
@@ -16,6 +17,17 @@ export interface ErrorDetails {
   ruleDescription?: string;
   /** Underlying cause string, e.g. for LOAD_FAILED. */
   cause?: string;
+  /**
+   * Per-target breakdown for a whole-batch refusal (BATCH_REJECTED, feature 004).
+   * Present only when the cause is one-or-more forbidden/unresolved targets;
+   * absent for cap / empty / malformed-call refusals.
+   */
+  targets?: Array<{
+    selector: string;
+    ruleId?: string;
+    ruleDescription?: string;
+    reason?: string;
+  }>;
 }
 
 export class HyppoError extends Error {

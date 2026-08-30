@@ -9,9 +9,9 @@ import { InteractionLog } from "./safety/interaction-log.js";
 import { TabManager } from "./tabs/tab-manager.js";
 import { startStdioMcpServer, startHttpMcpServer } from "./mcp/server.js";
 import { readPage } from "./page/read.js";
-import { interact, waitForSelector } from "./page/interact.js";
+import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { listBlocklistRules } from "./safety/blocklist.js";
-import type { InteractOperation } from "../shared/types.js";
+import type { InteractOperation, BatchFillField } from "../shared/types.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -103,6 +103,17 @@ async function main(): Promise<void> {
             .run(() => interact(tabs.webContentsFor(tabId), log, tabId, operation, selector, value))
             .then((r) => ({ tabId, operation, outcome: "permitted", queueDepth: r.queueDepth })),
         ),
+      // Tests pass terse [selector, value] tuples; the MCP tool uses the
+      // { selector, value } object form.
+      fillBatch: (tabId: string, fields: Array<[string, string] | BatchFillField>) =>
+        withCode(() => {
+          const pairs: BatchFillField[] = fields.map((f) =>
+            Array.isArray(f) ? { selector: f[0], value: f[1] } : f,
+          );
+          return queue
+            .run((depth) => fillBatch(tabs.webContentsFor(tabId), log, tabId, pairs, depth))
+            .then((r) => r.value);
+        }),
       waitFor: (tabId: string, selector: string, timeoutMs?: number) =>
         withCode(() =>
           queue
