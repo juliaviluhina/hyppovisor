@@ -1,12 +1,14 @@
 # HyppoVisor
 
-<img src="assets/hyppovisor.png" alt="HyppoVisor" width="260" align="right">
+<img src="assets/hyppovisor.png" alt="HyppoVisor" width="200" align="right">
 
 **Hands for the web on the sites you're already logged into.**
 
 HyppoVisor is a local Electron app. It opens URLs in real browser tabs that carry
 your own sessions and exposes them to an AI agent over MCP. The agent reads pages
 and drafts input. It never submits, sends, applies, or signs in — you do that.
+
+<br clear="right" />
 
 ## Why
 
@@ -49,4 +51,6 @@ flowchart LR
 ## License
 
 [Apache-2.0](LICENSE) — free for any use including commercial; keep `LICENSE` and
-`NOTICE` with any copy. Design principles: [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
+`NOTICE` with any copy.
+
+Design principles: [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
