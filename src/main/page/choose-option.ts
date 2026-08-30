@@ -115,22 +115,26 @@ const OPTION_SOURCES_FN = `
     const out = [];
     const seen = new Set();
     const add = (nodes) => { for (const n of nodes) if (!seen.has(n)) { seen.add(n); out.push(n); } };
+    // options inside the element itself
     add(el.querySelectorAll('[role="option"]'));
+    // an explicitly referenced listbox (aria-controls / aria-owns)
+    let ref = null;
     for (const attr of ["aria-controls", "aria-owns"]) {
-      const ref = el.getAttribute(attr);
-      if (ref) for (const id of ref.split(/\\s+/)) {
+      const v = el.getAttribute(attr);
+      if (v) for (const id of v.split(/\\s+/)) {
         const host = document.getElementById(id);
-        if (host) add(host.querySelectorAll('[role="option"]'));
+        if (host && (host.getAttribute("role") || "").toLowerCase() === "listbox") { ref = host; break; }
       }
+      if (ref) break;
     }
+    if (ref) add(ref.querySelectorAll('[role="option"]'));
+    // a descendant listbox
     const desc = el.querySelector('[role="listbox"]');
     if (desc) add(desc.querySelectorAll('[role="option"]'));
-    let sib = el.nextElementSibling;
-    while (sib) {
-      if (sib.getAttribute && (sib.getAttribute("role") || "").toLowerCase() === "listbox") {
-        add(sib.querySelectorAll('[role="option"]'));
-      }
-      sib = sib.nextElementSibling;
+    // the immediately-following sibling, only if it is itself a listbox
+    const sib = el.nextElementSibling;
+    if (sib && (sib.getAttribute("role") || "").toLowerCase() === "listbox") {
+      add(sib.querySelectorAll('[role="option"]'));
     }
     return out;
   }
@@ -403,17 +407,21 @@ export async function chooseOption(
 
   const refuseReason = (reason: ChooseOptionReason, candidates?: string[]): never => {
     record("refused", { reason });
-    throw new HyppoError("CHOOSE_OPTION_FAILED", REASON_MESSAGE[reason], {
-      reason,
-      ...(candidates ? { candidates } : {}),
-    });
+    throw new HyppoError(
+      "CHOOSE_OPTION_FAILED",
+      `${REASON_MESSAGE[reason]} (reason: ${reason})` +
+        (candidates ? ` candidates: ${candidates.join(" | ")}` : ""),
+      { reason, ...(candidates ? { candidates } : {}) },
+    );
   };
 
   if (label === undefined && value === undefined) {
     record("refused", { reason: "no-option-match" });
-    throw new HyppoError("CHOOSE_OPTION_FAILED", "choose_option requires `label` or `value`.", {
-      reason: "no-option-match",
-    });
+    throw new HyppoError(
+      "CHOOSE_OPTION_FAILED",
+      "choose_option requires `label` or `value`. (reason: no-option-match)",
+      { reason: "no-option-match" },
+    );
   }
 
   // 1. blocklist gate — same rule set every operation uses.
@@ -533,13 +541,8 @@ export async function chooseOption(
   }
   const shown = norm(back.shown ?? "");
   const matched = shown.includes(norm(chosen.label)) || (chosen.value !== "" && (back.shown ?? "") === chosen.value);
-  if (!matched) {
-    // best-effort: nothing committed on a mismatch; the widget is already closed
-    record("refused", { reason: "option-not-appeared" });
-    throw new HyppoError("CHOOSE_OPTION_FAILED", REASON_MESSAGE["option-not-appeared"], {
-      reason: "option-not-appeared",
-    });
-  }
+  // best-effort: nothing committed on a mismatch; the widget is already closed
+  if (!matched) return refuseReason("option-not-appeared");
 
   record("permitted");
   return { chosenOption: { label: chosen.label, value: chosen.value } };

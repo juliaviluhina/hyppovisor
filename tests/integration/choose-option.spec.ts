@@ -82,3 +82,90 @@ test("US1: choose_option sets a native <select> by label and by value, nothing s
     expect(e.ruleId).toBeNull();
   }
 });
+
+// ─── US2: custom combobox (T018) ─────────────────────────────────────────────
+
+test("US2: a closed react-select combobox opens, selects, and closes again", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const r = await choose(tabId, "#closedCombo", { label: "Toronto, Canada" });
+  expect(r.outcome).toBe("permitted");
+  expect(r.chosenOption).toEqual({ label: "Toronto, Canada", value: "toronto" });
+  expect(await probe<string>(tabId, `document.querySelector("#closedCombo").getAttribute("aria-expanded")`)).toBe(
+    "false",
+  );
+  expect(await probe<string>(tabId, `document.querySelector("#closedComboValue").textContent`)).toBe(
+    "Toronto, Canada",
+  );
+  expect(await probe<string>(tabId, "window.__chosen006.closedCombo")).toBe("toronto");
+  expect(await probe<boolean>(tabId, "window.__submitted")).toBe(false);
+});
+
+test("US2: a filter combobox is narrowed by typing; a prefix-only label is not a match", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const ok = await choose(tabId, "#filterCombo", { label: "France" });
+  expect(ok.outcome).toBe("permitted");
+  expect(ok.chosenOption).toEqual({ label: "France", value: "fr" });
+  expect(await probe<string>(tabId, "window.__chosen006.filterCombo")).toBe("fr");
+
+  const prefix = await callHandle(app, "interact", [
+    tabId,
+    "choose_option",
+    "#filterCombo",
+    undefined,
+    "Fran",
+  ]).catch((e: Error) => e.message);
+  expect(String(prefix)).toContain("CHOOSE_OPTION_FAILED");
+  expect(String(prefix)).toContain("no-option-match");
+  // nothing new selected
+  expect(await probe<string>(tabId, "window.__chosen006.filterCombo")).toBe("fr");
+});
+
+test("US2: an already-open listbox combobox commits the option (aria-owns + descendant)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const loc = await choose(tabId, "#locationCombobox", { label: "Berlin, Germany" });
+  expect(loc.outcome).toBe("permitted");
+  expect(loc.chosenOption?.label).toBe("Berlin, Germany");
+  expect(await probe<string | null>(tabId, "window.__chosenOption")).toBe("locationOptionBerlin");
+  expect(await probe<boolean>(tabId, "window.__submitted")).toBe(false);
+
+  const owned = await choose(tabId, "#ownedCombo", { label: "Oslo, Norway" });
+  expect(owned.outcome).toBe("permitted");
+  expect(owned.chosenOption).toEqual({ label: "Oslo, Norway", value: "oslo" });
+  expect(await probe<string>(tabId, "window.__chosen006.ownedCombo")).toBe("oslo");
+});
+
+test("US2: an async list that never renders in budget is refused option-not-appeared", async () => {
+  const small = await startFixtureServer();
+  const fast = await launchApp({ HYPPO_CHOOSE_OPTION_WAIT_MS: "300" });
+  try {
+    const { tabId } = await callHandle<{ tabId: string }>(fast, "open", [`${small.base}/form.html`]);
+    const before = await callHandle<string>(fast, "probe", [
+      tabId,
+      `document.querySelector("#asyncComboValue").textContent`,
+    ]);
+    const err = await callHandle(fast, "interact", [
+      tabId,
+      "choose_option",
+      "#asyncCombo",
+      undefined,
+      "Late Option",
+    ]).catch((e: Error) => e.message);
+    expect(String(err)).toContain("CHOOSE_OPTION_FAILED");
+    expect(String(err)).toContain("option-not-appeared");
+    expect(
+      await callHandle<string>(fast, "probe", [tabId, `document.querySelector("#asyncComboValue").textContent`]),
+    ).toBe(before);
+    expect(
+      await callHandle<string>(fast, "probe", [
+        tabId,
+        `document.querySelector("#asyncCombo").getAttribute("aria-expanded")`,
+      ]),
+    ).toBe("false");
+  } finally {
+    await fast.close();
+    small.server.close();
+  }
+});
