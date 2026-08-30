@@ -454,18 +454,21 @@ function closeReadbackScript(selector: string, revertFilterTo: string | null): s
       if (ad) shown = ((ad.innerText || ad.textContent || "") + "").trim();
     }
     if (!shown) {
-      // react-select / MUI: the committed value renders in a sibling of the
-      // input, inside the control container — not on the combobox element itself.
-      // Start the climb ABOVE el so its own class (e.g. "…__input") is not the
-      // container we search.
-      const start = el.parentElement || el;
-      const box =
-        (start.closest &&
-          start.closest('[class*="control"], [class*="combobox"], [class*="container"], [class*="select"]')) ||
-        start;
-      const sv = box && box.querySelector
-        ? box.querySelector('[class*="single-value"], [class*="singleValue"], [class*="SingleValue"], [class*="multiValue"], [class*="multi-value"]')
-        : null;
+      // react-select / MUI: the committed value renders in a SIBLING of the
+      // input, up inside the control/value container — not on the combobox
+      // element itself, and not in the input's own wrapper. Climb from the
+      // parent and take the first ancestor that actually contains a
+      // single/multi-value node.
+      let box = el.parentElement;
+      let sv = null;
+      for (let i = 0; i < 5 && box && !sv; i++) {
+        sv =
+          box.querySelector &&
+          box.querySelector(
+            '[class*="single-value"], [class*="singleValue"], [class*="SingleValue"], [class*="multiValue"], [class*="multi-value"]',
+          );
+        if (!sv) box = box.parentElement;
+      }
       if (sv) shown = ((sv.innerText || sv.textContent || "") + "").trim();
     }
     if (!shown) shown = ((el.innerText || el.textContent || "") + "").trim();
@@ -783,12 +786,20 @@ export async function chooseOption(
   }
   const shown = norm(back.shown ?? "");
   const wantLabel = norm(chosen.label);
+  // The widget closed its menu and now displays a value it did not display
+  // before — a choice was committed even if the display text is decorated or
+  // abbreviated (a dialing-code picker shows "+1", not "United States +1").
+  const committed =
+    back.expanded !== "true" &&
+    shown.length > 0 &&
+    shown !== norm(probe.preCallValue || "");
   // Bidirectional: a rich widget's committed display often trims or decorates the
   // option text (e.g. "United States +1" → "United States"), so accept either
   // containing the other. `value` equality stays an exact check.
   const matched =
     (shown.length >= 2 && (shown.includes(wantLabel) || wantLabel.includes(shown))) ||
-    (chosen.value !== "" && (back.shown ?? "") === chosen.value);
+    (chosen.value !== "" && (back.shown ?? "") === chosen.value) ||
+    committed;
   // best-effort: nothing committed on a mismatch; the widget is already closed
   if (!matched) {
     return refuseReason(
