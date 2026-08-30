@@ -110,10 +110,10 @@ Single-project Electron layout: `src/main/`, `src/shared/`, `tests/` at reposito
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T021 [P] Update `README.md`: add a `read_form_fields` row to the MCP tool table; confirm the "What the app will not do" section still accurate (read-only, adds no permission, `read_page` unchanged).
-- [ ] T022 [P] Sweep for any doc/comment that says "six tools" (e.g. `specs/001-*/contracts/mcp-tools.md`, `CLAUDE.md` if present) and update to seven, or note the addition — do not rewrite unrelated content.
-- [ ] T023 Run the full gate (quickstart §7): `npm run build`, `npm run lint`, `npm run test`, `npm run test:e2e` — all clean. Confirm the MCP tool list has seven tools and `read_form_fields`'s schema accepts `{ tabId }` and `{ tabId, containerSelector }`.
-- [ ] T024 Walk quickstart.md §1–§6 end to end against the built app; demonstrate SC-001…SC-008 (SC-008: build a `004` batch from only `fillVerdict: "permitted"` selectors on `form.html` and confirm it passes `004`'s pre-write check once `004` is merged; until then, `fill` each `permitted` selector individually with no refusal). Mark this feature's `checklists/requirements.md` items still satisfied.
+- [x] T021 [P] Update `README.md`: add a `read_form_fields` row to the MCP tool table; confirm the "What the app will not do" section still accurate (read-only, adds no permission, `read_page` unchanged).
+- [x] T022 [P] Sweep for any doc/comment that says "six tools" (e.g. `specs/001-*/contracts/mcp-tools.md`, `CLAUDE.md` if present) and update to seven, or note the addition — do not rewrite unrelated content.
+- [x] T023 Run the full gate (quickstart §7): `npm run build`, `npm run lint`, `npm run test`, `npm run test:e2e` — all clean. Confirm the MCP tool list has seven tools and `read_form_fields`'s schema accepts `{ tabId }` and `{ tabId, containerSelector }`.
+- [x] T024 Walk quickstart.md §1–§6 end to end against the built app; demonstrate SC-001…SC-008 (SC-008: build a `004` batch from only `fillVerdict: "permitted"` selectors on `form.html` and confirm it passes `004`'s pre-write check once `004` is merged; until then, `fill` each `permitted` selector individually with no refusal). Mark this feature's `checklists/requirements.md` items still satisfied.
 
 ---
 

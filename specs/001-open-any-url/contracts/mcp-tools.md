@@ -2,7 +2,8 @@
 
 **Feature**: 001-open-any-url | **Transport**: Streamable HTTP on loopback (default) or stdio | **Date**: 2026-08-29
 
-The complete interface HyppoVisor exposes. Six tools, no others. Entity shapes are in
+The complete interface HyppoVisor exposes. Seven tools, no others (`read_form_fields`
+was added by feature 005). Entity shapes are in
 [data-model.md](../data-model.md); error codes are defined there too.
 
 **Contract invariants**, true of every tool:
@@ -95,6 +96,29 @@ returns `{ tabId, operation: "fill", outcome: "permitted" | "partial", fields: A
 `fill` additionally refuses credential inputs (FR-018). A batch `fill` with any forbidden or
 unresolved target returns `BATCH_REJECTED` with a `targets[]` breakdown and writes nothing;
 cap / empty / malformed-call refusals use `BATCH_REJECTED` without `targets` (feature 004).
+
+---
+
+## `read_form_fields` (feature 005)
+
+Read-only, derived view for building a batch `fill`. `read_page` is unchanged.
+
+**Input**: `{ tabId: string, containerSelector?: string }` — omit `containerSelector`
+for the whole page; give it to scope to controls inside that element.
+
+**Returns**: `FormFieldMap` — `{ tabId, url, observedAt, truncated, records[], queueDepth }`.
+Each record: `selector` (usable by `interact`, verified unique at call time; `null` only when
+none could be built), `selectorSynthesised` / `duplicateId`, `kind`, raw `type`, verbatim
+`label`, `required`, `group` (radios), `inFormAncestor`, `visible`, `currentValue` (**omitted
+entirely** for a credential field), `options` + `optionsAvailable` + `optionsTruncated`
+(`<select>` and in-DOM combobox menus), and `fillVerdict` / `clickVerdict` — identical in
+shape and content to what `interact` returns for that target.
+
+**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND` (a container selector that resolves to nothing).
+
+**Notes**: performs no interaction, writes nothing to the shared data directory, adds no
+interaction-audit-log entry. Bounded by `formFieldControlCap` (result-level `truncated`) and
+`formFieldOptionCap` (per-record `optionsTruncated`).
 
 ---
 

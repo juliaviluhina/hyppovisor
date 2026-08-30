@@ -224,6 +224,24 @@ test("US4: a container selector scopes the read; an unresolved container errors"
   expect(String(err)).toContain("TARGET_NOT_FOUND");
 });
 
+test("SC-008: a batch built from only the reader's permitted selectors passes 004's pre-write check", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const map = await read(tabId);
+
+  const batch = map.records
+    .filter((r) => r.selector != null && r.fillVerdict.verdict === "permitted" && r.visible)
+    .map((r) => [r.selector as string, "sample"] as [string, string]);
+  expect(batch.length).toBeGreaterThan(3);
+
+  const r = await callHandle<{ outcome: string; summary: { requested: number; written: number; errored: number } }>(
+    app,
+    "fillBatch",
+    [tabId, batch],
+  );
+  expect(r.outcome).toBe("permitted");
+  expect(r.summary).toEqual({ requested: batch.length, written: batch.length, errored: 0 });
+});
+
 test("US4: more controls than the cap truncates to the first cap-many with the flag", async () => {
   const small = await startFixtureServer();
   const capped = await launchApp({ HYPPO_FORM_FIELD_CONTROL_CAP: "4" });
