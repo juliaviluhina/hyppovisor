@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Combobox Fixture Page</title>
+  </head>
+  <body>
+    <h1>Combobox fixture</h1>
+
+    <!-- feature 008 US1/US3: a scripted dropdown whose [role="option"] nodes are
+         injected into its listbox only after the control is clicked, backed by a
+         hidden value-mirror <input> that shares the combobox's `name`. The reader
+         must collapse this cluster to ONE interactive record whose selector is the
+         chooser (#roleCombo), not the hidden #q_role input. -->
+    <div id="roleWidget" class="rs-container">
+      <input type="hidden" name="q_role" id="q_role" />
+      <label id="roleLabel" for="roleCombo">Role</label>
+      <div
+        id="roleCombo"
+        role="combobox"
+        name="q_role"
+        aria-labelledby="roleLabel"
+        aria-expanded="false"
+        aria-controls="roleListbox"
+        tabindex="0"
+      >
+        <span id="roleComboValue"></span>
+      </div>
+      <ul role="listbox" id="roleListbox"></ul>
+    </div>
+
+    <!-- a plain native single-select -->
+    <label for="plainSelect">Team</label>
+    <select id="plainSelect" name="plain">
+      <option value="">Choose…</option>
+      <option value="eng">Engineering</option>
+      <option value="design">Design</option>
+      <option value="ops" disabled>Operations</option>
+    </select>
+
+    <!-- a native multi-select — classifies as not-a-dropdown for list_options -->
+    <label for="multiSelect">Skills</label>
+    <select id="multiSelect" name="multi" multiple>
+      <option value="js">JavaScript</option>
+      <option value="ts">TypeScript</option>
+    </select>
+
+    <!-- a widget wired to never inject options: click opens it but nothing renders -->
+    <div
+      id="deadCombo"
+      role="combobox"
+      aria-expanded="false"
+      aria-controls="deadListbox"
+      tabindex="0"
+    >
+      <span id="deadComboValue"></span>
+    </div>
+    <ul role="listbox" id="deadListbox"></ul>
+
+    <!-- a plain <div>: not a dropdown at all -->
+    <div id="plainDiv">just text</div>
+
+    <!-- feature 008 US1: blocklist parity targets for list_options -->
+    <form id="cformguard" action="/x" method="post">
+      <label for="cpassword">Password</label>
+      <input type="password" id="cpassword" name="cpassword" />
+      <label><input type="checkbox" id="cagree" name="cagree" /> I agree to the terms</label>
+      <button type="submit" id="csubmit">Apply now</button>
+    </form>
+
+    <!-- feature 008 US3: plain controls so `operation` derivation can be checked
+         against each kind (text→fill, checkbox→activate, file→none). -->
+    <label for="cfirst">First name</label>
+    <input type="text" id="cfirst" name="cfirst" />
+    <label for="cnews">Newsletter</label>
+    <input type="checkbox" id="cnews" name="cnews" />
+    <label for="cfile">Attachment</label>
+    <input type="file" id="cfile" name="cfile" />
+
+    <script>
+      // The scripted role combobox: options render into its listbox only on open;
+      // choosing one mirrors the value into the hidden #q_role input and collapses.
+      (function () {
+        var combo = document.getElementById("roleCombo");
+        var listbox = document.getElementById("roleListbox");
+        var valueEl = document.getElementById("roleComboValue");
+        var mirror = document.getElementById("q_role");
+        var opts = [
+          { label: "Frontend Engineer", value: "fe" },
+          { label: "Backend Engineer", value: "be" },
+          { label: "Staff Engineer", value: "staff", disabled: true },
+        ];
+        function render() {
+          listbox.innerHTML = "";
+          opts.forEach(function (o) {
+            var li = document.createElement("li");
+            li.setAttribute("role", "option");
+            li.setAttribute("data-value", o.value);
+            if (o.disabled) li.setAttribute("aria-disabled", "true");
+            li.textContent = o.label;
+            li.addEventListener("click", function () {
+              if (o.disabled) return;
+              mirror.value = o.value;
+              valueEl.textContent = o.label;
+              combo.setAttribute("aria-expanded", "false");
+              listbox.innerHTML = "";
+            });
+            listbox.appendChild(li);
+          });
+        }
+        combo.addEventListener("click", function () {
+          if (combo.getAttribute("aria-expanded") === "true") {
+            combo.setAttribute("aria-expanded", "false");
+            listbox.innerHTML = "";
+            return;
+          }
+          combo.setAttribute("aria-expanded", "true");
+          render();
+        });
+      })();
+
+      // #deadCombo: opens, never renders an option.
+      (function () {
+        var combo = document.getElementById("deadCombo");
+        combo.addEventListener("click", function () {
+          combo.setAttribute(
+            "aria-expanded",
+            combo.getAttribute("aria-expanded") === "true" ? "false" : "true",
+          );
+        });
+      })();
+    </script>
+  </body>
+</html>

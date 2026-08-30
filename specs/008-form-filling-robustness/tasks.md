@@ -30,11 +30,11 @@ Single project — `src/main/**`, `src/renderer/**`, `src/shared/**`, `tests/**`
 
 ## Phase 1: Setup (fixtures)
 
-- [ ] T001 [P] Add `tests/fixtures/combobox.html` — a scripted dropdown whose
+- [x] T001 [P] Add `tests/fixtures/combobox.html` — a scripted dropdown whose
   `[role="option"]` nodes are injected only after the control is clicked, backed by a hidden
   `<input type="hidden" name="q_role">` value-mirror; plus a plain native `<select>` and a
   `<select multiple>`; plus one widget wired to never inject options.
-- [ ] T002 [P] Extend `tests/fixtures/form.html` — add a
+- [x] T002 [P] Extend `tests/fixtures/form.html` — add a
   `maxlength="20" pattern="[0-9]*" inputmode="numeric"` text input, a group of `required`
   inputs left empty, and a plain `<button type="button">`.
 
@@ -44,24 +44,24 @@ Single project — `src/main/**`, `src/renderer/**`, `src/shared/**`, `tests/**`
 
 **⚠️ No user-story work starts until this phase is done.**
 
-- [ ] T003 Add config keys to `src/main/config.ts`: `formFieldReadMaxBytes`
+- [x] T003 Add config keys to `src/main/config.ts`: `formFieldReadMaxBytes`
   (`HYPPO_FORM_FIELD_READ_MAX_BYTES`, 65536), `screenshotMaxBytes`
   (`HYPPO_SCREENSHOT_MAX_BYTES`, 262144), `screenshotJpegQualityStart`
   (`HYPPO_SCREENSHOT_JPEG_QUALITY_START`, 80), `screenshotJpegQualityFloor`
   (`HYPPO_SCREENSHOT_JPEG_QUALITY_FLOOR`, 30), all via the existing `numFromEnv`.
-- [ ] T004 Add `"INVALID_SELECTOR"` and `"SCREENSHOT_FAILED"` to the `ErrorCode` union in
+- [x] T004 Add `"INVALID_SELECTOR"` and `"SCREENSHOT_FAILED"` to the `ErrorCode` union in
   `src/main/errors.ts` (no new `details` fields).
-- [ ] T005 Create `src/main/page/selector-syntax.ts` — export `INVALID_SELECTOR_MESSAGE`
+- [x] T005 Create `src/main/page/selector-syntax.ts` — export `INVALID_SELECTOR_MESSAGE`
   (the fixed text from `research.md` R9) and `assertSelectorValid(marker: unknown)` which
   throws `new HyppoError("INVALID_SELECTOR", INVALID_SELECTOR_MESSAGE)` when the in-page
   script returned `{ __invalidSelector: true }`. Also export the JS snippet string that
   wraps a `querySelector(All)` call in the `SyntaxError`-catching `try/catch`.
-- [ ] T006 [P] Declare shared types in `src/shared/types.ts`: extend `FormFieldRecord` with
+- [x] T006 [P] Declare shared types in `src/shared/types.ts`: extend `FormFieldRecord` with
   optional `operation` (`"fill"|"choose"|"activate"|"none"`), `chooseVerdict`
   (`{ allowed: boolean; ruleId?: string; description?: string }`), `interactive` (boolean),
   `mirrors` (string), `maxLength` / `pattern` / `inputMode` (all optional); add
   `ListOptionsResult` and `ScreenshotResult` per `data-model.md` §3–§4.
-- [ ] T007 [P] Unit test `tests/unit/selector-syntax.test.ts` — `assertSelectorValid`
+- [x] T007 [P] Unit test `tests/unit/selector-syntax.test.ts` — `assertSelectorValid`
   throws `INVALID_SELECTOR` on the sentinel and is a no-op otherwise; message names
   `:has-text()`, `text=`, `>>`.
 

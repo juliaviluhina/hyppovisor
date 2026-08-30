@@ -27,7 +27,13 @@ export interface PageReadResult {
   queueDepth: number;
 }
 
-export type InteractOperation = "click" | "fill" | "scroll" | "space" | "choose_option";
+export type InteractOperation =
+  | "click"
+  | "fill"
+  | "scroll"
+  | "space"
+  | "choose_option"
+  | "list_options";
 
 /** Non-rule refusal reasons for `choose_option` (feature 006, data-model.md §4). */
 export type ChooseOptionReason =
@@ -149,6 +155,84 @@ export interface FormFieldRecord {
   fillVerdict: FieldVerdict;
   /** `clickVerdictFor(descriptor)` — matches `interact`'s `click` result exactly. */
   clickVerdict: FieldVerdict;
+
+  // ─── feature 008: form-filling robustness ──────────────────────────────────
+
+  /**
+   * Which `interact` operation applies to this control, derived purely from
+   * `kind` (data-model.md R8): text/textarea/richtext → `fill`;
+   * select/combobox/listbox → `choose`; checkbox/radio/button → `activate`;
+   * file/other → `none`.
+   */
+  operation?: "fill" | "choose" | "activate" | "none";
+  /**
+   * What `interact` `choose_option` would return for this target. `in-form` does
+   * **not** gate it (unlike `clickVerdict`). Same shape as `chooseVerdictFor`.
+   */
+  chooseVerdict?: { allowed: boolean; ruleId?: string; description?: string };
+  /**
+   * `false` for plain buttons and hidden value-mirror inputs. Absent (⇒ `true`)
+   * for every genuine control. Drives the default-read exclusion.
+   */
+  interactive?: boolean;
+  /**
+   * Present only on a value-mirror record: the `selector` of the combobox whose
+   * value this hidden input carries.
+   */
+  mirrors?: string;
+  /** `HTMLInputElement.maxLength` when set (≥ 0). Text-like kinds only. */
+  maxLength?: number;
+  /** `getAttribute("pattern")` when present. Text-like kinds only. */
+  pattern?: string;
+  /** `getAttribute("inputmode")` when present. Text-like kinds only. */
+  inputMode?: string;
+}
+
+// ─── feature 008: list_options ──────────────────────────────────────────────
+
+/** One choice `interact` `list_options` returns. */
+export interface ListedOption {
+  /** Verbatim option text, trimmed of surrounding whitespace only. */
+  label: string;
+  /** `data-value` / `value` / `id` / `""`, same precedence as `choose_option`. */
+  value: string;
+  disabled: boolean;
+}
+
+/** The result of one `interact` `operation: "list_options"` call. Not stored, not logged. */
+export interface ListOptionsResult {
+  tabId: string;
+  selector: string;
+  /** Every choice found, document order. */
+  options: ListedOption[];
+  /**
+   * `false` when a scripted menu did not populate within `chooseOptionWaitMs`
+   * (pair with `options: []`). Always `true` for a native `<select>`.
+   */
+  optionsPresent: boolean;
+  /** `true` when the list was cut at `formFieldOptionCap`. */
+  optionsTruncated: boolean;
+  queueDepth: number;
+}
+
+// ─── feature 008: screenshot ───────────────────────────────────────────────
+
+/** The metadata text block a `screenshot` call returns alongside the image block. */
+export interface ScreenshotResult {
+  tabId: string;
+  /** Pixel width of the returned image. */
+  width: number;
+  /** Pixel height of the returned image. */
+  height: number;
+  /** `width / naturalWidth`; `1` when not downscaled. */
+  scale: number;
+  format: "jpeg" | "png";
+  /** Whether the capture was beyond-viewport. */
+  fullPage: boolean;
+  /** Echoed `selector` when an element clip was used. */
+  element?: string;
+  /** `true` when the image is still over `maxBytes` at the compression floor. */
+  limitNotMet: boolean;
 }
 
 /** The result of one `read_form_fields` call (feature 005, data-model.md §4). Not stored. */

@@ -9,7 +9,9 @@ export type ErrorCode =
   | "WAIT_TIMEOUT"
   | "REFUSED_EXTERNAL_ACT"
   | "BATCH_REJECTED"
-  | "CHOOSE_OPTION_FAILED";
+  | "CHOOSE_OPTION_FAILED"
+  | "INVALID_SELECTOR"
+  | "SCREENSHOT_FAILED";
 
 export interface ErrorDetails {
   /** Blocklist rule id, set only for REFUSED_EXTERNAL_ACT. */
