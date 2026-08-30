@@ -100,11 +100,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
 
   server.tool(
     "interact",
-    "Bounded interaction to reveal content: click, fill, or scroll. Cannot submit, send, or apply — " +
-      "targets that would perform an external act are refused with a named rule.",
+    "Bounded interaction: click, fill, scroll, or space. `fill` sets a value on a plain " +
+      "field (text/email/tel/url/search/number, textarea, contenteditable) — including one " +
+      "inside a <form> and a combobox's filter input — but never a credential, consent, or " +
+      "file field. `space` activates the focused element (checkbox, listbox option, plain " +
+      "button) under the same rules a click faces. Cannot submit, send, apply, or press " +
+      "Enter — submit/consent/credential targets are refused with a named rule.",
     {
       tabId: z.string(),
-      operation: z.enum(["click", "fill", "scroll"]),
+      operation: z.enum(["click", "fill", "scroll", "space"]),
       selector: z.string().optional(),
       value: z.string().optional(),
     },

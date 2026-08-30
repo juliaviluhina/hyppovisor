@@ -18,8 +18,16 @@ navigating, and preparing drafts or checklists.
 - The app MUST NOT submit forms, click "apply", send messages, or issue outreach on any
   site — in any session, whether human-started or scheduled.
 - Permitted browser actions are limited to: navigate, read page / DOM / visible text, list
-  open tabs, scroll, wait-for-selector, and click/fill used only to reveal more content
-  (pagination, "show more" panels) — never to complete an external transaction.
+  open tabs, scroll, wait-for-selector, click used only to reveal more content (pagination,
+  "show more" panels), and value entry (fill / the Space key) used to prepare a draft —
+  never to complete an external transaction.
+- **Value entry is preparation, not an external act.** Typing a value into a plain,
+  non-credential, non-consent form field — including one inside a `<form>` — and pressing
+  Space to tick a plain checkbox or pick a highlighted option are permitted: they build a
+  draft the human reviews. Submitting, sending, applying, connecting, and authenticating
+  remain human-only. Submit controls, consent/agreement toggles, credential fields, and
+  anything whose label reads as an outward action stay refused for every operation, and no
+  operation may press Enter (which can trigger an implicit submit).
 - Any future capability that would perform an external act MUST be added to this document as
   an explicit, separately approved amendment before it is built.
 
@@ -186,6 +194,14 @@ capture of a page the human opened is both defensible and sufficient for the pip
 One or two lines per version. Records why a bump type was judged as it was — git holds the
 diffs.
 
+- **1.2.0** (2026-08-29) — Principle I: added the "value entry is preparation" clause —
+  `fill` on a plain non-credential/non-consent field inside a `<form>`, and a new `space`
+  operation for plain checkboxes / listbox options, are permitted; submit/consent/credential
+  targets and the Enter key stay refused for every operation. MINOR: a new binding
+  clarification that materially expands existing guidance (Principle I already listed `fill`
+  among permitted actions and contemplated preparing drafts); it redefines no principle and
+  invalidates no conforming artifact. Recorded in
+  `specs/issues/001-in-form-rule-blocks-all-field-fills.md` and feature `003-in-form-fill`.
 - **1.1.1** (2026-08-29) — Architecture Constraints / Licensing: PolyForm Noncommercial 1.0.0
   → Apache-2.0. PATCH: updates a single constraint's content, changes no principle, and
   invalidates nothing (the repo is a portfolio piece with no external users; a permissive
@@ -200,4 +216,4 @@ diffs.
   `specs/initial/business-logic.md`, plus Architecture Constraints, Development Workflow, and
   Governance.
 
-**Version**: 1.1.1 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-08-29
+**Version**: 1.2.0 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-08-29

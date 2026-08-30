@@ -9,6 +9,50 @@
     <form id="theform" action="/submitted" method="post">
       <input type="text" id="name" name="name" />
       <input type="password" id="password" name="password" />
+
+      <!-- feature 003: plain value fields inside the form (fill permitted) -->
+      <input type="text" id="first_name" name="first_name" />
+      <input type="email" id="email" name="email" />
+      <input type="tel" id="phone" name="phone" />
+      <input type="url" id="website" name="website" />
+      <input type="number" id="age" name="age" />
+      <textarea id="bio" name="bio"></textarea>
+      <div id="cover" contenteditable="true"></div>
+
+      <!-- a React-style controlled input: an instance-level value setter that
+           keeps a tracker, exactly like React's. A plain `el.value = x` is
+           swallowed (tracker stays in sync, onChange suppressed); only the
+           native prototype setter drives it. -->
+      <input type="text" id="reactish" name="reactish" />
+
+      <!-- feature 003: fill targets that stay refused -->
+      <input type="file" id="resume" name="resume" />
+      <select id="country" name="country">
+        <option value="">Select…</option>
+        <option value="de">Germany</option>
+        <option value="us">United States</option>
+      </select>
+
+      <!-- react-select-style combobox: container is a <div role=combobox>,
+           the typed-text input carries role=combobox and accepts a filter string -->
+      <div id="locationCombobox" role="combobox" aria-expanded="true">
+        <input type="text" id="locationInput" role="combobox" aria-autocomplete="list" />
+        <ul role="listbox" id="locationListbox">
+          <li role="option" tabindex="-1" id="locationOptionBerlin">Berlin, Germany</li>
+          <li role="option" tabindex="-1" id="locationOptionMunich">Munich, Germany</li>
+        </ul>
+      </div>
+
+      <!-- consent checkbox INSIDE the form; label is a wrapping <label> -->
+      <label
+        ><input type="checkbox" id="agree" name="agree" /> I agree to the terms and
+        conditions</label
+      >
+
+      <!-- a plain, non-submit button inside the form: click is refused by in-form,
+           space is permitted (feature 003 US3) -->
+      <button type="button" id="addAnother">Add another</button>
+
       <button type="submit" id="submitBtn">Apply now</button>
     </form>
 
@@ -31,5 +75,48 @@
     <!-- a plain filter checkbox, should stay allowed -->
     <input type="checkbox" id="remoteOnly" />
     <label for="remoteOnly">Show only remote roles</label>
+
+    <script>
+      // feature 003: record any real submission so tests can assert none occurred.
+      window.__submitted = false;
+      document.getElementById("theform").addEventListener("submit", function (e) {
+        e.preventDefault();
+        window.__submitted = true;
+      });
+      // #reactish: mimic React's instance value setter + _valueTracker so a test
+      // can prove `fill` goes through the native setter (component state updates)
+      // and not a plain assignment (silently swallowed).
+      (function () {
+        var el = document.getElementById("reactish");
+        var proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+        var tracker = "";
+        Object.defineProperty(el, "value", {
+          configurable: true,
+          get: function () {
+            return proto.get.call(el);
+          },
+          set: function (v) {
+            tracker = String(v);
+            proto.set.call(el, v);
+          },
+        });
+        window.__reactishState = "";
+        el.addEventListener("input", function () {
+          var dom = proto.get.call(el);
+          if (tracker !== dom) {
+            tracker = dom;
+            window.__reactishState = dom;
+          }
+        });
+      })();
+
+      // record option activation for the combobox-commit assertions.
+      window.__chosenOption = null;
+      for (const opt of document.querySelectorAll('#locationListbox [role="option"]')) {
+        opt.addEventListener("click", function () {
+          window.__chosenOption = opt.id;
+        });
+      }
+    </script>
   </body>
 </html>
