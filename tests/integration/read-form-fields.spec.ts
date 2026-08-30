@@ -104,3 +104,67 @@ test("US1: one call returns an ordered field map with working selectors and labe
   const files = readdirSync(userData);
   expect(files.filter((f) => /capture|page|content|tool-results/i.test(f))).toEqual([]);
 });
+
+// ─── US2: verdicts match interact exactly (T015, SC-004/SC-005) ────────────────
+
+test("US2: each control's fill / click verdict matches what interact returns", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const map = await read(tabId);
+  const rec = (sel: string) => map.records.find((r) => r.selector === sel)!;
+
+  // submit button — refused both ways, submit-control
+  expect(rec("#submitBtn").fillVerdict).toMatchObject({ verdict: "refused" });
+  expect(rec("#submitBtn").clickVerdict).toMatchObject({
+    verdict: "refused",
+    ruleId: "submit-control",
+  });
+
+  // password — fill refused credential-field, and NO currentValue key (SC-005)
+  const pw = rec("#password");
+  expect(pw.fillVerdict).toMatchObject({ verdict: "refused", ruleId: "credential-field" });
+  expect("currentValue" in pw).toBe(false);
+
+  // file input — fill refused unsafe-fill-type
+  expect(rec("#resume").fillVerdict).toMatchObject({
+    verdict: "refused",
+    ruleId: "unsafe-fill-type",
+  });
+
+  // in-form consent checkbox — click refused consent-toggle; fill refused by the
+  // wording rule (interact's fill path sees "agree" → external-act-label)
+  expect(rec("#agree").clickVerdict).toMatchObject({
+    verdict: "refused",
+    ruleId: "consent-toggle",
+  });
+  expect(rec("#agree").fillVerdict.verdict).toBe("refused");
+
+  // plain value fields inside #theform — fill permitted, click refused in-form
+  for (const sel of ["#first_name", "#email", "#phone", "#website", "#age", "#bio", "#cover"]) {
+    expect(rec(sel).fillVerdict, sel).toEqual({ verdict: "permitted" });
+    expect(rec(sel).clickVerdict, sel).toMatchObject({ verdict: "refused", ruleId: "in-form" });
+  }
+
+  // cross-check a sample against a real interact call (SC-004)
+  const submitErr = await callHandle(app, "interact", [tabId, "click", "#submitBtn"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(submitErr)).toContain("REFUSED_EXTERNAL_ACT");
+
+  const pwErr = await callHandle(app, "interact", [tabId, "fill", "#password", "x"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(pwErr)).toContain("REFUSED_EXTERNAL_ACT");
+
+  const fileErr = await callHandle(app, "interact", [tabId, "fill", "#resume", "x"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(fileErr)).toContain("REFUSED_EXTERNAL_ACT");
+
+  const okFill = await callHandle<{ outcome: string }>(app, "interact", [
+    tabId,
+    "fill",
+    "#first_name",
+    "Iuliia",
+  ]);
+  expect(okFill.outcome).toBe("permitted");
+});

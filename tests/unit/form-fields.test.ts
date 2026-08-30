@@ -4,7 +4,18 @@
 // tests/integration/read-form-fields.spec.ts.
 
 import { describe, it, expect } from "vitest";
-import { kindFor, synthesizeSelector, type SelectorCounts } from "../../src/main/page/form-fields.js";
+import type { WebContents } from "electron";
+import {
+  kindFor,
+  synthesizeSelector,
+  readFormFields,
+  type SelectorCounts,
+} from "../../src/main/page/form-fields.js";
+import {
+  fillVerdictFor,
+  clickVerdictFor,
+  type TargetDescriptor,
+} from "../../src/main/safety/blocklist.js";
 
 describe("kindFor — research.md R4 table, first match wins", () => {
   it("maps the common (tag, type, role, contenteditable) combinations", () => {
@@ -107,5 +118,124 @@ describe("synthesizeSelector — preference #id → [name] → structural (resea
     expect(r.selector).toBeNull();
     expect(r.selectorSynthesised).toBe(true);
     expect(r.duplicateId).toBe(true);
+  });
+});
+
+const desc = (o: Partial<TargetDescriptor>): TargetDescriptor => ({
+  tagName: "input",
+  type: "text",
+  role: null,
+  hasFormAncestor: false,
+  name: "",
+  autocomplete: null,
+  isContentEditable: false,
+  ...o,
+});
+
+describe("fill / click verdicts match interact's rule set (FR-006, FR-007, SC-004)", () => {
+  it("attributes each rule category to the same id interact's path produces", () => {
+    // submit control
+    const submit = desc({ tagName: "button", type: "submit", name: "apply now", hasFormAncestor: true });
+    expect(clickVerdictFor(submit)).toMatchObject({ verdict: "refused", ruleId: "submit-control" });
+    expect(fillVerdictFor(submit).ruleId).toBe("external-act-label"); // fill path: wording rule
+
+    // consent toggle
+    const consent = desc({ type: "checkbox", name: "i agree to the terms", hasFormAncestor: true });
+    expect(clickVerdictFor(consent)).toMatchObject({ verdict: "refused", ruleId: "consent-toggle" });
+
+    // external-act wording (applies to both) — a non button/anchor element so
+    // submit-control does not claim it first
+    const wording = desc({ tagName: "span", name: "download report" });
+    expect(clickVerdictFor(wording).ruleId).toBe("external-act-label");
+    expect(fillVerdictFor(wording).ruleId).toBe("external-act-label");
+
+    // credential field — fill only
+    const cred = desc({ type: "password" });
+    expect(fillVerdictFor(cred)).toMatchObject({ verdict: "refused", ruleId: "credential-field" });
+    const otp = desc({ type: "text", autocomplete: "one-time-code" });
+    expect(fillVerdictFor(otp).ruleId).toBe("credential-field");
+
+    // unsafe fill type — fill only, after the blocklist clears
+    const select = desc({ tagName: "select", type: null });
+    expect(fillVerdictFor(select)).toMatchObject({ verdict: "refused", ruleId: "unsafe-fill-type" });
+    expect(clickVerdictFor(select).verdict).toBe("permitted");
+
+    // in-form — click only, NEVER fill
+    const plainInForm = desc({ type: "text", name: "first name", hasFormAncestor: true });
+    expect(clickVerdictFor(plainInForm)).toMatchObject({ verdict: "refused", ruleId: "in-form" });
+    expect(fillVerdictFor(plainInForm)).toEqual({ verdict: "permitted" });
+
+    // a plain field outside a form — permitted both ways
+    const plain = desc({ type: "email", name: "email address" });
+    expect(fillVerdictFor(plain)).toEqual({ verdict: "permitted" });
+    expect(clickVerdictFor(plain)).toEqual({ verdict: "permitted" });
+  });
+});
+
+/** A WebContents stub whose collector script yields a fixed raw result. */
+function wcYielding(raw: unknown): WebContents {
+  return {
+    getURL: () => "http://fixture.test/form.html",
+    executeJavaScript: async () => raw,
+  } as unknown as WebContents;
+}
+
+function rawRecord(descriptor: TargetDescriptor, extra: Record<string, unknown> = {}) {
+  return {
+    descriptor,
+    selectorCounts: {
+      id: "x",
+      name: null,
+      tagName: descriptor.tagName,
+      structuralPath: "",
+      idCount: 1,
+      nameBareCount: 0,
+      nameTaggedCount: 0,
+      structuralCount: 0,
+    },
+    label: "",
+    required: false,
+    group: null,
+    inFormAncestor: descriptor.hasFormAncestor,
+    visible: true,
+    currentValue: "SHOULD_NOT_LEAK",
+    options: [],
+    optionsAvailable: false,
+    optionsTruncated: false,
+    ...extra,
+  };
+}
+
+describe("record assembly — credential currentValue is omitted entirely (FR-005, SC-005)", () => {
+  it("drops the currentValue own-property for a password field", async () => {
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        truncated: false,
+        records: [rawRecord(desc({ type: "password" }))],
+      }),
+      "tab-1",
+      undefined,
+      0,
+    );
+    const rec = map.records[0];
+    expect(rec.fillVerdict.ruleId).toBe("credential-field");
+    expect("currentValue" in rec).toBe(false);
+  });
+
+  it("keeps currentValue for a non-credential field", async () => {
+    const map = await readFormFields(
+      wcYielding({
+        containerFound: true,
+        observedAt: "2026-08-30T00:00:00.000Z",
+        truncated: false,
+        records: [rawRecord(desc({ type: "text" }), { currentValue: "hello" })],
+      }),
+      "tab-1",
+      undefined,
+      0,
+    );
+    expect(map.records[0].currentValue).toBe("hello");
   });
 });
