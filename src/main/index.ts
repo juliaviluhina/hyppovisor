@@ -10,6 +10,7 @@ import { TabManager } from "./tabs/tab-manager.js";
 import { startStdioMcpServer, startHttpMcpServer } from "./mcp/server.js";
 import { readPage } from "./page/read.js";
 import { interact, fillBatch, waitForSelector } from "./page/interact.js";
+import { readFormFields } from "./page/form-fields.js";
 import { listBlocklistRules } from "./safety/blocklist.js";
 import type { InteractOperation, BatchFillField } from "../shared/types.js";
 
@@ -114,6 +115,12 @@ async function main(): Promise<void> {
             .run((depth) => fillBatch(tabs.webContentsFor(tabId), log, tabId, pairs, depth))
             .then((r) => r.value);
         }),
+      readFormFields: (tabId: string, containerSelector?: string) =>
+        withCode(() =>
+          queue
+            .run((d) => readFormFields(tabs.webContentsFor(tabId), tabId, containerSelector, d))
+            .then((r) => r.value),
+        ),
       waitFor: (tabId: string, selector: string, timeoutMs?: number) =>
         withCode(() =>
           queue

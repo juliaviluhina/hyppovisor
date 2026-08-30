@@ -1,4 +1,4 @@
-// The complete MCP tool surface (contracts/mcp-tools.md). Six tools, no others.
+// The complete MCP tool surface (contracts/mcp-tools.md). Seven tools, no others.
 // Every call goes through the app-wide queue (FR-013); errors return a named
 // code (FR-014); no tool submits, sends, applies, or interprets content.
 
@@ -10,6 +10,7 @@ import type { InteractionLog } from "../safety/interaction-log.js";
 import { HyppoError, isHyppoError } from "../errors.js";
 import { readPage } from "../page/read.js";
 import { interact, fillBatch, checkFillInputShape, waitForSelector } from "../page/interact.js";
+import { readFormFields } from "../page/form-fields.js";
 
 export interface ToolDeps {
   queue: ActionQueue;
@@ -142,6 +143,37 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           await interact(wc, log, tabId, operation, selector, value);
         });
         return ok({ tabId, operation, outcome: "permitted", queueDepth });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "read_form_fields",
+    "Read-only. Return this tab's form controls in document order, one record each: " +
+      "a `selector` usable by `interact`, a `kind` (text/textarea/select/combobox/checkbox/" +
+      "radio/file/button/richtext/other), the raw input `type`, a verbatim accessible " +
+      "`label`, `required`, `group` (radios), `inFormAncestor`, `visible`, `currentValue` " +
+      "(omitted for credential fields), `options` for a <select> or an in-DOM combobox menu, " +
+      "and the `fillVerdict` / `clickVerdict` `interact` would return for that target. " +
+      "Bounded (control + option caps) with a `truncated` flag. Performs no interaction, " +
+      "writes nothing, adds no audit-log entry. `read_page` is unchanged — this is a " +
+      "derived view for building a batch `fill`.",
+    {
+      tabId: z.string(),
+      containerSelector: z
+        .string()
+        .optional()
+        .describe("Scope to controls inside this element; omitted → whole page"),
+    },
+    async ({ tabId, containerSelector }) => {
+      try {
+        const { value } = await queue.run((depth) => {
+          const wc = tabs.webContentsFor(tabId);
+          return readFormFields(wc, tabId, containerSelector, depth);
+        });
+        return ok(value);
       } catch (e) {
         return fail(e);
       }
