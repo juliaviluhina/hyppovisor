@@ -143,19 +143,32 @@ const OPTION_SOURCES_FN = `
     if (sib && (sib.getAttribute("role") || "").toLowerCase() === "listbox") {
       add(sib.querySelectorAll('[role="option"]'));
     }
-    // react-select / MUI / downshift: the menu is a sibling of the CONTROL (an
-    // ancestor of a role=combobox <input>), not of the input. Walk up a couple of
-    // levels and take a menu-like container's options — bounded, and only a
-    // container that holds exactly ONE combobox, so a shared wrapper full of
-    // sibling widgets (the test fixture) is never scraped.
+    // react-select / MUI / downshift: the open menu is a sibling of the CONTROL —
+    // several levels above a role=combobox <input>, not a descendant of it — and
+    // may carry no id we were handed. Walk up to 6 ancestors; at each, if the
+    // ancestor holds at most ONE combobox (so a shared wrapper full of sibling
+    // widgets — the test fixture — is never scraped), take options from a
+    // descendant listbox or a [class*=menu] container.
     if (out.length === 0) {
       let anc = el.parentElement;
-      for (let i = 0; i < 3 && anc && anc.querySelectorAll; i++) {
-        if (anc.querySelectorAll('[role="combobox"], input.select__input, [class*="combobox"]').length <= 1) {
-          const menu = anc.querySelector(
-            '[class*="menu"] [role="option"], [class*="listbox"] [role="option"], [class*="options"] [role="option"]',
+      for (let i = 0; i < 6 && anc && anc.querySelectorAll; i++) {
+        const combos = anc.querySelectorAll(
+          '[role="combobox"], input.select__input, [class*="combobox"]',
+        ).length;
+        if (combos <= 1) {
+          const lb = anc.querySelector('[role="listbox"]');
+          if (lb && lb.querySelectorAll('[role="option"]').length) {
+            add(lb.querySelectorAll('[role="option"]'));
+            break;
+          }
+          const menuOpt = anc.querySelector(
+            '[class*="menu"] [role="option"], [class*="Menu"] [role="option"], [class*="listbox"] [role="option"], [class*="options"] [role="option"]',
           );
-          if (menu) { add(anc.querySelectorAll('[role="option"]')); break; }
+          if (menuOpt) {
+            const menu = menuOpt.closest('[class*="menu"], [class*="Menu"], [class*="listbox"], [class*="options"]') || anc;
+            add(menu.querySelectorAll('[role="option"]'));
+            break;
+          }
         }
         anc = anc.parentElement;
       }
@@ -385,7 +398,8 @@ function activateScript(selector: string, wantValue: string, wantLabel: string):
       const s = __optionSnap(n);
       if (useValue ? s.value === ${WV} : norm(s.label) === norm(${WL})) { target = n; break; }
     }
-    if (!target) return { notFound: true };
+    const __seen = __optionNodes(el).length;
+    if (!target) return { notFound: true, seen: __seen };
     // Re-resolve by id in case the menu re-rendered between gather and here.
     if (target.id) { const fresh = document.getElementById(target.id); if (fresh) target = fresh; }
     const mopts = { bubbles: true, cancelable: true, composed: true, view: window, button: 0 };
@@ -612,12 +626,17 @@ export async function chooseOption(
       ...(extra.reason ? { reason: extra.reason } : {}),
     });
 
-  const refuseReason = (reason: ChooseOptionReason, candidates?: string[]): never => {
+  const refuseReason = (
+    reason: ChooseOptionReason,
+    candidates?: string[],
+    detail?: string,
+  ): never => {
     record("refused", { reason });
     throw new HyppoError(
       "CHOOSE_OPTION_FAILED",
       `${REASON_MESSAGE[reason]} (reason: ${reason})` +
-        (candidates ? ` candidates: ${candidates.join(" | ")}` : ""),
+        (candidates ? ` candidates: ${candidates.join(" | ")}` : "") +
+        (detail ? ` [${detail}]` : ""),
       { reason, ...(candidates ? { candidates } : {}) },
     );
   };
@@ -730,19 +749,29 @@ export async function chooseOption(
     m = options.length ? matchOption(options, want) : { ok: false, reason: "option-not-appeared" };
   }
 
-  if (options.length === 0) return await closeAndThrow("option-not-appeared");
+  if (options.length === 0) {
+    await wc.executeJavaScript(closeReadbackScript(selector, probe.preCallValue || ""), true);
+    return refuseReason("option-not-appeared", undefined, "no options gathered after open");
+  }
   if (!m.ok) return await closeAndThrow(m.reason, m.candidates);
   const chosen = m.option;
 
   const act = (await wc.executeJavaScript(
     activateScript(selector, chosen.value, chosen.label),
     true,
-  )) as { gone?: boolean; notFound?: boolean; activated?: boolean };
+  )) as { gone?: boolean; notFound?: boolean; activated?: boolean; seen?: number };
   if (act.gone) {
     record("error", { error: "control removed mid-operation" });
     throw new HyppoError("TARGET_NOT_FOUND", `Control ${JSON.stringify(selector)} was removed mid-operation.`);
   }
-  if (!act.activated) return await closeAndThrow("option-not-appeared");
+  if (!act.activated) {
+    await wc.executeJavaScript(closeReadbackScript(selector, probe.preCallValue || ""), true);
+    return refuseReason(
+      "option-not-appeared",
+      undefined,
+      `option node not found at activate time (gathered ${options.length}, activate saw ${act.seen ?? "?"})`,
+    );
+  }
 
   const back = (await wc.executeJavaScript(
     closeReadbackScript(selector, null),
@@ -761,7 +790,13 @@ export async function chooseOption(
     (shown.length >= 2 && (shown.includes(wantLabel) || wantLabel.includes(shown))) ||
     (chosen.value !== "" && (back.shown ?? "") === chosen.value);
   // best-effort: nothing committed on a mismatch; the widget is already closed
-  if (!matched) return refuseReason("option-not-appeared");
+  if (!matched) {
+    return refuseReason(
+      "option-not-appeared",
+      undefined,
+      `read-back mismatch: shown=${JSON.stringify(back.shown ?? "")} want=${JSON.stringify(chosen.label)}`,
+    );
+  }
 
   record("permitted");
   return { chosenOption: { label: chosen.label, value: chosen.value } };
