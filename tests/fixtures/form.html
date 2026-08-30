@@ -110,6 +110,22 @@
         });
       })();
 
+      // feature 004 US3: deterministic mid-write removal. When armed (a test sets
+      // window.__armPhoneRemoval = true), the first #email `input` event removes
+      // #phone from the DOM — so a batch ordered [..., #email, #phone, ...] passes
+      // the pre-write check (every selector still resolves then) but #phone's own
+      // write finds nothing. Disarmed by default so single-field fill tests that
+      // touch both #email and #phone are unaffected.
+      window.__armPhoneRemoval = false;
+      (function () {
+        var email = document.getElementById("email");
+        email.addEventListener("input", function () {
+          if (!window.__armPhoneRemoval) return;
+          var phone = document.getElementById("phone");
+          if (phone) phone.remove();
+        });
+      })();
+
       // record option activation for the combobox-commit assertions.
       window.__chosenOption = null;
       for (const opt of document.querySelectorAll('#locationListbox [role="option"]')) {

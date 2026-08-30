@@ -14,6 +14,8 @@ export const config = {
   maxDomBytes: numFromEnv("HYPPO_MAX_DOM_BYTES", 2 * 1024 * 1024),
   /** Default wait_for_selector timeout in ms. */
   defaultWaitMs: numFromEnv("HYPPO_DEFAULT_WAIT_MS", 10_000),
+  /** Max (selector, value) pairs one batch `fill` may carry (feature 004, FR-003). */
+  batchFillCap: numFromEnv("HYPPO_BATCH_FILL_CAP", 50),
   /** Chrome height reserved at the top of the window for the renderer UI. */
   chromeHeight: 104,
 };

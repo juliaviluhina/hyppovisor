@@ -19,7 +19,12 @@ import {
   activeElementDescriptorScript,
   type TargetDescriptor,
 } from "../safety/blocklist.js";
-import type { InteractOperation } from "../../shared/types.js";
+import type {
+  InteractOperation,
+  BatchFillField,
+  BatchFieldResult,
+  BatchFillResult,
+} from "../../shared/types.js";
 
 async function descriptorFor(wc: WebContents, selector: string): Promise<TargetDescriptor> {
   const d = (await wc.executeJavaScript(
@@ -126,6 +131,59 @@ const SPACE_ACTIVATION_SCRIPT = `(() => {${NATIVE_VALUE_SETTER}
   if (typeof el.click === "function") el.click();
 })()`;
 
+/** One rejected target from the shared fill pre-check (feature 004). */
+export interface FillOffender {
+  selector: string;
+  /** Blocklist rule id or `"unsafe-fill-type"`; absent when the selector did not resolve. */
+  ruleId?: string;
+  ruleDescription?: string;
+  /** Non-rule cause — `"no element matches"`, or the unsafe-fill-type detail. */
+  reason?: string;
+}
+
+export type ResolveFillResult =
+  | { ok: true; descriptor: TargetDescriptor }
+  | { ok: false; offender: FillOffender };
+
+/**
+ * Resolve a selector and apply the *exact* rule set a single `fill` faces:
+ * descriptor lookup → blocklist (`fill`) → safe-fill-type allowlist. Returns an
+ * offender instead of throwing so a batch can collect every one. Shared by the
+ * single-`fill` path in `interact()` and by `fillBatch` (feature 004, FR-004).
+ */
+export async function resolveFillTarget(
+  wc: WebContents,
+  selector: string,
+): Promise<ResolveFillResult> {
+  const d = (await wc.executeJavaScript(
+    targetDescriptorScript(selector),
+    true,
+  )) as TargetDescriptor | null;
+  if (!d) {
+    return { ok: false, offender: { selector, reason: "no element matches" } };
+  }
+  const verdict = matchBlocklist(d, "fill");
+  if (verdict.blocked) {
+    return {
+      ok: false,
+      offender: { selector, ruleId: verdict.ruleId, ruleDescription: verdict.description },
+    };
+  }
+  const safe = isSafeFillTarget(d);
+  if (!safe.ok) {
+    return {
+      ok: false,
+      offender: {
+        selector,
+        ruleId: "unsafe-fill-type",
+        ruleDescription: `Not a safe value field: ${safe.reason}.`,
+        reason: safe.reason,
+      },
+    };
+  }
+  return { ok: true, descriptor: d };
+}
+
 export async function interact(
   wc: WebContents,
   log: InteractionLog,
@@ -214,57 +272,68 @@ export async function interact(
       throw new HyppoError("TARGET_NOT_FOUND", `Operation "${operation}" requires a selector.`);
     }
 
-    const descriptor = await descriptorFor(wc, selector);
-    const verdict = matchBlocklist(descriptor, operation);
-    if (verdict.blocked) {
-      log.record({
-        tabId,
-        url,
-        operation,
-        target,
-        outcome: "refused",
-        ruleId: verdict.ruleId ?? null,
-        error: null,
-      });
-      logged = true;
-      throw new HyppoError(
-        "REFUSED_EXTERNAL_ACT",
-        `Refused ${operation} on ${selector}: ${verdict.description} ` +
-          `The app never performs an external act (constitution Principle I).`,
-        { ruleId: verdict.ruleId, ruleDescription: verdict.description },
-      );
-    }
-
     if (operation === "click") {
-      await wc.executeJavaScript(
-        `document.querySelector(${JSON.stringify(selector)}).click()`,
-        true,
-      );
-    } else {
-      // fill — permitted only for a plain value field of a safe type; the
-      // blocklist above has already cleared credential / consent / external-act
-      // wording, so this is purely the type-allowlist gate (feature 003 FR-003).
-      const safe = isSafeFillTarget(descriptor);
-      if (!safe.ok) {
+      const descriptor = await descriptorFor(wc, selector);
+      const verdict = matchBlocklist(descriptor, operation);
+      if (verdict.blocked) {
         log.record({
           tabId,
           url,
           operation,
           target,
           outcome: "refused",
-          ruleId: "unsafe-fill-type",
+          ruleId: verdict.ruleId ?? null,
           error: null,
         });
         logged = true;
         throw new HyppoError(
           "REFUSED_EXTERNAL_ACT",
-          `Refused fill on ${selector}: target is ${safe.reason}. ` +
-            `The app only types into plain value fields (constitution Principle I).`,
-          {
-            ruleId: "unsafe-fill-type",
-            ruleDescription: `Not a safe value field: ${safe.reason}.`,
-          },
+          `Refused ${operation} on ${selector}: ${verdict.description} ` +
+            `The app never performs an external act (constitution Principle I).`,
+          { ruleId: verdict.ruleId, ruleDescription: verdict.description },
         );
+      }
+      await wc.executeJavaScript(
+        `document.querySelector(${JSON.stringify(selector)}).click()`,
+        true,
+      );
+    } else {
+      // fill — resolve + rule-check through the shared helper (the same one
+      // fillBatch uses), then map an offender back to the exact refusal / error
+      // the single-fill path has always produced. The blocklist clears
+      // credential / consent / external-act wording; the allowlist is the
+      // type gate (feature 003 FR-003).
+      const resolved = await resolveFillTarget(wc, selector);
+      if (!resolved.ok) {
+        const off = resolved.offender;
+        if (!off.ruleId) {
+          // selector did not resolve — same as descriptorFor() throwing; the
+          // outer catch records this as an `error` entry, not a refusal.
+          throw new HyppoError(
+            "TARGET_NOT_FOUND",
+            `No element matches selector ${JSON.stringify(selector)}.`,
+          );
+        }
+        log.record({
+          tabId,
+          url,
+          operation,
+          target,
+          outcome: "refused",
+          ruleId: off.ruleId,
+          error: null,
+        });
+        logged = true;
+        const message =
+          off.ruleId === "unsafe-fill-type"
+            ? `Refused fill on ${selector}: target is ${off.reason}. ` +
+              `The app only types into plain value fields (constitution Principle I).`
+            : `Refused fill on ${selector}: ${off.ruleDescription} ` +
+              `The app never performs an external act (constitution Principle I).`;
+        throw new HyppoError("REFUSED_EXTERNAL_ACT", message, {
+          ruleId: off.ruleId,
+          ruleDescription: off.ruleDescription,
+        });
       }
       await wc.executeJavaScript(fillScript(selector, value ?? ""), true);
     }
