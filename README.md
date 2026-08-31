@@ -76,6 +76,7 @@ Cutting a release: [PACKAGING.md](PACKAGING.md).
 | [Safety](docs/safety.md) | what it refuses, and the nuances |
 | [Security](docs/security.md) | the loopback threat model |
 | [Development](docs/development.md) | tests and the e2e suite |
+| [Design notes](docs/design-notes.md) | why Electron, the no-act boundary, test layering, the tool set |
 
 ## License
 
