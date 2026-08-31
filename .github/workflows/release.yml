@@ -6,9 +6,10 @@ name: Release
 #   git push --follow-tags
 #
 # The tag must match the package.json version (the build asserts it). This
-# workflow then builds the unsigned macOS artifacts on native runners — arm64 on
-# Apple Silicon, x64 on Intel — and attaches them to a GitHub Release for that
-# tag. `workflow_dispatch` runs the build only (artifacts land on the run page,
+# workflow then builds the unsigned macOS artifact on a native Apple Silicon
+# runner (arm64) and attaches it to a GitHub Release for that tag. GitHub has
+# retired the free Intel (`macos-13`) hosted runner, so x64 is no longer built
+# here. `workflow_dispatch` runs the build only (artifacts land on the run page,
 # no Release is created).
 
 on:
@@ -57,8 +58,6 @@ jobs:
         include:
           - runner: macos-14 # Apple Silicon
             arch: arm64
-          - runner: macos-13 # Intel
-            arch: x64
     steps:
       - uses: actions/checkout@v4
 
