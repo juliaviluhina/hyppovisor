@@ -93,13 +93,14 @@ Two design consequences fall out of this:
 
 ## Test layering
 
-Two layers, split by what each can prove cheaply
+Layers split by what each can prove cheaply
 ([specs/001 research R7](../specs/001-open-any-url/research.md)):
 
 | Layer | Runner | Covers | Why here |
 |---|---|---|---|
 | **Unit** | Vitest (`npm test`) | URL policy, blocklist matching, action-queue ordering, truncation, form-field projection, selector syntax, settings precedence, the license scripts | These guarantees are pure functions — testable exhaustively and in milliseconds, with no Electron. Per-rule blocklist coverage is asserted at this layer. |
-| **Integration** | Playwright `_electron` (`npm run test:e2e`) | session persistence across tabs, refusing a *real* submit button, no action overlap under concurrent calls, auth-popup handling, screenshots, the batch fill | Session state, real DOM refusal, and app-wide sequencing only mean something against a real Electron instance driving a real page through the same code paths the MCP tools use. |
+| **Integration — tool behavior** | Playwright `_electron` + a main-process test handle (`npm run test:e2e`) | session persistence across tabs, refusing a *real* submit button, no action overlap under concurrent calls, auth-popup handling, screenshots, the batch fill | Session state, real DOM refusal, and app-wide sequencing only mean something against a real Electron instance driving a real page. Most specs launch with `HYPPO_E2E=1` and call the tool implementations through `globalThis.__hyppo` — one layer below the JSON-RPC framing, so the assertions stay about behavior, not transport. |
+| **Integration — MCP transport** | Playwright `_electron` + real HTTP requests (`connection-panel.spec.ts`) | the `initialize` / `ping` handshake, a real `tools/call` over the wire, bearer-token auth (401 vs 200), port rebind + env-var precedence, settings persistence across relaunch, stdio mode | The connection surface *is* the transport, so it has to be exercised over it. This spec launches the built app with no `HYPPO_E2E`, so the real Streamable-HTTP server is live, and POSTs JSON-RPC to `http://127.0.0.1:<port>/mcp`. |
 
 Integration tests run against **local fixture pages served from disk**
 (`tests/fixtures/`) — offline, deterministic, and zero live-site traffic, which
@@ -107,10 +108,13 @@ is itself the behavior [Principle V](../.specify/memory/constitution.md#v-assist
 asks for. The suite needs the Electron binary (`npm install` fetches it) and a
 display.
 
-Why both, not one: unit-only would leave every constitutional guarantee
+Why layered this way: unit-only would leave every constitutional guarantee
 unverified end-to-end — unacceptable for Principles I and IV, which the
-constitution designates release blockers. Integration-only would be slow and
-couldn't exhaustively cover the matching rules.
+constitution designates release blockers. Running *every* tool assertion over
+real JSON-RPC would be slower and would test the SDK's framing on every case for
+no added signal — so tool behavior goes through the test handle and one spec
+covers the wire itself. Neither integration layer can exhaustively cover the
+matching rules; that stays with the unit layer.
 
 ---
 
