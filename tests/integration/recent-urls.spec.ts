@@ -39,7 +39,9 @@ async function openFromBar(page: Page, url: string, expectLoad = true): Promise<
   await page.locator("#address").fill(url);
   await page.locator("#go").click();
   if (expectLoad) {
-    await expect(page.locator("#address")).toHaveValue("");
+    // Cleared only after hyppo.openUrl resolves — the first WebContentsView on a
+    // slow (Windows) CI runner can take well over the 5s default.
+    await expect(page.locator("#address")).toHaveValue("", { timeout: 20000 });
   } else {
     // A failed load leaves the text in place and shows an error notice.
     await expect(page.locator("#notice")).toContainText("error", { timeout: 15000 });
