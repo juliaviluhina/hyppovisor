@@ -28,19 +28,19 @@ layout, per plan.md).
 
 ## Phase 1: Setup
 
-- [ ] T001 Add `recentUrlsCap` to `src/main/config.ts` — `numFromEnv("HYPPO_RECENT_URLS_CAP", 20)`.
+- [x] T001 Add `recentUrlsCap` to `src/main/config.ts` — `numFromEnv("HYPPO_RECENT_URLS_CAP", 20)`.
 
 ---
 
 ## Phase 2: Foundational (blocking)
 
-- [ ] T002 Create `src/main/recent-urls.ts` mirroring `src/main/settings.ts`: export
+- [x] T002 Create `src/main/recent-urls.ts` mirroring `src/main/settings.ts`: export
   `RECENT_URLS_FILENAME = "recent-urls.json"`; `loadRecentUrls(userDataDir): string[]`
   (read + `JSON.parse` + validate array-of-non-empty-strings; any failure → `[]`, no
   rewrite); `saveRecentUrls(userDataDir, urls): void` (write `"<file>.<pid>.tmp"` then
   `renameSync`); and the pure `addRecentUrl(list, url, cap): string[]` (drop exact
   duplicate → `unshift` → `slice(0, cap)`). No Electron import.
-- [ ] T003 [P] Add `tests/unit/recent-urls.test.ts`: `addRecentUrl` (append, move-to-front,
+- [x] T003 [P] Add `tests/unit/recent-urls.test.ts`: `addRecentUrl` (append, move-to-front,
   cap-evict oldest, idempotent-at-front, order preserved); `loadRecentUrls` (missing / `{}`
   / `["a", 3, ""]` → `[]` with no rewrite; valid array passes through); `saveRecentUrls`
   round-trips and leaves no `*.tmp`.
@@ -58,31 +58,31 @@ newest first, no re-focus needed; selecting one and pressing Open opens it.
 
 ### Tests for User Story 1
 
-- [ ] T004 [P] [US1] Add `tests/integration/recent-urls.spec.ts`: type `static.html`'s URL
+- [x] T004 [P] [US1] Add `tests/integration/recent-urls.spec.ts`: type `static.html`'s URL
   into `#address` and Open; once loaded, `<datalist id="recent-urls">` contains it without
   re-focusing; open a second URL → datalist shows both, newest first; selecting an entry +
   Open opens that URL; typing a substring narrows the native suggestions.
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] `src/main/tabs/tab-manager.ts`: add `onPersonOpen(url: string)` to
+- [x] T005 [US1] `src/main/tabs/tab-manager.ts`: add `onPersonOpen(url: string)` to
   `TabEvents`; in `open(rawUrl, openedBy)`, after the initial `load()` resolves with
   `loadState === "loaded"` **and** `openedBy === "person"`, fire
   `this.events.onPersonOpen(validatedUrl)` (the `validateUrl` result, not the redirect
   landing URL).
-- [ ] T006 [US1] `src/main/index.ts`: `let recentUrls = loadRecentUrls(app.getPath("userData"))`
+- [x] T006 [US1] `src/main/index.ts`: `let recentUrls = loadRecentUrls(app.getPath("userData"))`
   at startup; in the `TabManager` events object add
   `onPersonOpen: (url) => { recentUrls = addRecentUrl(recentUrls, url, config.recentUrlsCap);
   saveRecentUrls(app.getPath("userData"), recentUrls); win.webContents.send("recent-urls:changed", recentUrls); }`.
-- [ ] T007 [US1] `src/main/index.ts`: register
+- [x] T007 [US1] `src/main/index.ts`: register
   `ipcMain.handle("chrome:recent-urls", () => recentUrls)` **before** `win.loadFile`
   (alongside the other `chrome:*` handlers).
-- [ ] T008 [US1] `src/preload/chrome.cjs`: add
+- [x] T008 [US1] `src/preload/chrome.cjs`: add
   `recentUrls: () => ipcRenderer.invoke("chrome:recent-urls")` and
   `onRecentUrlsChanged: (cb) => ipcRenderer.on("recent-urls:changed", (_e, l) => cb(l))`.
-- [ ] T009 [US1] `src/renderer/index.html`: add `<datalist id="recent-urls"></datalist>`
+- [x] T009 [US1] `src/renderer/index.html`: add `<datalist id="recent-urls"></datalist>`
   and `list="recent-urls"` on `#address`.
-- [ ] T010 [US1] `src/renderer/app.ts`: add `fillDatalist(list: string[])` that replaces
+- [x] T010 [US1] `src/renderer/app.ts`: add `fillDatalist(list: string[])` that replaces
   `#recent-urls` children with one `<option value>` per entry in order; call it on load via
   `hyppo.recentUrls()` and register `hyppo.onRecentUrlsChanged(fillDatalist)`.
 
@@ -101,7 +101,7 @@ front, once; quit + relaunch → identical; clear button → datalist empty, fil
 
 ### Tests for User Story 2
 
-- [ ] T011 [P] [US2] Extend `tests/integration/recent-urls.spec.ts`: with a lowered
+- [x] T011 [P] [US2] Extend `tests/integration/recent-urls.spec.ts`: with a lowered
   `HYPPO_RECENT_URLS_CAP`, opening more distinct URLs evicts the oldest; re-opening an
   existing entry moves it to the front with no duplicate; quit + relaunch (same
   `HYPPO_USER_DATA_DIR`) shows the identical datalist on load; a pre-written malformed
@@ -111,16 +111,16 @@ front, once; quit + relaunch → identical; clear button → datalist empty, fil
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] `src/main/index.ts`: register
+- [x] T012 [US2] `src/main/index.ts`: register
   `ipcMain.handle("chrome:clear-recent-urls", () => { recentUrls = []; saveRecentUrls(app.getPath("userData"), []); win.webContents.send("recent-urls:changed", []); })`
   **before** `win.loadFile`.
-- [ ] T013 [US2] `src/preload/chrome.cjs`: add
+- [x] T013 [US2] `src/preload/chrome.cjs`: add
   `clearRecentUrls: () => ipcRenderer.invoke("chrome:clear-recent-urls")`.
-- [ ] T014 [US2] `src/renderer/panel.ts`: add a small section/row with a "Clear recent URLs"
+- [x] T014 [US2] `src/renderer/panel.ts`: add a small section/row with a "Clear recent URLs"
   button wired to `hyppo.clearRecentUrls()`; reflect the empty state (disabled/hidden when
   the list is already empty — cosmetic, may read the list via `hyppo.recentUrls()` /
   `onRecentUrlsChanged`).
-- [ ] T015 [US2] Confirm cap, dedupe, and ordering are produced entirely by `addRecentUrl`
+- [x] T015 [US2] Confirm cap, dedupe, and ordering are produced entirely by `addRecentUrl`
   (T002) — no equivalent logic duplicated in `index.ts` or the renderer.
 
 **Checkpoint**: US1 + US2 both independently functional; the list stays small and survives
@@ -137,14 +137,14 @@ restarts.
 
 ### Tests for User Story 3
 
-- [ ] T016 [P] [US3] Extend `tests/integration/recent-urls.spec.ts`: an MCP `open_url` for
+- [x] T016 [P] [US3] Extend `tests/integration/recent-urls.spec.ts`: an MCP `open_url` for
   an otherwise-unvisited URL does **not** enter the datalist; typing a non-resolving URL and
   Open (load fails) does **not**; a person-clicked link that opens as a new tab **does**
   once it loads; opening `redirect.html` records the entered URL, not the 302 landing URL.
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Verify/tighten the `onPersonOpen` guard added in T005: it fires only for
+- [x] T017 [US3] Verify/tighten the `onPersonOpen` guard added in T005: it fires only for
   `openedBy === "person"` and only after `load()` resolved (never in the `catch`); the
   `target="_blank"` path already calls `open(url, "person")` so it is covered. Add a
   non-resolving-URL helper (or reuse an existing offline-failing fixture) for the
@@ -156,12 +156,12 @@ restarts.
 
 ## Phase 6: Polish
 
-- [ ] T018 [P] `README.md`: add `recent-urls.json` to the "what the app writes to the
+- [x] T018 [P] `README.md`: add `recent-urls.json` to the "what the app writes to the
   user-data area" inventory (beside `settings.json` / `interaction-log.jsonl`); add one line
   on the address-bar dropdown and the connection-panel "Clear recent URLs" action.
-- [ ] T019 Run `specs/009-recent-urls-dropdown/quickstart.md` §1–§4 against a built app; fix
+- [x] T019 Run `specs/009-recent-urls-dropdown/quickstart.md` §1–§4 against a built app; fix
   any doc/behaviour drift.
-- [ ] T020 Full gate: `npm run build && npm run lint && npm test && npm run test:e2e`
+- [x] T020 Full gate: `npm run build && npm run lint && npm test && npm run test:e2e`
   (local port 7357 free); confirm `settings.json` is unaffected by any recent-URL operation.
 
 ---
