@@ -2,10 +2,24 @@
 
 ## Get it
 
-**A — packaged build.** Download the `.dmg` for your Mac's architecture from
+**A — packaged build.** Download the `arm64` `.dmg` (Apple Silicon) from
 [Releases](https://github.com/juliaviluhina/hyppovisor/releases), open it, drag
-HyppoVisor to Applications. First launch: right-click the app → **Open** to get
-past Gatekeeper (the build is unsigned).
+HyppoVisor to Applications.
+
+The build is not signed with an Apple Developer ID or notarized, so on first
+launch macOS Gatekeeper reports it as **"HyppoVisor is damaged and can't be
+opened"** — misleading wording; the app is fine, and right-click → **Open**
+does *not* get past it. Strip the download quarantine instead:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/HyppoVisor.app
+```
+
+If it still won't open, ad-hoc re-sign it:
+
+```bash
+codesign --force --deep --sign - /Applications/HyppoVisor.app
+```
 
 **B — from source.**
 
@@ -34,7 +48,8 @@ persist in the app's own profile across restarts.
 
 ## Build a packaged app
 
-Produces option A above (`arm64` + `x64`, each `.dmg` + `.zip`, unsigned):
+Produces option A above (`arm64` + `x64`, each `.dmg` + `.zip`, unsigned; the
+Release workflow publishes `arm64` only):
 
 ```bash
 npm run dist

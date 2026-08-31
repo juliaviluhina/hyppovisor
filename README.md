@@ -38,20 +38,26 @@ flowchart LR
 
 ## Download & install
 
-From [Releases](https://github.com/juliaviluhina/hyppovisor/releases), pick your Mac:
+From [Releases](https://github.com/juliaviluhina/hyppovisor/releases), download
+`HyppoVisor-<version>-arm64.dmg` (Apple Silicon — M1/M2/M3/…). Releases ship an
+arm64 build only; for Intel, build from source.
 
-- **Apple Silicon** (M1/M2/M3/…) → `HyppoVisor-<version>-arm64.dmg`
-- **Intel** → `HyppoVisor-<version>-x64.dmg`
+Open the `.dmg` and drag `HyppoVisor.app` to Applications.
 
-**This build is unsigned and un-notarized.** macOS Gatekeeper will say the app
-"cannot be opened because the developer cannot be verified." To get past it:
+**This build is unsigned and un-notarized.** On first launch macOS Gatekeeper
+reports it as **"HyppoVisor is damaged and can't be opened"** — misleading
+wording; the app is fine. Right-click → **Open** does *not* get past this one.
+Strip the download quarantine from the installed app instead:
 
 ```bash
-xattr -dr com.apple.quarantine ~/Downloads/HyppoVisor-*.dmg
+xattr -dr com.apple.quarantine /Applications/HyppoVisor.app
 ```
 
-…then open the `.dmg` and drag `HyppoVisor.app` to Applications. Or: right-click
-the app → **Open** → **Open** in the dialog (once per install).
+If it still won't open, ad-hoc re-sign it:
+
+```bash
+codesign --force --deep --sign - /Applications/HyppoVisor.app
+```
 
 <!-- When a signed build ships, this workaround is superseded — see PACKAGING.md. -->
 
