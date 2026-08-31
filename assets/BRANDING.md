@@ -21,9 +21,11 @@ Two mascot renders are in play:
 | `assets/hyppovisor.png` | Full figure, full resolution — README / social / docs | V10 | 1159×1358 |
 | `src/renderer/mascot.png` | Full figure, downscaled — in-app About panel | V10 | 560px wide |
 | `src/renderer/hyppo.png` | Square head, 96 — the top-bar connection-panel button | Ivon v2 | 96×96 |
-| `build/icon.png` | Square head, 1024 — Linux / electron-builder generic / `BrowserWindow` | Ivon v2 | 1024×1024 |
-| `build/icon.icns` | macOS app icon (16–1024, @1x/@2x) | Ivon v2 | — |
-| `build/icon.iconset/` | Intermediate PNGs for `iconutil` | Ivon v2 | — |
+| `build/icon.png` | **Sole icon master**, 1024 — `BrowserWindow` at runtime; `electron-builder` generates the macOS `.icns` from it at package time | Ivon v2 | 1024×1024 |
+
+`build/icon.icns` and `build/icon.iconset/` are no longer tracked —
+`electron-builder` regenerates the `.icns` from `build/icon.png` on every
+`npm run dist` (see [PACKAGING.md](../PACKAGING.md)).
 
 ## Regeneration
 
@@ -39,7 +41,7 @@ cp "$SRC" assets/hyppovisor.png
 sips -Z 560 "$SRC" --out src/renderer/mascot.png
 ```
 
-### App icon + top-bar button — from Ivon v2 (Python + `iconutil`)
+### App icon master + top-bar button — from Ivon v2 (Python)
 
 The head render bleeds to its left and bottom edges, so it is trimmed to the opaque
 bounds and re-centred on a square canvas with 8% padding before scaling. `sips` cannot
@@ -57,15 +59,18 @@ master.paste(c, ((side - w) // 2, (side - h) // 2), c)
 
 master.resize((1024, 1024), Image.LANCZOS).save("build/icon.png")
 master.resize((96, 96), Image.LANCZOS).save("src/renderer/hyppo.png")
-for name, px in [
-    ("icon_16x16", 16), ("icon_16x16@2x", 32), ("icon_32x32", 32),
-    ("icon_32x32@2x", 64), ("icon_128x128", 128), ("icon_128x128@2x", 256),
-    ("icon_256x256", 256), ("icon_256x256@2x", 512), ("icon_512x512", 512),
-    ("icon_512x512@2x", 1024),
-]:
-    master.resize((px, px), Image.LANCZOS).save(f"build/icon.iconset/{name}.png")
 ```
 
+`npm run dist` turns `build/icon.png` into the packaged `.icns` at every macOS
+size — no hand-run `iconutil` step to keep in sync.
+
+### One-time lossless PNG squeeze
+
+`oxipng` is a developer tool (`brew install oxipng`), not a build step:
+
 ```sh
-iconutil -c icns build/icon.iconset -o build/icon.icns
+oxipng -o4 --strip safe build/icon.png assets/hyppovisor.png \
+  src/renderer/mascot.png src/renderer/hyppo.png
 ```
+
+Each file gets smaller with no visible change; re-commit the shrunk PNGs.

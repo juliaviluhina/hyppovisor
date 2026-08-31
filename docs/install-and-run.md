@@ -34,13 +34,11 @@ persist in the app's own profile across restarts.
 
 ## Build a packaged app
 
-Produces option A above. No signing yet.
+Produces option A above (`arm64` + `x64`, each `.dmg` + `.zip`, unsigned):
 
 ```bash
-npx @electron/packager . HyppoVisor \
-  --platform=darwin --arch=arm64 \
-  --icon=build/icon.icns --overwrite
-open HyppoVisor-darwin-arm64/HyppoVisor.app
+npm run dist
 ```
 
-Output (`HyppoVisor-*/`) is git-ignored.
+Full runbook — the license gate, the LGPL swap, signing — in
+[PACKAGING.md](../PACKAGING.md). Output (`release/`) is git-ignored.

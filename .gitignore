@@ -8,6 +8,9 @@ dist/
 out/
 # @electron/packager output — HyppoVisor-<platform>-<arch>/
 HyppoVisor-*/
+# electron-builder output (feature 010) + the inventory it regenerates each run
+release/
+THIRD-PARTY-LICENSES
 *.log
 .vitest/
 test-results/
