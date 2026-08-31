@@ -36,11 +36,34 @@ flowchart LR
 5. **Use HyppoVisor MCP in your agent session** — `open_url`, `read_page`,
    `interact`, … within what's [allowed and refused](docs/safety.md).
 
+## Download & install
+
+From [Releases](https://github.com/juliaviluhina/hyppovisor/releases), pick your Mac:
+
+- **Apple Silicon** (M1/M2/M3/…) → `HyppoVisor-<version>-arm64.dmg`
+- **Intel** → `HyppoVisor-<version>-x64.dmg`
+
+**This build is unsigned and un-notarized.** macOS Gatekeeper will say the app
+"cannot be opened because the developer cannot be verified." To get past it:
+
+```bash
+xattr -dr com.apple.quarantine ~/Downloads/HyppoVisor-*.dmg
+```
+
+…then open the `.dmg` and drag `HyppoVisor.app` to Applications. Or: right-click
+the app → **Open** → **Open** in the dialog (once per install).
+
+<!-- When a signed build ships, this workaround is superseded — see PACKAGING.md. -->
+
+Building from source instead: [docs/install-and-run.md](docs/install-and-run.md).
+Cutting a release: [PACKAGING.md](PACKAGING.md).
+
 ## Docs
 
 | Doc | For |
 |---|---|
-| [Install & run](docs/install-and-run.md) | requirements, standalone use, packaging |
+| [Install & run](docs/install-and-run.md) | requirements, standalone use, from source |
+| [Packaging](PACKAGING.md) | `npm run dist`, the license gate, LGPL swap, signing |
 | [Connect an agent](docs/connect-an-agent.md) | HTTP + panel, stdio, verifying |
 | [Configuration](docs/configuration.md) | env vars, precedence, `settings.json` |
 | [Tools](docs/tools.md) | the eight MCP tools |

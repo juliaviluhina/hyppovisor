@@ -16,13 +16,18 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "licenses:check": "node scripts/check-licenses.js",
+    "licenses:gen": "node scripts/gen-third-party-licenses.js",
+    "dist": "node scripts/dist-preflight.js && npm run build && npm run licenses:check && npm run licenses:gen && electron-builder --mac"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@types/node": "^22.10.0",
     "electron": "^33.2.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.17.0",
+    "license-checker-rseidelsohn": "^5.0.1",
     "playwright": "^1.49.0",
     "prettier": "^3.4.0",
     "typescript": "^5.7.0",
