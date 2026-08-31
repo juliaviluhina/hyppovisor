@@ -53,9 +53,26 @@ the icon at every size, reports that version, and includes
 
 ## Distributing
 
-Upload the four `release/` artifacts by hand to a
-[GitHub Release](https://github.com/juliaviluhina/hyppovisor/releases). A tagged
-CI release job is a deferred follow-up.
+### Automated (preferred) — tag a release
+
+`.github/workflows/release.yml` builds the artifacts on native runners (`arm64`
+on Apple Silicon, `x64` on Intel — so each is a genuine per-arch build) and
+attaches them to a GitHub Release:
+
+```bash
+npm version patch          # or minor / major — bumps package.json, commits, tags
+git push --follow-tags
+```
+
+Pushing a `v*` tag runs lint + unit tests, then both `dist` jobs, then publishes
+the Release with the four `.dmg` / `.zip` files and an unsigned-build header. A
+manual **Run workflow** (workflow_dispatch) builds the artifacts without cutting
+a Release. Set `draft: true` in the workflow to stage releases for review first.
+
+### By hand
+
+Run `npm run dist` locally and upload the four `release/` artifacts to a
+[GitHub Release](https://github.com/juliaviluhina/hyppovisor/releases).
 
 ## Replacing the bundled `libffmpeg.dylib` (LGPL)
 

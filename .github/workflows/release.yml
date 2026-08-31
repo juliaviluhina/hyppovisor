@@ -1,0 +1,144 @@
+name: Release
+
+# Cut a release by pushing a version tag:
+#
+#   npm version patch        # bumps package.json, creates the commit + tag
+#   git push --follow-tags
+#
+# The tag must match the package.json version (the build asserts it). This
+# workflow then builds the unsigned macOS artifacts on native runners — arm64 on
+# Apple Silicon, x64 on Intel — and attaches them to a GitHub Release for that
+# tag. `workflow_dispatch` runs the build only (artifacts land on the run page,
+# no Release is created).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Don't cut a release from a broken tree. Cheap gate: lint + unit tests.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+      - name: Tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          echo "tag=$tag  package.json=$pkg"
+          [ "$tag" = "$pkg" ] || {
+            echo "::error::tag v$tag does not match package.json version $pkg"
+            exit 1
+          }
+
+  dist:
+    needs: verify
+    name: dist (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14 # Apple Silicon
+            arch: arm64
+          - runner: macos-13 # Intel
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # ~170 MB Electron runtime — cache it, keyed on the pinned version + arch.
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron
+          key: electron-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('package-lock.json') }}
+
+      - run: npm ci
+
+      # The `dist` script chains all four arches from one runner's pinned
+      # electronDist; here each runner is native to one arch, so run the gate
+      # steps directly and let electron-builder build only this arch.
+      - name: Preflight
+        run: node scripts/dist-preflight.js
+
+      - name: Build
+        run: npm run build
+
+      - name: License gate
+        run: npm run licenses:check
+
+      - name: Generate THIRD-PARTY-LICENSES
+        run: npm run licenses:gen
+
+      - name: Package (${{ matrix.arch }}, unsigned)
+        run: npx electron-builder --mac --${{ matrix.arch }} --publish never
+        env:
+          # First release ships unsigned — don't let electron-builder hunt for a
+          # signing identity (it would only warn, but keep the log clean).
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          # The .dmg + .zip for this arch. Skip blockmap / latest-mac.yml —
+          # they're auto-update metadata and not in scope (they'd also collide
+          # when the two arch artifacts are merged).
+          cp release/*.dmg release/*.zip out/
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hyppovisor-${{ matrix.arch }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: dist
+    # Only a tag push cuts a Release; a manual dispatch just leaves the build
+    # artifacts on the run.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hyppovisor-*
+          path: dist-artifacts
+          merge-multiple: true
+
+      - run: ls -lhR dist-artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-artifacts/*
+          fail_on_unmatched_files: true
+          # Header (unsigned-build Gatekeeper steps) followed by the
+          # auto-generated commit/PR notes for this tag.
+          body_path: .github/RELEASE_NOTES_HEADER.md
+          generate_release_notes: true
+          # Flip to true to stage releases for manual review before they go live.
+          draft: false
