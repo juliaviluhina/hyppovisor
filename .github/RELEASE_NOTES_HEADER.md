@@ -1,5 +1,5 @@
-> **Unsigned build.** macOS Gatekeeper will block it on first launch. Pick the
-> file for your Mac — `arm64` for Apple Silicon, `x64` for Intel — then:
+> **Unsigned build.** macOS Gatekeeper will block it on first launch. This
+> release ships the `arm64` build (Apple Silicon) only. After downloading:
 >
 > ```bash
 > xattr -dr com.apple.quarantine ~/Downloads/HyppoVisor-*.dmg
