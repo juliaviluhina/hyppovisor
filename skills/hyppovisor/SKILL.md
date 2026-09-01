@@ -121,3 +121,35 @@ interfere: a form-fill in one instance never blocks a read in another. Register
 each with its own `hyppovisor-<slug>` name so the client entries don't clobber
 each other. Launch each with `--background` so the parallel instances add no
 windows and no focus changes to the user's screen.
+
+## Shutting down
+
+An instance keeps running — and keeps serving MCP on its port — until it gets a
+real quit. Closing a summoned window only drops a `--background` instance back to
+the background; it does **not** stop it. Summon-then-close is for signing in or
+screenshotting, never for shutdown.
+
+The user runs one of these; you supply the command:
+
+- **Ctrl-C in the terminal that launched it** — the clean stop. A `--background`
+  instance handles SIGINT/SIGTERM as a graceful quit: tabs close, the MCP server
+  stops. This is not a hard kill.
+- Launched detached / no terminal in reach — target it **by instance name** so a
+  sibling instance is untouched:
+
+  ```bash
+  pkill -f -- "--instance <slug> "
+  ```
+
+  Same graceful path as Ctrl-C.
+- Once the instance is gone for good, drop the client entry:
+
+  ```bash
+  claude mcp remove hyppovisor-<slug>
+  ```
+
+**If you launched an instance yourself for this session, ask the user before the
+session ends whether to close it.** A `--background` instance you started has no
+window and no focus — it is invisible and easy to forget, but it stays alive and
+holds its port. Don't kill an instance the user was already running, or one from
+another project; only offer to stop the one this session created.
