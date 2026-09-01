@@ -70,6 +70,19 @@ claude mcp list      # or /mcp inside a session — confirm it's registered
 Log into the sites you need in the HyppoVisor window. The app keeps running
 across agent sessions.
 
+## Give the agent a skill (optional)
+
+`skills/hyppovisor/SKILL.md` in this repo is a ready-made skill for Claude Code /
+Claude Desktop: it tells the agent how to pick a per-project `--instance` / `--port`,
+register the `hyppovisor-<slug>` endpoint, confirm which instance it reached, and
+stay inside the read-only / never-submit rules. Copy the folder into the project
+that will use HyppoVisor:
+
+```bash
+mkdir -p .claude/skills
+cp -r /path/to/hyppovisor/skills/hyppovisor .claude/skills/
+```
+
 ## stdio (alternative)
 
 No open port; the app starts and stops with the session. Must run under
