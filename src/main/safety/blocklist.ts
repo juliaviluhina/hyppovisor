@@ -13,6 +13,8 @@ export interface TargetDescriptor {
   type: string | null; // input/button type attribute, lowercased
   role: string | null;
   hasFormAncestor: boolean;
+  /** `formaction` attribute, lowercased; null when absent. Feature 011 — the in-form carve-out. */
+  formAction: string | null;
   /** Best-effort accessible name: visible text, value, aria-label, <label>, title — lowercased. */
   name: string;
   autocomplete: string | null; // lowercased
@@ -169,11 +171,21 @@ export const BLOCKLIST_RULES: readonly BlocklistRule[] = [
     // preparation, not an external act (constitution Principle I, amended). Space
     // is not gated here either — it cannot trigger an implicit submit, and the
     // activation rules above already refuse a real submit control in the form.
+    //
+    // Carve-out (constitution 1.4.0, feature 011): a `<button type="button">`
+    // with no `formaction` is a reveal control ("Add Experience"), not a
+    // submission — permit it. A bare/`type=submit` button and an
+    // outward-labelled one are already refused by `submit-control` /
+    // `external-act-label` above, so only the plain `type="button"` reaches this
+    // exception.
     id: "in-form",
     description:
-      "Target is a clickable control inside a <form> element; clicking it risks a submission.",
+      "Target is a clickable control inside a <form> element (other than a non-submit " +
+      '<button type="button"> with no formaction); clicking it risks a submission.',
     appliesTo: "click",
-    matches: (d) => d.hasFormAncestor,
+    matches: (d) =>
+      d.hasFormAncestor &&
+      !(d.tagName === "button" && d.type === "button" && d.formAction === null),
   },
 ];
 
@@ -330,25 +342,43 @@ export const ACCESSIBLE_NAME_SOURCES_BODY = `
  * Shared in-page body: given a bound `el`, assemble a TargetDescriptor.
  * `name` combines every accessible-name source so a bare checkbox picks up its
  * associated <label> text (which lives outside the element itself).
+ *
+ * feature 011 (US2/US3): for a *value-bearing* control — a <textarea>, a
+ * contenteditable, or a text-like <input> the agent can draft into — the
+ * element's own editable text (`el.innerText` / `el.value` / the `textContent`
+ * fallback) is left OUT of `name`. Otherwise a drafted answer containing a common
+ * word ("apply", "join", "post", …) folds into the string `external-act-label`
+ * matches, so the field refuses every fill after the first. A <button> or submit
+ * <input> keeps its `value` / text — there it is the caption the rules must read.
  */
 export const DESCRIPTOR_BODY = `
     ${ACCESSIBLE_NAME_SOURCES_BODY}
-    const parts = [
-      el.innerText || "",
-      el.value || "",
-      __ariaLabelText,
-      __titleText,
-      __placeholderText,
-      __forLabelText,
-      __wrapLabelText,
-      __ariaLabelledbyText,
-    ];
-    if (!parts.join("").trim()) parts.push(el.textContent || "");
+    const __tag = el.tagName.toLowerCase();
+    const __type = (el.getAttribute("type") || "").toLowerCase();
+    const __textTypes = ["", "text", "email", "tel", "url", "search", "number", "password"];
+    const __valueBearing =
+      __tag === "textarea" ||
+      el.isContentEditable === true ||
+      (__tag === "input" && __textTypes.indexOf(__type) !== -1);
+    const parts = __valueBearing
+      ? [__ariaLabelText, __titleText, __placeholderText, __forLabelText, __wrapLabelText, __ariaLabelledbyText]
+      : [
+          el.innerText || "",
+          el.value || "",
+          __ariaLabelText,
+          __titleText,
+          __placeholderText,
+          __forLabelText,
+          __wrapLabelText,
+          __ariaLabelledbyText,
+        ];
+    if (!__valueBearing && !parts.join("").trim()) parts.push(el.textContent || "");
     return {
-      tagName: el.tagName.toLowerCase(),
+      tagName: __tag,
       type: el.getAttribute("type") ? el.getAttribute("type").toLowerCase() : null,
       role: el.getAttribute("role") ? el.getAttribute("role").toLowerCase() : null,
       hasFormAncestor: !!el.closest("form"),
+      formAction: el.getAttribute("formaction") ? el.getAttribute("formaction").toLowerCase() : null,
       name: parts.join(" ").replace(/\\s+/g, " ").trim().toLowerCase(),
       autocomplete: el.getAttribute("autocomplete") ? el.getAttribute("autocomplete").toLowerCase() : null,
       isContentEditable: el.isContentEditable === true,

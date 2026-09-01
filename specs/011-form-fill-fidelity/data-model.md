@@ -65,21 +65,27 @@ outcome with the reason, and the remaining entries still run (existing mid-write
 
 ## `FormFieldRecord` (`src/main/page/form-fields.ts`, `src/shared/types.ts`)
 
-Default (unscoped, no `includeNonInteractive`) record — these fields become **optional** and
-are emitted only when `includeNonInteractive: true`:
+Default (unscoped, no `includeNonInteractive`) record — the **options triplet** becomes
+optional and is dropped from a non-dropdown record:
 
 | Field | Default record | `includeNonInteractive: true` |
 |---|---|---|
-| `selectorSynthesised` | omitted | present |
-| `duplicateId` | omitted | present |
-| `optionsTruncated` | omitted | present |
-| `optionsAvailable` | omitted | present |
-| `options` | present only for a dropdown kind (`select` / `combobox` / `listbox`); omitted otherwise | present for every record (as today) |
+| `options` | present only for a dropdown kind (`select` / `combobox` / `listbox`); omitted otherwise | present for every record |
+| `optionsAvailable` | dropdown kinds only | present for every record |
+| `optionsTruncated` | dropdown kinds only | present for every record |
 
-Always present in every record, unchanged: `selector`, `kind`, `type`, `label`,
-`required`, `group`, `inFormAncestor`, `visible`, `currentValue` (credential omitted),
-`operation`, `fillVerdict`, `clickVerdict`, `chooseVerdict`, and the feature-008 optionals
-`maxLength` / `pattern` / `inputMode` when the control declares them.
+**Scope note (revised during implementation).** research R6 first proposed also moving
+`selectorSynthesised` and `duplicateId` behind `includeNonInteractive`. They stayed in the
+default record: they are ~50 bytes, they flag a fragile suggested selector (core to the
+fill workflow, not a rarely-read diagnostic), and existing `read_form_fields` tests depend
+on them in the default read. The bulk saving on a big form is the ~3-field options triplet
+removed from every non-dropdown control; that is enough to keep a ~60-control form's
+unprojected read inside the 64 KB budget without trimming.
+
+Always present in every record, unchanged: `selector`, `selectorSynthesised`, `duplicateId`,
+`kind`, `type`, `label`, `required`, `group`, `inFormAncestor`, `visible`, `currentValue`
+(credential omitted), `operation`, `fillVerdict`, `clickVerdict`, `chooseVerdict`, and the
+feature-008 optionals `maxLength` / `pattern` / `inputMode` when the control declares them.
 
 `interactive: false` on a plain button and the value-mirror cluster fields
 (`mirrorsField` / `mirrorOfSelector`) are unchanged — already gated behind

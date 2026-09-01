@@ -247,15 +247,20 @@ test("space activates the focused element under the click rules (US3, SC-003/SC-
   expect(String(sub)).toContain("REFUSED_EXTERNAL_ACT");
   expect(readLog(logPath).at(-1)!.ruleId).toBe("submit-control");
 
-  // plain non-submit <button> inside the form: click is refused by in-form, space is permitted
+  // plain non-submit <button type="button"> inside the form: space is permitted,
+  // and since constitution 1.4.0 (feature 011) so is click — it is a reveal
+  // control, not a submission. See the US4 test with expander.html for the full
+  // carve-out boundary.
   await callHandle(app, "focus", [tabId, "#addAnother"]);
   const btn = await callHandle(app, "interact", [tabId, "space"]);
   expect((btn as { outcome: string }).outcome).toBe("permitted");
-  const clickBtn = await callHandle(app, "interact", [tabId, "click", "#addAnother"]).catch(
-    (e: Error) => e.message,
-  );
-  expect(String(clickBtn)).toContain("REFUSED_EXTERNAL_ACT");
-  expect(readLog(logPath).at(-1)!.ruleId).toBe("in-form");
+  const clickBtn = await callHandle<{ outcome: string }>(app, "interact", [
+    tabId,
+    "click",
+    "#addAnother",
+  ]);
+  expect(clickBtn.outcome).toBe("permitted");
+  expect(readLog(logPath).at(-1)!.outcome).toBe("permitted");
 
   // text field: inserts one space, does not submit
   await callHandle(app, "interact", [tabId, "fill", "#first_name", "Ann"]);
@@ -344,4 +349,205 @@ test("a burst across multiple tabs never overlaps and every request completes (T
   expect(reads.every((r) => typeof r.queueDepth === "number")).toBe(true);
   // at least one request observed a non-empty queue → they were serialised
   expect(Math.max(...reads.map((r) => r.queueDepth))).toBeGreaterThan(0);
+});
+
+// ─── feature 011: form-fill fidelity ───────────────────────────────────────────
+
+test("US1: a masked field fills via real key events and the response confirms it (SC-001)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/masked.html`]);
+
+  const r = await callHandle<{ outcome: string; currentValue?: string }>(app, "interact", [
+    tabId,
+    "fill",
+    "#start_date",
+    "09/1992",
+  ]);
+  expect(r.outcome).toBe("permitted");
+  expect(r.currentValue).toBe("09/1992");
+
+  // an independent read-back proves the value actually stuck in the DOM
+  const got = await callHandle<string>(app, "probe", [
+    tabId,
+    "document.querySelector('#start_date').value",
+  ]);
+  expect(got).toBe("09/1992");
+
+  const phone = await callHandle<{ currentValue?: string }>(app, "interact", [
+    tabId,
+    "fill",
+    "#phone",
+    "5551234567",
+  ]);
+  expect(phone.currentValue).toBe("(555) 123-4567");
+});
+
+test("US1: a value the mask will not accept is WRITE_NOT_APPLIED, not a bare success (SC-002)", async () => {
+  const logPath = await handleValue<string>(app, "logPath");
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/masked.html`]);
+
+  const msg = String(
+    await callHandle(app, "interact", [tabId, "fill", "#start_date", "Present"]).catch(
+      (e: Error) => e.message,
+    ),
+  );
+  expect(msg).toContain("WRITE_NOT_APPLIED");
+  // the message carries the read-back value so the caller sees the field is empty
+  expect(msg).toContain('the field still reads ""');
+
+  const got = await callHandle<string>(app, "probe", [
+    tabId,
+    "document.querySelector('#start_date').value",
+  ]);
+  expect(got).toBe("");
+
+  // the attempt is logged as an error, not permitted / refused
+  const entries = readLog(logPath).filter(
+    (e) => e.operation === "fill" && e.target === "#start_date",
+  );
+  expect(entries.at(-1)?.outcome).toBe("error");
+});
+
+test("US1: a plain unmasked field still fills and now returns currentValue (regression)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/masked.html`]);
+  const r = await callHandle<{ outcome: string; currentValue?: string }>(app, "interact", [
+    tabId,
+    "fill",
+    "#plain",
+    "hello world",
+  ]);
+  expect(r.outcome).toBe("permitted");
+  expect(r.currentValue).toBe("hello world");
+});
+
+test("US2: a plain field whose draft contains an outward-act word is still fillable (SC-003/SC-004)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  // #startup_q — innocuous own <label>, sits next to a submit button, id in the
+  // CA_/submit_ shape. First draft lands.
+  const first = await callHandle<{ outcome: string }>(app, "interact", [
+    tabId,
+    "fill",
+    "#startup_q",
+    "Yes — I applied to Y Combinator and joined an early-stage team.",
+  ]);
+  expect(first.outcome).toBe("permitted");
+
+  // the revised draft must NOT be refused just because "apply" is now in the value
+  const second = await callHandle<{ outcome: string }>(app, "interact", [
+    tabId,
+    "fill",
+    "#startup_q",
+    "Yes. I co-founded a startup and later applied that experience at a Series B company.",
+  ]);
+  expect(second.outcome).toBe("permitted");
+
+  // read_form_fields agrees the verdict is still permitted
+  const map = await callHandle<{
+    records: Array<{ selector: string; fillVerdict: { verdict: string } }>;
+  }>(app, "readFormFields", [tabId, undefined, { fields: ["#startup_q"] }]);
+  expect(map.records[0]?.fillVerdict.verdict).toBe("permitted");
+});
+
+test("US2: a field whose OWN label reads as an outward act is still refused", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const msg = String(
+    await callHandle(app, "interact", [tabId, "fill", "#submit_note", "anything"]).catch(
+      (e: Error) => e.message,
+    ),
+  );
+  expect(msg).toContain("REFUSED_EXTERNAL_ACT");
+});
+
+test("US3: a field's fill verdict is identical across repeated reads of an unchanged page (SC-005)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  await callHandle(app, "interact", [tabId, "fill", "#startup_q", "Applied and joined a startup."]);
+
+  const verdicts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const map = await callHandle<{
+      records: Array<{ fillVerdict: { verdict: string } }>;
+    }>(app, "readFormFields", [tabId, undefined, { fields: ["#startup_q"] }]);
+    verdicts.push(map.records[0]?.fillVerdict.verdict);
+  }
+  expect(new Set(verdicts)).toEqual(new Set(["permitted"]));
+});
+
+test("US3: fill then immediately fill again on the same selector is not refused (SC-006)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const a = await callHandle<{ outcome: string }>(app, "interact", [
+    tabId,
+    "fill",
+    "#bio",
+    "Posted a summary and applied for the role.",
+  ]);
+  const b = await callHandle<{ outcome: string }>(app, "interact", [
+    tabId,
+    "fill",
+    "#bio",
+    "Revised: shipped and published a redesign.",
+  ]);
+  expect(a.outcome).toBe("permitted");
+  expect(b.outcome).toBe("permitted");
+});
+
+test("US4: an in-form non-submit reveal button is clickable; its sub-form becomes fillable (SC-007)", async () => {
+  const logPath = await handleValue<string>(app, "logPath");
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/expander.html`]);
+  const before = await callHandle<{ url: string }>(app, "read", [tabId]);
+
+  // the "Add Experience" button: <button type="button">, no formaction, inside a
+  // <form> that also has a submit control — permitted (constitution 1.4.0 / B1)
+  const click = await callHandle<{ outcome: string }>(app, "interact", [
+    tabId,
+    "click",
+    "#addExperience",
+  ]);
+  expect(click.outcome).toBe("permitted");
+  expect(readLog(logPath).at(-1)).toMatchObject({
+    operation: "click",
+    target: "#addExperience",
+    outcome: "permitted",
+  });
+
+  // the revealed sub-form's fields are now readable and fillable
+  const revealed = await callHandle<boolean>(app, "probe", [
+    tabId,
+    "!document.getElementById('expSection').hidden",
+  ]);
+  expect(revealed).toBe(true);
+  const fill = await callHandle<{ outcome: string }>(app, "interact", [
+    tabId,
+    "fill",
+    "#exp_title",
+    "Staff Engineer",
+  ]);
+  expect(fill.outcome).toBe("permitted");
+
+  // no submission / navigation happened
+  expect(await callHandle<boolean>(app, "probe", [tabId, "window.__submitted"])).toBe(false);
+  expect((await callHandle<{ url: string }>(app, "read", [tabId])).url).toBe(before.url);
+});
+
+test("US4: submit / Save / formaction buttons inside the same form stay refused (SC-007/SC-009)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/expander.html`]);
+
+  for (const sel of ["#submitBtn", "#saveDraftBtn", "#formActionBtn"]) {
+    const msg = String(
+      await callHandle(app, "interact", [tabId, "click", sel]).catch((e: Error) => e.message),
+    );
+    expect(msg, sel).toContain("REFUSED_EXTERNAL_ACT");
+  }
+});
+
+test("US4: the reveal button is permitted even in a form with no submit control (B1, SC-007)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/expander.html`]);
+  const click = await callHandle<{ outcome: string }>(app, "interact", [
+    tabId,
+    "click",
+    "#addEducation",
+  ]);
+  expect(click.outcome).toBe("permitted");
+  expect(
+    await callHandle<boolean>(app, "probe", [tabId, "!document.getElementById('eduSection').hidden"]),
+  ).toBe(true);
 });

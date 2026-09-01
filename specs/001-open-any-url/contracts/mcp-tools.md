@@ -106,7 +106,10 @@ Bounded interaction to reveal content. **Cannot** submit, send, or apply.
   control's value and menu state exactly as found, and writes **no** interaction-audit entry
   on any path.
 
-**Returns**: `{ tabId, operation, outcome: "permitted", queueDepth }`. A batch `fill`
+**Returns**: `{ tabId, operation, outcome: "permitted", queueDepth }`. A permitted single
+`fill` also carries `currentValue` — the field's value read back after the write,
+post-formatting (feature 011; omitted for a credential target, which is refused earlier). A
+batch `fill`
 returns `{ tabId, operation: "fill", outcome: "permitted" | "partial", fields: Array<{ selector, outcome, message? }>, summary: { requested, written, errored }, queueDepth }`.
 A permitted `choose_option` additionally carries `chosenOption: { label, value }` — the
 matched option's verbatim label and value (feature 006).
@@ -119,11 +122,24 @@ option-wait window returns `options: []`, `optionsPresent: false` — **not** an
 `options` is capped at `formFieldOptionCap`; `optionsTruncated: true` when it bit.
 
 **Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND`, `INVALID_SELECTOR`, `REFUSED_EXTERNAL_ACT`,
-`BATCH_REJECTED`, `CHOOSE_OPTION_FAILED`.
+`BATCH_REJECTED`, `CHOOSE_OPTION_FAILED`, `WRITE_NOT_APPLIED`.
+
+**`WRITE_NOT_APPLIED`** (feature 011): `fill` typed a well-formed value with real key
+events but a read-back shows the field did not accept it (empty, unchanged, or a truncated
+prefix — an input mask may need a different format). Not a refusal — no `ruleId`; carries
+`currentValue` (the read-back, omitted for a credential target). The single-`fill` path
+throws it; in a batch it is that entry's `error` outcome and the remaining entries still
+fill. The interaction-log entry is `outcome: "error"`.
 
 **Refusal**: when the target matches a blocklist rule, returns `REFUSED_EXTERNAL_ACT` with
 `{ ruleId, description }` and a message referencing the no-external-act rule (FR-012, FR-012a).
-`fill` additionally refuses credential inputs (FR-018). A batch `fill` with any forbidden or
+The `external-act-label` rule reads only the target control's **own** accessible name, never
+a nearby button or the drafted value (feature 011), so a plain field cannot become refused
+because of what was typed into it.
+`fill` additionally refuses credential inputs (FR-018).
+`click` inside a `<form>` is refused (`in-form`) **except** a `<button type="button">` with
+no `formaction`, not the implicit submit, own label not an outward act — permitted since
+constitution 1.4.0 to reveal a repeatable sub-form (feature 011). A batch `fill` with any forbidden or
 unresolved target returns `BATCH_REJECTED` with a `targets[]` breakdown and writes nothing;
 cap / empty / malformed-call refusals use `BATCH_REJECTED` without `targets` (feature 004).
 `choose_option` refuses a non-chooser, an ambiguous / disabled / no-match / never-rendered
@@ -155,22 +171,28 @@ includeNonInteractive?: boolean, only?: "required-unfilled" }`.
   empty `records`. A non-CSS entry → `INVALID_SELECTOR`.
 - `includeNonInteractive` (feature 008, default `false`) — when `false`, plain buttons and
   hidden value-mirror inputs are omitted. When `true`, they are included (a mirror carries
-  `interactive: false` + `mirrors`).
+  `interactive: false` + `mirrors`). Feature 011: `true` also restores the diagnostic
+  fields (`selectorSynthesised`, `duplicateId`, `optionsAvailable`, `optionsTruncated`) and
+  every record's `options` array, all of which the lean default record omits.
 - `only: "required-unfilled"` (feature 008) — return only records that are `required` and
   whose current value is empty (empty string / unchecked / no option chosen).
 
 **Returns**: `FormFieldMap` — `{ tabId, url, observedAt, truncated, records[], queueDepth }`.
-Each record: `selector` (usable by `interact`, verified unique at call time; `null` only when
-none could be built), `selectorSynthesised` / `duplicateId`, `kind`, raw `type`, verbatim
+Each record (feature 011 — the **lean default**): `selector` (usable by `interact`, verified
+unique at call time; `null` only when none could be built), `kind`, raw `type`, verbatim
 `label`, `required`, `group` (radios), `inFormAncestor`, `visible`, `currentValue` (**omitted
-entirely** for a credential field), `options` + `optionsAvailable` + `optionsTruncated`
-(`<select>` and in-DOM combobox menus), `fillVerdict` / `clickVerdict` — identical in shape
+entirely** for a credential field), `options` (only for a dropdown kind in the default read;
+every kind under `includeNonInteractive`), `fillVerdict` / `clickVerdict` — identical in shape
 and content to what `interact` returns for that target — and (feature 008) `operation`
 (`"fill" | "choose" | "activate" | "none"`, derived from `kind`), `chooseVerdict`
 (`{ allowed, ruleId?, description? }` — what `choose_option` would return; `in-form` does not
 gate it), `interactive: false` on a surfaced plain button / value-mirror, `mirrors` on a
 value-mirror (the combobox `selector` it carries the value for), and `maxLength` / `pattern`
-/ `inputMode` on a text-like record that declares them. A scripted dropdown backed by a
+/ `inputMode` on a text-like record that declares them. Under `includeNonInteractive` each
+record also carries `selectorSynthesised`, `duplicateId`, `optionsAvailable`, and
+`optionsTruncated` (feature 011 — omitted from the lean default). Verdicts are computed
+after the DOM reaches `readyState: "complete"` (bounded wait), so a re-read of an unchanged
+page returns the same verdict (feature 011). A scripted dropdown backed by a
 hidden same-named input collapses to **one** record whose `selector` is the one
 `choose_option` / `list_options` accept (the `role=combobox` element), not the hidden
 `[name]` input.

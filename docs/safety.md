@@ -17,7 +17,12 @@ flowchart TD
 control unchanged:
 
 - **submit controls** — a `<button>` / `<input>` that submits a form (`click`, `space`)
-- **any `click` inside a `<form>`** — filling a plain field there is still allowed
+- **any `click` inside a `<form>`** — filling a plain field there is still allowed.
+  One carve-out (constitution 1.4.0): a `<button type="button">` that declares no
+  `formaction`, is not the form's implicit submit, and whose own label reads as no
+  outward action **is** clickable — it reveals a repeatable sub-form ("Add
+  Experience" / "Add Education"), it can't submit. Every submit / `formaction` /
+  outward-labelled button in a form stays refused.
 - **buttons / links labelled** save, confirm, submit, apply, send, delete, remove,
   connect, message, subscribe, pay, checkout, log in / sign in / sign up / register
 - **consent checkboxes / switches** labelled accept, agree, consent, terms,
@@ -36,10 +41,20 @@ Type into a plain, non-credential, non-consent field (`text` / `email` / `tel` /
 `<form>` and a combobox filter. It stays refused on `<input type="file">`,
 `<select>`, a listbox, and a combobox container.
 
+`fill` types the value character by character with real key events, so an input
+mask / formatter receives it, then reads the value back. A permitted single
+`fill` returns `currentValue` (the field's value after formatting). A well-formed
+value the page still would not accept — a masked field left empty — is
+`WRITE_NOT_APPLIED` (not a refusal), carrying `currentValue`; the field was not
+filled and the caller must hand it to the human. The refusal rule that decides
+whether a `fill` is allowed reads only the control's **own** accessible name, not
+a nearby button or the drafted text — a plain field never becomes refused because
+of what was typed into it.
+
 The `fields` batch (max 50) runs under the same rules: every target is checked
 first, one bad target refuses the whole batch with nothing written; then writing
-is best-effort and a vanished element is reported while the rest fill. No new
-permission, never submits.
+is best-effort and a vanished element — or a value the page did not accept — is
+reported while the rest fill. No new permission, never submits.
 
 ## Windows and popups
 

@@ -299,3 +299,41 @@ test("US4: a batch over the 50-pair cap is refused naming the cap and the count;
   expect(added[0].batch).toEqual({ requested: 51, written: 0, errored: 0, refused: 0 });
   expect(await probe<string>(tabId, "document.querySelector('#first_name').value")).toBe("");
 });
+
+// ─── feature 011 US1: a masked no-op is one entry's error; the rest still fill ─
+
+test("US1: a batch entry the mask rejects is `error`; entries before and after still fill", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/masked.html`]);
+
+  const r = await callHandle<{
+    outcome: string;
+    fields: Array<{ selector: string; outcome: string; message?: string }>;
+    summary: { requested: number; written: number; errored: number };
+  }>(app, "fillBatch", [
+    tabId,
+    [
+      ["#plain", "first"],
+      ["#start_date", "not a date"],
+      ["#phone", "5551234567"],
+    ],
+  ]);
+
+  expect(r.outcome).toBe("partial");
+  expect(r.summary).toEqual({ requested: 3, written: 2, errored: 1 });
+
+  const by = Object.fromEntries(r.fields.map((f) => [f.selector, f]));
+  expect(by["#plain"].outcome).toBe("permitted");
+  expect(by["#start_date"].outcome).toBe("error");
+  expect(by["#phone"].outcome).toBe("permitted");
+
+  // the other two values actually landed
+  expect(await callHandle<string>(app, "probe", [tabId, "document.querySelector('#plain').value"])).toBe(
+    "first",
+  );
+  expect(await callHandle<string>(app, "probe", [tabId, "document.querySelector('#phone').value"])).toBe(
+    "(555) 123-4567",
+  );
+  expect(await callHandle<string>(app, "probe", [tabId, "document.querySelector('#start_date').value"])).toBe(
+    "",
+  );
+});

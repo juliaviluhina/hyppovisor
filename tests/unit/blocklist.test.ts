@@ -7,6 +7,7 @@ import {
   chooseVerdictFor,
   SAFE_FILL_TYPES,
   BLOCKLIST_RULES,
+  DESCRIPTOR_BODY,
   type TargetDescriptor,
 } from "../../src/main/safety/blocklist.js";
 
@@ -17,6 +18,7 @@ const base: TargetDescriptor = {
   hasFormAncestor: false,
   name: "",
   autocomplete: null,
+  formAction: null,
   isContentEditable: false,
 };
 const d = (o: Partial<TargetDescriptor>): TargetDescriptor => ({ ...base, ...o });
@@ -232,13 +234,21 @@ describe("click / space verdict parity (feature 003 FR-012, SC-003)", () => {
   }
 
   it("in-form is the sole rule that gates click but not space", () => {
+    // feature 011 / 1.4.0: a plain <button type=button> reveal control is no
+    // longer gated by in-form. A form-scoped <a> still is — click blocked,
+    // space not applicable / not blocked.
+    const linkInForm = d({ tagName: "a", name: "add row", hasFormAncestor: true });
+    expect(matchBlocklist(linkInForm, "click").ruleId).toBe("in-form");
+    expect(matchBlocklist(linkInForm, "space").blocked).toBe(false);
+
     const plainButtonInForm = d({
       tagName: "button",
       type: "button",
       name: "add another",
       hasFormAncestor: true,
     });
-    expect(matchBlocklist(plainButtonInForm, "click").ruleId).toBe("in-form");
+    // 1.4.0 carve-out: permitted for click now
+    expect(matchBlocklist(plainButtonInForm, "click").blocked).toBe(false);
     expect(matchBlocklist(plainButtonInForm, "space").blocked).toBe(false);
   });
 });
@@ -281,5 +291,109 @@ describe("chooseVerdictFor — parity with choose_option's refusals (feature 008
       expect(cv.allowed).toBe(!v.blocked);
       if (v.blocked) expect(cv.ruleId).toBe(v.ruleId);
     }
+  });
+});
+
+// ─── feature 011 US4: the in-form non-submit reveal-button carve-out ──────────
+
+describe("in-form carve-out (feature 011, constitution 1.4.0)", () => {
+  it("permits a click on <button type=button> with no formaction inside a form", () => {
+    const v = matchBlocklist(
+      d({ tagName: "button", type: "button", name: "add experience", hasFormAncestor: true }),
+      "click",
+    );
+    expect(v.blocked).toBe(false);
+  });
+
+  it("permits it whether or not the form also has a submit control (interpretation B1)", () => {
+    // the rule sees only the target descriptor — a sibling submit control is not
+    // part of it — so the permit cannot depend on one existing
+    const v = matchBlocklist(
+      d({ tagName: "button", type: "button", name: "add row", hasFormAncestor: true }),
+      "click",
+    );
+    expect(v.blocked).toBe(false);
+  });
+
+  it("still refuses a bare / type=submit button in a form (submit-control)", () => {
+    expect(
+      matchBlocklist(d({ tagName: "button", hasFormAncestor: true }), "click").ruleId,
+    ).toBe("submit-control");
+    expect(
+      matchBlocklist(d({ tagName: "button", type: "submit", hasFormAncestor: true }), "click")
+        .ruleId,
+    ).toBe("submit-control");
+  });
+
+  it("still refuses a type=button with a formaction (in-form)", () => {
+    expect(
+      matchBlocklist(
+        d({
+          tagName: "button",
+          type: "button",
+          formAction: "/act",
+          name: "extra",
+          hasFormAncestor: true,
+        }),
+        "click",
+      ).ruleId,
+    ).toBe("in-form");
+  });
+
+  it("still refuses a type=button whose own label reads as an outward act", () => {
+    // (submit-control also matches a button with outward wording and is ordered
+    // first — either id is a valid refusal; what matters is `blocked`)
+    for (const name of ["save", "save draft", "apply", "submit", "send", "continue"]) {
+      const v = matchBlocklist(
+        d({ tagName: "button", type: "button", name, hasFormAncestor: true }),
+        "click",
+      );
+      expect(v.blocked, name).toBe(true);
+      expect(["submit-control", "external-act-label"]).toContain(v.ruleId);
+    }
+  });
+
+  it("still refuses a non-<button> clickable element in a form (in-form)", () => {
+    expect(
+      matchBlocklist(d({ tagName: "a", hasFormAncestor: true }), "click").ruleId,
+    ).toBe("in-form");
+    expect(
+      matchBlocklist(d({ tagName: "div", role: "button", hasFormAncestor: true }), "click").ruleId,
+    ).toBe("in-form");
+  });
+
+  it("outside a form the carve-out is moot — a plain type=button was already allowed", () => {
+    expect(
+      matchBlocklist(d({ tagName: "button", type: "button", name: "add experience" }), "click")
+        .blocked,
+    ).toBe(false);
+  });
+});
+
+// ─── feature 011 US2: the descriptor `name` drops a value-bearing control's own text ──
+
+describe("DESCRIPTOR_BODY excludes a value-bearing control's own text (feature 011, US2)", () => {
+  it("builds a value-bearing guard covering textarea / contenteditable / text inputs", () => {
+    expect(DESCRIPTOR_BODY).toContain("__valueBearing");
+    expect(DESCRIPTOR_BODY).toContain('__tag === "textarea"');
+    expect(DESCRIPTOR_BODY).toContain("el.isContentEditable === true");
+    expect(DESCRIPTOR_BODY).toContain("__textTypes.indexOf(__type) !== -1");
+  });
+
+  it("omits el.innerText / el.value from `name` for a value-bearing control", () => {
+    // the parts array in the value-bearing branch is label sources only
+    expect(DESCRIPTOR_BODY).toContain(
+      "__valueBearing\n      ? [__ariaLabelText, __titleText, __placeholderText, __forLabelText, __wrapLabelText, __ariaLabelledbyText]",
+    );
+  });
+
+  it("keeps the textContent fallback only for non-value-bearing elements", () => {
+    expect(DESCRIPTOR_BODY).toContain(
+      'if (!__valueBearing && !parts.join("").trim()) parts.push(el.textContent || "")',
+    );
+  });
+
+  it("exposes formAction on the descriptor", () => {
+    expect(DESCRIPTOR_BODY).toContain('formAction: el.getAttribute("formaction")');
   });
 });

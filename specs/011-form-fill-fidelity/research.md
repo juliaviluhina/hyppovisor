@@ -179,13 +179,16 @@ no new code.
 
 ## R6 — The leaner default form-read record (US5)
 
-**Decision**: `selectorSynthesised`, `duplicateId`, `optionsTruncated`, and
-`optionsAvailable` become optional on `FormFieldRecord` and are emitted only when
-`includeNonInteractive: true`. `options` is emitted in the default record only for a
-dropdown kind (`select` / `combobox` / `listbox`); for every other kind it is `[]` today
-and is simply omitted. The default record keeps `selector`, `kind`, `type`, `label`,
-`required`, `group`, `inFormAncestor`, `visible`, `currentValue` (credential omitted),
-`operation`, `fillVerdict`, `clickVerdict`, `chooseVerdict`.
+**Decision (as implemented)**: the **options triplet** — `options`, `optionsAvailable`,
+`optionsTruncated` — is dropped from a non-dropdown record in the default read and restored
+by `includeNonInteractive: true`. A dropdown kind (`select` / `combobox` / `listbox`) keeps
+all three. `selectorSynthesised` and `duplicateId` **stay** in the default record —
+originally slated to move too, they were kept: small, they flag a fragile suggested
+selector (workflow-critical, not a rarely-read diagnostic), and existing tests read them in
+the default response. The default record keeps `selector`, `selectorSynthesised`,
+`duplicateId`, `kind`, `type`, `label`, `required`, `group`, `inFormAncestor`, `visible`,
+`currentValue` (credential omitted), `operation`, `fillVerdict`, `clickVerdict`,
+`chooseVerdict`.
 
 **Rationale**: On the captured ~60-control form the unscoped default response still spilled
 the MCP token budget (issue 005 P5) even after feature 008's 64 KB trim, forcing the client

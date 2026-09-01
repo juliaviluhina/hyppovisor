@@ -56,7 +56,19 @@ export interface InteractResult {
   outcome: "permitted";
   /** Present only for a permitted `choose_option`. */
   chosenOption?: ChosenOption;
+  /**
+   * Present only for a permitted single `fill` (feature 011): the field's value
+   * read back after the write, post-formatting. Omitted for a credential target
+   * (a fill on one is refused before this point).
+   */
+  currentValue?: string;
   queueDepth: number;
+}
+
+/** Internal result of the in-page fill+read-back for a single `fill` (feature 011). */
+export interface FillResult {
+  /** The field's value as read back after the write, post-formatting. */
+  currentValue: string;
 }
 
 // ─── feature 004: batch fill ─────────────────────────────────────────────────
@@ -145,12 +157,25 @@ export interface FormFieldRecord {
    * **Key omitted entirely** for a credential field (never `null`, never a placeholder).
    */
   currentValue?: string | boolean | string[] | null;
-  /** `<select>` options, or an in-DOM combobox menu's options; `[]` otherwise. */
-  options: FieldOption[];
-  /** `true` for `<select>` and a combobox whose option elements are in the DOM. */
-  optionsAvailable: boolean;
-  /** `true` when `options` was cut to `formFieldOptionCap`. */
-  optionsTruncated: boolean;
+  /**
+   * `<select>` options, or an in-DOM combobox menu's options; `[]` otherwise.
+   * feature 011: in the default record present only for a dropdown kind
+   * (`select` / `combobox` / `listbox`); `includeNonInteractive` restores it for
+   * every record.
+   */
+  options?: FieldOption[];
+  /**
+   * `true` for `<select>` and a combobox whose option elements are in the DOM.
+   * feature 011: default record carries it only for a dropdown kind;
+   * `includeNonInteractive` restores it everywhere.
+   */
+  optionsAvailable?: boolean;
+  /**
+   * `true` when `options` was cut to `formFieldOptionCap`.
+   * feature 011: default record carries it only for a dropdown kind;
+   * `includeNonInteractive` restores it everywhere.
+   */
+  optionsTruncated?: boolean;
   /** `fillVerdictFor(descriptor)` — matches `interact`'s `fill` result exactly (SC-004). */
   fillVerdict: FieldVerdict;
   /** `clickVerdictFor(descriptor)` — matches `interact`'s `click` result exactly. */

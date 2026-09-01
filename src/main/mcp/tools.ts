@@ -149,12 +149,18 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       "contenteditable) — including one inside a <form> and a combobox's filter input — but " +
       "never a credential, consent, or file field (attaching a file is a human step). `fill` " +
       "types the literal text and stops: choosing among address / place autocomplete " +
-      "suggestions a site pops up is a human step. `fill` also takes a batch form: instead of `selector` + " +
+      "suggestions a site pops up is a human step. `fill` types the value character by " +
+      "character with real key events so an input mask / formatter receives it, then reads " +
+      "it back: a permitted single `fill` returns `currentValue` (the field's value " +
+      "post-formatting), and a well-formed value the page still would not accept is " +
+      "WRITE_NOT_APPLIED (not a refusal) carrying `currentValue` — the field was not filled. " +
+      "`fill` also takes a batch form: instead of `selector` + " +
       "`value`, pass `fields` — an ordered list of { selector, value } pairs (max 50) applied " +
       "in one call. Every target is checked first; if any is forbidden or unresolved the " +
       "whole batch is refused (BATCH_REJECTED) with nothing written and every offender named. " +
       "After that check passes, writing is best-effort: a field whose element vanished " +
-      "mid-write is reported `error` and the rest still fill. `space` activates the focused " +
+      "mid-write, or whose value the page did not accept, is reported `error` and the rest " +
+      "still fill. `space` activates the focused " +
       "element (checkbox, listbox option, plain button) under the same rules a click faces. " +
       "`choose_option` selects an option in a dropdown: valid targets are a single-select " +
       "<select>, an element with role=combobox/listbox, or an element owning a role=listbox " +
@@ -229,11 +235,18 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           result && typeof result === "object" && "chosenOption" in result
             ? result.chosenOption
             : undefined;
+        // feature 011: a permitted single `fill` returns the value read back
+        // after the write, so a caller can confirm it landed without a re-read.
+        const currentValue =
+          result && typeof result === "object" && "currentValue" in result
+            ? (result as { currentValue: string }).currentValue
+            : undefined;
         return ok({
           tabId,
           operation,
           outcome: "permitted",
           ...(chosenOption ? { chosenOption } : {}),
+          ...(currentValue !== undefined ? { currentValue } : {}),
           queueDepth,
         });
       } catch (e) {

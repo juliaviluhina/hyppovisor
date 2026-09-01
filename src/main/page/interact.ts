@@ -31,6 +31,7 @@ import type {
   BatchFillResult,
   ChosenOption,
   ListedOption,
+  FillResult,
 } from "../../shared/types.js";
 
 async function descriptorFor(wc: WebContents, selector: string): Promise<TargetDescriptor> {
@@ -74,8 +75,26 @@ const NATIVE_VALUE_SETTER = `
     else node.value = next;
   };`;
 
-/** In-page: clear the target then set `value`, driving the events one field edit makes. */
-function fillScript(selector: string, value: string): string {
+/**
+ * Whether a `fill` landed: the value read back equals the intended value once
+ * formatter punctuation (`/ - . space ( ) :`) is stripped from both (feature 011,
+ * R2). A mask that turns "091992" into "09/1992" landed; an empty / unchanged /
+ * shorter-prefix read-back did not. Pure — unit-tested in interact.test.ts.
+ */
+export function writeLanded(intended: string, readBack: string): boolean {
+  const strip = (s: string): string => s.replace(/[/\-.\s():]/g, "");
+  return strip(readBack) === strip(intended);
+}
+
+/**
+ * In-page: clear the target, then enter `value` one character at a time with real
+ * key events (`keydown` → `beforeinput` → native-setter step → `input` → `keyup`),
+ * so a client-side input mask / formatter that builds its value from keystrokes
+ * receives it (feature 011, US1 / R1). Ends with `change` + `blur` as one field
+ * edit does, then returns `{ currentValue }` read back from the field —
+ * {@link writeLanded} decides in Node whether that counts as landed.
+ */
+export function fillScript(selector: string, value: string): string {
   return `(() => {${NATIVE_VALUE_SETTER}
     const el = document.querySelector(${JSON.stringify(selector)});
     if (!el) throw new Error("target element is gone");
@@ -83,13 +102,21 @@ function fillScript(selector: string, value: string): string {
     el.focus();
     if (el.isContentEditable) {
       el.textContent = "";
-      el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
       el.textContent = v;
-      el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste" }));
     } else {
       __setValue(el, "");
-      __setValue(el, v);
-      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+      for (const ch of Array.from(v)) {
+        el.dispatchEvent(new KeyboardEvent("keydown", { key: ch, bubbles: true }));
+        const bi = el.dispatchEvent(
+          new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: ch }),
+        );
+        if (bi) __setValue(el, el.value + ch);
+        el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: ch }));
+        el.dispatchEvent(new KeyboardEvent("keyup", { key: ch, bubbles: true }));
+      }
       el.dispatchEvent(new Event("change", { bubbles: true }));
     }
     // A human leaves a normal field before moving on; blur is what triggers the
@@ -102,7 +129,26 @@ function fillScript(selector: string, value: string): string {
       if (typeof el.blur === "function") el.blur();
       el.dispatchEvent(new Event("blur", { bubbles: true }));
     }
+    // Read-back (feature 011, US1). Credential fields never reach here — the
+    // blocklist refuses a fill on them before this script runs — so no value
+    // handled here is a secret.
+    const raw = el.isContentEditable ? (el.innerText || "") : (el.value || "");
+    return { currentValue: String(raw) };
   })()`;
+}
+
+/** Shape returned by {@link fillScript}. */
+interface FillScriptResult {
+  currentValue: string;
+}
+
+/** Message for a write the page did not accept (feature 011, WRITE_NOT_APPLIED). */
+function writeNotAppliedMessage(selector: string, typed: string, readBack: string): string {
+  return (
+    `fill on ${selector}: typed ${JSON.stringify(typed)} but the field still reads ` +
+    `${JSON.stringify(readBack)} — the page did not accept the value (an input mask may ` +
+    `require a different format). This field was not filled.`
+  );
 }
 
 // In-page: activate document.activeElement as Space would. A text field gets a
@@ -251,10 +297,11 @@ export async function interact(
   selector: string | undefined,
   value: string | undefined,
   label?: string,
-): Promise<{ chosenOption?: ChosenOption } | ListOptionsPayload | void> {
+): Promise<{ chosenOption?: ChosenOption } | ListOptionsPayload | FillResult | void> {
   const url = wc.getURL();
   const target = selector ?? null;
   let logged = false;
+  let filledValue: string | undefined;
 
   // choose_option manages its own single audit entry on every path (like the
   // branches below) and is dispatched before this try/catch so a thrown refusal
@@ -429,10 +476,23 @@ export async function interact(
           ruleDescription: off.ruleDescription,
         });
       }
-      await wc.executeJavaScript(fillScript(selector, value ?? ""), true);
+      const fillResult = (await wc.executeJavaScript(
+        fillScript(selector, value ?? ""),
+        true,
+      )) as FillScriptResult;
+      if (!writeLanded(value ?? "", fillResult.currentValue)) {
+        const message = writeNotAppliedMessage(selector, value ?? "", fillResult.currentValue);
+        log.record({ tabId, url, operation, target, outcome: "error", ruleId: null, error: message });
+        logged = true;
+        throw new HyppoError("WRITE_NOT_APPLIED", message, {
+          currentValue: fillResult.currentValue,
+        });
+      }
+      filledValue = fillResult.currentValue;
     }
 
     log.record({ tabId, url, operation, target, outcome: "permitted", ruleId: null, error: null });
+    if (operation === "fill") return { currentValue: filledValue ?? "" };
   } catch (e) {
     if (logged) throw e; // refusal / no-target paths already wrote their log entry
     const message = e instanceof Error ? e.message : String(e);
@@ -553,7 +613,27 @@ export async function fillBatch(
   let errored = 0;
   for (const { selector, value } of fields) {
     try {
-      await wc.executeJavaScript(fillScript(selector, value), true);
+      const r = (await wc.executeJavaScript(
+        fillScript(selector, value),
+        true,
+      )) as FillScriptResult;
+      if (!writeLanded(value, r.currentValue)) {
+        // A well-formed value the page did not accept (an input mask, feature
+        // 011). Reported as this entry's `error` outcome; the rest still fill.
+        const message = writeNotAppliedMessage(selector, value, r.currentValue);
+        results.push({ selector, outcome: "error", message });
+        errored++;
+        log.record({
+          tabId,
+          url,
+          operation: "fill",
+          target: selector,
+          outcome: "error",
+          ruleId: null,
+          error: message,
+        });
+        continue;
+      }
       results.push({ selector, outcome: "permitted" });
       written++;
       log.record({

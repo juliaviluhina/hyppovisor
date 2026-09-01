@@ -11,7 +11,8 @@ export type ErrorCode =
   | "BATCH_REJECTED"
   | "CHOOSE_OPTION_FAILED"
   | "INVALID_SELECTOR"
-  | "SCREENSHOT_FAILED";
+  | "SCREENSHOT_FAILED"
+  | "WRITE_NOT_APPLIED";
 
 export interface ErrorDetails {
   /** Blocklist rule id, set only for REFUSED_EXTERNAL_ACT. */
@@ -35,6 +36,12 @@ export interface ErrorDetails {
   reason?: string;
   /** Colliding option labels for CHOOSE_OPTION_FAILED / "ambiguous-option" (feature 006). */
   candidates?: string[];
+  /**
+   * The value read back from the field after a failed write (feature 011,
+   * WRITE_NOT_APPLIED only). Empty string when the field is empty; omitted for a
+   * credential-adjacent target, where the value is never surfaced.
+   */
+  currentValue?: string;
 }
 
 export class HyppoError extends Error {

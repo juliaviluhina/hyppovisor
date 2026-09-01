@@ -9,7 +9,44 @@
     <ul id="results">
       <li>result one</li>
     </ul>
+
+    <!-- feature 011 US4: a <form> with an "Add Experience" reveal button
+         (<button type="button">, no formaction, innocuous label) that shows a
+         hidden sub-form; plus a real submit button and a "Save draft" button
+         that must both stay refused. -->
+    <form id="withSubmit" action="/submitted" method="post" onsubmit="event.preventDefault(); window.__submitted = true;">
+      <button type="button" id="addExperience" onclick="document.getElementById('expSection').hidden = false">
+        Add Experience
+      </button>
+
+      <fieldset id="expSection" hidden>
+        <legend>Experience</legend>
+        <label for="exp_title">Title</label>
+        <input type="text" id="exp_title" name="exp_title" />
+        <label for="exp_company">Company</label>
+        <input type="text" id="exp_company" name="exp_company" />
+      </fieldset>
+
+      <button type="submit" id="submitBtn">Submit application</button>
+      <button type="button" id="saveDraftBtn">Save draft</button>
+      <button type="button" id="formActionBtn" formaction="/act">Extra</button>
+    </form>
+
+    <!-- feature 011 US4 (interpretation B1): the same reveal button in a <form>
+         with NO submit control at all — still permitted. -->
+    <form id="noSubmit">
+      <button type="button" id="addEducation" onclick="document.getElementById('eduSection').hidden = false">
+        Add Education
+      </button>
+      <fieldset id="eduSection" hidden>
+        <legend>Education</legend>
+        <label for="edu_school">School</label>
+        <input type="text" id="edu_school" name="edu_school" />
+      </fieldset>
+    </form>
+
     <script>
+      window.__submitted = false;
       function reveal() {
         const ul = document.getElementById("results");
         ul.insertAdjacentHTML("beforeend", "<li>result two REVEALED_SENTINEL</li>");
