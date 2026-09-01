@@ -34,6 +34,11 @@ an external action.
 - One action is in flight at a time across all tabs; treat calls as serial.
 - Read payloads are verbatim — don't ask HyppoVisor to summarise; summarise
   yourself after.
+- **`screenshot` needs a visible window.** An instance launched with `--background`
+  has no rendered surface, so `screenshot` returns `SCREENSHOT_FAILED` there —
+  every other tool works normally. If you need a picture, ask the user to summon
+  the window (re-launch the same `--instance <name>`) or run without `--background`,
+  then retry. Otherwise rely on `read_page` / `read_form_fields`.
 
 ## Before using it — check the connection
 
@@ -57,6 +62,13 @@ npx electron . --instance <slug> --port <port>
 # packaged app, macOS  (-n forces a new process)
 open -na HyppoVisor --args --instance <slug> --port <port>
 ```
+
+Add **`--background`** when running several instances at once (or to keep the
+window off the user's screen): the instance starts hidden and never takes focus.
+Every MCP tool works the same **except `screenshot`**, which needs a rendered
+surface and returns `SCREENSHOT_FAILED` while hidden. To sign in — or to take a
+screenshot — the user re-runs the same `--instance <slug>` line to summon the
+window, then closes it; the instance drops back to the background and keeps serving.
 
 The window title reads `HyppoVisor — <slug>`. If the port is already in use, the
 app's **Connection & MCP** panel shows a "port in use" error — the user frees the
@@ -97,7 +109,8 @@ instance — check the port.
    with per-field `fill` / `click` verdicts and selectors.
 4. `interact` to fill fields, tick plain checkboxes, choose options, or click to
    reveal sections. `wait_for_selector` when content loads async.
-5. `screenshot` to verify what actually rendered.
+5. `screenshot` to verify what actually rendered (visible-window instances only —
+   see the note in Non-negotiable rules for `--background`).
 6. Hand back to the user for anything that submits, sends, or signs in.
 
 ## Parallel sessions
@@ -106,4 +119,5 @@ Run one HyppoVisor per project or persona — each its own `--instance` / `--por
 / profile (separate logins, settings, recent URLs, interaction log). They don't
 interfere: a form-fill in one instance never blocks a read in another. Register
 each with its own `hyppovisor-<slug>` name so the client entries don't clobber
-each other.
+each other. Launch each with `--background` so the parallel instances add no
+windows and no focus changes to the user's screen.

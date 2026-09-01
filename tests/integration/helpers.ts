@@ -47,6 +47,7 @@ export async function startFixtureServer(): Promise<{ server: Server; base: stri
 
 export async function launchApp(
   extraEnv: Record<string, string> = {},
+  opts: { background?: boolean } = {},
 ): Promise<ElectronApplication> {
   // Give every launch its own throwaway HYPPO_USER_DATA_DIR (feature 012, R11):
   // the single-instance lock is keyed on userData, so sharing the real dev
@@ -57,11 +58,18 @@ export async function launchApp(
   const userDataDir = ownDir
     ? await mkdtemp(join(tmpdir(), "hyppo-e2e-"))
     : extraEnv.HYPPO_USER_DATA_DIR;
+  // --background by default (feature 013): local `npm run test:e2e` shows no
+  // windows (SC-005). Playwright hooks window *creation*, not visibility, so the
+  // test handle and firstWindow() are unaffected. A spec that needs a real
+  // rendered surface — `screenshot.spec.ts` — passes `{ background: false }`:
+  // capturePage() / CDP Page.captureScreenshot on a never-shown window has no
+  // surface and hangs the renderer on headless CI.
+  const background = opts.background !== false;
   const app = await electron.launch({
     // A fixed --instance so the window title, MCP server name, and panel label
     // are deterministic (feature 012): "HYPPO_USER_DATA_DIR alone" would derive
     // the label from the random temp-dir basename.
-    args: [mainEntry, "--instance", E2E_INSTANCE],
+    args: [mainEntry, "--instance", E2E_INSTANCE, ...(background ? ["--background"] : [])],
     env: { ...process.env, HYPPO_E2E: "1", HYPPO_USER_DATA_DIR: userDataDir, ...extraEnv },
   });
   if (ownDir) {
@@ -109,10 +117,20 @@ export async function launchAppFull(
 }> {
   const userDataDir = reuseDir ?? (await mkdtemp(join(tmpdir(), "hyppo-e2e-")));
   const hasInstance = extraArgs.some((a) => a === "--instance" || a.startsWith("--instance="));
+  // --background by default (feature 013) so a local run shows no windows
+  // (SC-005). A spec that needs a visible window passes "--no-background" in
+  // extraArgs — it is stripped here and suppresses the default.
+  const optOut = extraArgs.includes("--no-background");
+  const args = extraArgs.filter((a) => a !== "--no-background");
   const app = await electron.launch({
     // Deterministic identity by default (feature 012); a spec that passes its own
     // --instance in extraArgs opts out.
-    args: [mainEntry, ...(hasInstance ? [] : ["--instance", E2E_INSTANCE]), ...extraArgs],
+    args: [
+      mainEntry,
+      ...(hasInstance ? [] : ["--instance", E2E_INSTANCE]),
+      ...(optOut ? [] : ["--background"]),
+      ...args,
+    ],
     env: { ...process.env, HYPPO_USER_DATA_DIR: userDataDir, ...extraEnv },
   });
   const page = await app.firstWindow();

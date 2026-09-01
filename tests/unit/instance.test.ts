@@ -86,6 +86,7 @@ describe("resolveInstance — precedence", () => {
       userDataDir: null,
       cliPort: undefined,
       source: "default",
+      background: false,
     });
   });
 
@@ -131,6 +132,79 @@ describe("resolveInstance — precedence", () => {
 
   it("no --port → cliPort undefined (env/persisted/default resolved later)", () => {
     expect(ok(resolveInstance(["e", ".", "--instance", "work"], {}, BASE)).cliPort).toBeUndefined();
+  });
+});
+
+describe("resolveInstance — --background (feature 013)", () => {
+  it("absent → background: false", () => {
+    expect(ok(resolveInstance(["electron", "."], {}, BASE)).background).toBe(false);
+  });
+
+  it("bare --background anywhere in argv → background: true", () => {
+    expect(ok(resolveInstance(["electron", ".", "--background"], {}, BASE)).background).toBe(true);
+    expect(
+      ok(resolveInstance(["electron", ".", "--background", "--instance", "work"], {}, BASE))
+        .background,
+    ).toBe(true);
+  });
+
+  it("--background=… is not the flag (no value form) → background: false", () => {
+    expect(ok(resolveInstance(["electron", ".", "--background=true"], {}, BASE)).background).toBe(
+      false,
+    );
+    expect(ok(resolveInstance(["electron", ".", "--background=false"], {}, BASE)).background).toBe(
+      false,
+    );
+  });
+
+  it("composes with --instance / --port without disturbing the other fields", () => {
+    const r = ok(
+      resolveInstance(
+        ["electron", ".", "--instance", "work", "--port", "7358", "--background"],
+        {},
+        BASE,
+      ),
+    );
+    expect(r).toEqual({
+      name: "work",
+      label: "work",
+      userDataDir: instancesDir("work"),
+      cliPort: 7358,
+      source: "instance",
+      background: true,
+    });
+  });
+
+  it("composes with HYPPO_USER_DATA_DIR (hidden env-dir instance), flag order irrelevant", () => {
+    const r = ok(
+      resolveInstance(
+        ["electron", ".", "--background", "--instance=work"],
+        { HYPPO_USER_DATA_DIR: "/tmp/ci-run" },
+        BASE,
+      ),
+    );
+    expect(r.background).toBe(true);
+    expect(r.source).toBe("env-dir");
+    expect(r.userDataDir).toBe("/tmp/ci-run");
+    expect(r.label).toBe("work");
+  });
+
+  it("never turns a launch into an error", () => {
+    expect(isResolveError(resolveInstance(["e", ".", "--background"], {}, BASE))).toBe(false);
+  });
+});
+
+describe("resolveInstance — source drives the reveal decision (feature 013)", () => {
+  it("no --instance, no env dir → source 'default' (the only focus-eligible launch)", () => {
+    expect(ok(resolveInstance(["e", "."], {}, BASE)).source).toBe("default");
+  });
+  it("--instance <name> → source 'instance' (shown, never focused)", () => {
+    expect(ok(resolveInstance(["e", ".", "--instance", "work"], {}, BASE)).source).toBe("instance");
+  });
+  it("HYPPO_USER_DATA_DIR → source 'env-dir' (shown, never focused)", () => {
+    expect(
+      ok(resolveInstance(["e", "."], { HYPPO_USER_DATA_DIR: "/tmp/ci-run" }, BASE)).source,
+    ).toBe("env-dir");
   });
 });
 

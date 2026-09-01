@@ -10,7 +10,6 @@ import {
   resolveInstance,
   isResolveError,
   serverNameFor,
-  collisionMessage,
   classifyListenError,
 } from "./instance.js";
 import { ActionQueue } from "./queue/action-queue.js";
@@ -98,14 +97,22 @@ async function main(): Promise<void> {
     app.setPath("userData", resolved.userDataDir);
   }
 
-  // One live process per profile directory (FR-007). The lock is keyed on
-  // userData, so distinct instances/<name>/ dirs never collide (FR-009) and a
-  // dead holder's lock is reclaimed automatically (FR-010). A second launch of
-  // the same profile is refused here, before any window.
+  // One live process per profile directory (feature 012). The lock is keyed on
+  // userData, so distinct instances/<name>/ dirs never collide and a dead
+  // holder's lock is reclaimed automatically. A second launch of the same
+  // profile is refused here, before any window.
+  //
+  // Re-launching a running profile is the **summon gesture** (feature 013
+  // FR-007): the primary process's "second-instance" handler raises and un-hides
+  // its window. This second process has nothing to add — exit quietly with a
+  // stderr breadcrumb, no modal. (Feature 012 popped a collision dialog here; a
+  // summon must be a no-op beyond bringing the window forward, and a --background
+  // instance is summoned by exactly this relaunch.)
   if (!app.requestSingleInstanceLock()) {
-    const { title, body } = collisionMessage(resolved);
-    console.error(`[hyppovisor] ${title} — ${body.replace(/\n+/g, " ")}`);
-    return failStartup(title, body, 0);
+    const which = resolved.label ? `"${resolved.label}"` : "the default profile";
+    console.error(`[hyppovisor] ${which} is already running — raised its window (summon).`);
+    app.exit(0);
+    return;
   }
 
   const instanceLabel = resolved.label;
@@ -118,6 +125,10 @@ async function main(): Promise<void> {
     width: 1280,
     height: 900,
     title: windowTitle,
+    // Construct hidden (feature 013). The reveal decision runs once, after
+    // loadFile — see below — so the window never appears blank-then-loading, and
+    // a --background instance is never shown at all.
+    show: false,
     // Repo-root build/icon.png (from dist/main). Used for the dev / Linux / Windows
     // window + taskbar; the macOS packaged .icns is wired once packaging config exists.
     icon: join(here, "../../build/icon.png"),
@@ -142,13 +153,41 @@ async function main(): Promise<void> {
     win.setTitle(windowTitle);
   });
 
-  // An accidental relaunch of this same profile raises the running window (FR-008).
+  // Relaunching this same profile raises the running window (feature 012 FR-008)
+  // and, for a --background instance, is the summon gesture (feature 013 FR-007):
+  // win.show() also un-hides a hidden window; restore the Dock icon / taskbar
+  // button that the background launch (or a close-to-background) suppressed.
   app.on("second-instance", () => {
     if (win.isDestroyed()) return;
     if (win.isMinimized()) win.restore();
     win.show();
     win.focus();
+    win.setSkipTaskbar(false);
+    if (process.platform === "darwin") app.dock?.show();
   });
+
+  // For a --background instance, closing a summoned window returns it to the
+  // background (feature 013 FR-009) instead of quitting: the process and its MCP
+  // server keep running. A real quit (Cmd/Ctrl-Q, SIGINT/SIGTERM, app.quit())
+  // sets `quitting` first via before-quit, so the same handler lets the window go.
+  let quitting = false;
+  app.on("before-quit", () => {
+    quitting = true;
+  });
+  win.on("close", (e) => {
+    if (quitting || !resolved.background) return;
+    e.preventDefault();
+    win.hide();
+    win.setSkipTaskbar(true);
+    if (process.platform === "darwin") app.dock?.hide();
+  });
+
+  // A --background instance often has no window and no menu in reach; make Ctrl-C
+  // in the launching terminal a clean quit (feature 013 FR-011). app.quit() runs
+  // before-quit → quitting = true → the close handler above lets the window close.
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    process.on(sig, () => app.quit());
+  }
 
 
   const queue = new ActionQueue();
@@ -168,7 +207,7 @@ async function main(): Promise<void> {
       saveRecentUrls(app.getPath("userData"), recentUrls);
       send("recent-urls:changed", recentUrls);
     },
-  }, log);
+  }, log, resolved.background);
 
   // MCP connection state (feature 007): persisted settings + the environment,
   // folded into one effective view the panel and status line render.
@@ -363,6 +402,24 @@ async function main(): Promise<void> {
   // Load the renderer only once every IPC handler and the MCP server are ready,
   // so the panel's first getConnection() / status push can't race them.
   await win.loadFile(join(here, "../renderer/index.html"));
+
+  // Reveal decision (feature 013). The window was constructed show: false; pick
+  // exactly one branch now that it has rendered:
+  //   --background              → stay hidden; no Dock icon / ⌘-Tab / taskbar button.
+  //                               Keep timers / rAF unthrottled so a hidden tab
+  //                               still settles before a read (research.md R7).
+  //   source === "instance"     → visible but never focused (FR-003, revises 012)
+  //   default / env-dir (CI)    → show + focus (unchanged; SC-007)
+  if (resolved.background) {
+    win.setSkipTaskbar(true);
+    if (process.platform === "darwin") app.dock?.hide();
+    win.webContents.setBackgroundThrottling(false);
+  } else if (resolved.source === "instance") {
+    win.showInactive();
+  } else {
+    win.show();
+  }
+
   send("tabs:changed", tabs.list());
   pushConnection();
 

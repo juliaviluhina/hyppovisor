@@ -11,14 +11,17 @@ token** (generated, masked, regenerable). Both persist — see
 
 | Flag | Effect |
 |---|---|
-| `--instance <name>` | Run a **named instance**: its own profile directory (`<user-data>/instances/<name>/`) and a display label. `<name>` is 1–32 chars, lowercase letters / digits / `-` / `_`, first char alphanumeric (e.g. `work`, `client-2`). An out-of-form name aborts startup. |
+| `--instance <name>` | Run a **named instance**: its own profile directory (`<user-data>/instances/<name>/`) and a display label. `<name>` is 1–32 chars, lowercase letters / digits / `-` / `_`, first char alphanumeric (e.g. `work`, `client-2`). An out-of-form name aborts startup. A named instance's window **opens without taking focus** — it never interrupts what you are typing. |
 | `--port <n>` | MCP HTTP port for this process (integer 1–65535). Omit it and the port resolves per the precedence below. Out-of-range aborts startup. |
+| `--background` | Start with **no visible window** and without taking focus. The MCP server, tabs, navigation, page reads, form reads, and drafting all work exactly as a foreground instance's — an agent drives it the same way. The one exception is `screenshot`: a never-shown window has no rendered surface, so `screenshot` returns `SCREENSHOT_FAILED` until the instance is summoned. On macOS the instance shows **no Dock icon and no ⌘-Tab entry** while hidden; on Windows/Linux no taskbar button. Bare flag, no value. Never aborts startup. Composes with `--instance` / `--port` in any order. On a platform with no hidden-window state it degrades to a visible-but-inactive window (never focused). |
 
 ```bash
 npx electron . --instance work --port 7358
+npx electron . --instance work --port 7358 --background   # quiet: no window, no focus
 ```
 
-See [Run more than one HyppoVisor](#run-more-than-one-hyppovisor).
+See [Run more than one HyppoVisor](#run-more-than-one-hyppovisor) and
+[Background instances](#background-instances).
 
 ## From the environment
 
@@ -83,10 +86,15 @@ npx electron . --instance work --port 7358
 open -na HyppoVisor --args --instance work --port 7358
 ```
 
-- **Never point two instances at the same profile directory.** A second launch
-  against a profile another instance already holds shows a dialog and exits
-  without opening a window; an accidental plain re-launch just raises the window
-  already running.
+For a multi-instance setup, add **`--background`** to each launch: no windows
+appear, nothing steals focus, and every instance still serves its agent. Summon
+one only when you need to sign in. See [Background instances](#background-instances).
+
+- **Re-launching a profile that is already running is the summon gesture.** The
+  second process opens no window and exits quietly (a stderr line, no dialog);
+  the running instance raises and un-hides its window. This is how you bring a
+  `--background` instance to the front — see [Background instances](#background-instances).
+  Two instances with genuinely different profiles never collide.
 - Each instance's window title, connection-panel header, and MCP handshake carry
   its label (`HyppoVisor — work`, server name `hyppovisor-work`), so two windows
   and two client registrations never get confused.
@@ -99,3 +107,52 @@ open -na HyppoVisor --args --instance work --port 7358
 
 For stdio, add `--instance` to the spawn command — see
 [connect an agent](./connect-an-agent.md#stdio-alternative).
+
+## Background instances
+
+`--background` starts an instance with **no visible window** and without taking
+focus. Its MCP server, tabs, navigation, page reads, form reads, and drafting
+behave exactly as a foreground instance's — an agent drives it the same way.
+
+**`screenshot` is the exception.** A window that has never been shown has no
+rendered surface, so the `screenshot` tool returns `SCREENSHOT_FAILED` for a
+`--background` instance. Every other tool is unaffected. Summon the window (below)
+if you need a picture, or run that instance without `--background`.
+
+```bash
+# three quiet instances — no windows, no focus changes
+npx electron . --instance work    --port 7358 --background
+npx electron . --instance client  --port 7359 --background
+npx electron . --instance triage  --port 7360 --background
+```
+
+- **macOS:** while hidden, the instance shows **no Dock icon and no ⌘-Tab
+  entry**. Both reappear while its window is on screen and go away again when it
+  returns to the background — it is not a permanent Dock resident.
+- **Windows / Linux:** no taskbar button while hidden.
+- A platform with no hidden-window concept degrades to a **visible-but-inactive**
+  window — never focused, never raised — rather than failing to launch.
+
+### Summon a background instance
+
+Re-launch it with the same `--instance` identity. The running process brings its
+window to the front and focuses it; a second window is never opened.
+
+```bash
+npx electron . --instance work                 # dev
+open -na HyppoVisor --args --instance work      # packaged, macOS
+```
+
+Sign in, review a drafted form, switch tabs — an ordinary window. **Closing the
+window returns the instance to the background** (its MCP server keeps running); it
+does **not** quit. Summoning or dismissing one instance never affects another.
+
+### Quit a background instance
+
+- **Ctrl-C** in the terminal that launched it (also `SIGTERM`).
+- **Cmd-Q** (macOS) / **Ctrl-Q** (Windows/Linux) from the standard application
+  menu while the instance is summoned.
+
+Quitting one instance leaves every other running instance untouched. `--background`
+is a launch flag only — it persists nothing; a standing setup is your own shell
+alias or per-project launch line.

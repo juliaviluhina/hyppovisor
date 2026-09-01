@@ -48,6 +48,10 @@ export class TabManager {
     private readonly win: BrowserWindow,
     private readonly events: TabEvents,
     private readonly log: InteractionLog,
+    /** feature 013: a --background instance's tabs are always occluded — keep
+     *  their timers / rAF at foreground cadence so a page settles before a read
+     *  (research.md R7). Applied per tab in wireView via setBackgroundThrottling. */
+    private readonly unthrottleTabs = false,
   ) {
     this.win.on("resize", () => this.layout());
     this.win.webContents.session.on("will-download", (event, item) => {
@@ -88,6 +92,9 @@ export class TabManager {
     const view = new WebContentsView({
       webPreferences: { sandbox: true, contextIsolation: true },
     });
+    // feature 013 (research.md R7): keep a --background instance's occluded tabs
+    // running at foreground cadence so rAF-driven layout settles before a read.
+    if (this.unthrottleTabs) view.webContents.setBackgroundThrottling(false);
     const tab: Tab = { id, view, loadState: "loading", error: null, openedBy };
     this.tabs.set(id, tab);
     this.wireView(tab);

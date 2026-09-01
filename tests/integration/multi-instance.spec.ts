@@ -100,7 +100,9 @@ test("US4: no --instance and an unusable env-dir basename → bare title and ser
   let app: ElectronApplication | undefined;
   try {
     app = await electron.launch({
-      args: [mainEntry],
+      // --background (feature 013): this spec only reads label / server name /
+      // title / handshake — no window needs to be visible (SC-005).
+      args: [mainEntry, "--background"],
       env: { ...process.env, HYPPO_USER_DATA_DIR: dir },
     });
     const page = await app.firstWindow();
@@ -118,18 +120,19 @@ test("US4: no --instance and an unusable env-dir basename → bare title and ser
   }
 });
 
-// ── US2 — profile-collision guard ──────────────────────────────────────────
-test("US2: a second launch into the same profile opens no window; the first stays live", async () => {
+// ── US2 — a second launch into the same profile is the summon gesture ───────
+test("US2: a second launch into the same profile opens no window and exits quietly; the first stays live", async () => {
   const D = await launchAppFull();
   try {
     let openedWindow = false;
     let second: ElectronApplication | undefined;
     try {
       second = await electron.launch({
-        // Same profile as the first instance → the lock guard refuses it.
-        // HYPPO_E2E suppresses the (blocking, native) error dialog; the exit still happens.
+        // Same profile as the first instance → the lock guard refuses a second
+        // window. No HYPPO_E2E: feature 013 removed the blocking collision dialog
+        // here (it is the summon gesture now), so this process just exits 0.
         args: [mainEntry, "--instance", E2E_INSTANCE],
-        env: { ...process.env, HYPPO_E2E: "1", HYPPO_USER_DATA_DIR: D.userDataDir },
+        env: { ...process.env, HYPPO_USER_DATA_DIR: D.userDataDir },
       });
       const win = await second.firstWindow({ timeout: 4000 }).catch(() => null);
       openedWindow = win !== null;
@@ -140,7 +143,8 @@ test("US2: a second launch into the same profile opens no window; the first stay
     }
     expect(openedWindow).toBe(false);
 
-    // The original instance is untouched and still serving.
+    // The original instance is untouched and still serving (its window was
+    // raised by the second-instance handler — the summon).
     const c = await getConn(await D.app.firstWindow());
     expect((await mcpPost(c.port as number, init(1))).status).toBe(200);
   } finally {
@@ -157,7 +161,7 @@ test("US3: an in-use port surfaces as port-unavailable; browser still works; pan
   let app: ElectronApplication | undefined;
   try {
     app = await electron.launch({
-      args: [mainEntry, "--port", String(busy)],
+      args: [mainEntry, "--port", String(busy), "--background"],
       env: { ...process.env, HYPPO_USER_DATA_DIR: dir },
     });
     const page = await app.firstWindow();

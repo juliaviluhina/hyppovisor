@@ -35,7 +35,10 @@ test.describe("screenshot", () => {
 
   test.beforeAll(async () => {
     ({ server, base } = await startFixtureServer());
-    app = await launchApp();
+    // A visible window: capturePage() / CDP Page.captureScreenshot need a
+    // rendered surface, which a --background instance never has (feature 013,
+    // research.md R2 — verified: it hangs the renderer on headless CI).
+    app = await launchApp({}, { background: false });
   });
   test.afterAll(async () => {
     await app.close();
