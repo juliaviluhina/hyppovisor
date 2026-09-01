@@ -1,10 +1,18 @@
 // Electron main entry: one window, the tab manager, the app-wide queue, the
 // interaction log, and the MCP server — wired together (FR-023).
 
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
+import {
+  resolveInstance,
+  isResolveError,
+  serverNameFor,
+  collisionMessage,
+  classifyListenError,
+} from "./instance.js";
 import { ActionQueue } from "./queue/action-queue.js";
 import { InteractionLog } from "./safety/interaction-log.js";
 import { TabManager } from "./tabs/tab-manager.js";
@@ -50,19 +58,66 @@ process.on("uncaughtException", (err) => {
   console.error("[hyppovisor] uncaught exception:", err);
 });
 
-async function main(): Promise<void> {
-  // Test isolation: point userData at a throwaway dir so settings.json and the
-  // interaction log never touch dev state (research.md R13).
-  if (process.env.HYPPO_USER_DATA_DIR) {
-    app.setPath("userData", process.env.HYPPO_USER_DATA_DIR);
+/**
+ * Show a fatal startup message and quit (feature 012). `dialog.showErrorBox` is a
+ * blocking native modal that does not reliably paint before `app.whenReady()` on
+ * macOS — waiting for ready first makes it show and lets the process exit once it
+ * is dismissed. Suppressed under the integration harness (it cannot click OK) and
+ * on any platform with no display; the stderr line above is always printed.
+ */
+async function failStartup(title: string, message: string, code: number): Promise<never> {
+  if (process.env.HYPPO_E2E !== "1") {
+    try {
+      await app.whenReady();
+      dialog.showErrorBox(title, message);
+    } catch {
+      /* headless / no display — stderr is enough */
+    }
   }
+  app.exit(code);
+  // app.exit() tears the process down synchronously; this is only for the type.
+  return undefined as never;
+}
+
+async function main(): Promise<void> {
+  // Resolve this process's instance (feature 012): profile directory, display
+  // label, and an optional --port, from argv + the environment. Runs before
+  // whenReady so setPath("userData") and the single-instance lock act on the
+  // result. HYPPO_USER_DATA_DIR still wins for the directory (test isolation /
+  // CI / wrapper scripts) and now also supplies the label from its basename.
+  const resolved = resolveInstance(process.argv, process.env, app.getPath("userData"));
+  if (isResolveError(resolved)) {
+    const title = resolved.error === "invalid-port" ? "Invalid --port" : "Invalid --instance name";
+    console.error(`[hyppovisor] ${title}: ${resolved.reason}`);
+    return failStartup(title, resolved.reason, 1);
+  }
+
+  if (resolved.userDataDir) {
+    // setPath does not reliably create the directory on every platform; do it first.
+    mkdirSync(resolved.userDataDir, { recursive: true });
+    app.setPath("userData", resolved.userDataDir);
+  }
+
+  // One live process per profile directory (FR-007). The lock is keyed on
+  // userData, so distinct instances/<name>/ dirs never collide (FR-009) and a
+  // dead holder's lock is reclaimed automatically (FR-010). A second launch of
+  // the same profile is refused here, before any window.
+  if (!app.requestSingleInstanceLock()) {
+    const { title, body } = collisionMessage(resolved);
+    console.error(`[hyppovisor] ${title} — ${body.replace(/\n+/g, " ")}`);
+    return failStartup(title, body, 0);
+  }
+
+  const instanceLabel = resolved.label;
+  const serverName = serverNameFor(instanceLabel);
+  const windowTitle = instanceLabel ? `HyppoVisor — ${instanceLabel}` : "HyppoVisor";
 
   await app.whenReady();
 
   const win = new BrowserWindow({
     width: 1280,
     height: 900,
-    title: "HyppoVisor",
+    title: windowTitle,
     // Repo-root build/icon.png (from dist/main). Used for the dev / Linux / Windows
     // window + taskbar; the macOS packaged .icns is wired once packaging config exists.
     icon: join(here, "../../build/icon.png"),
@@ -78,6 +133,22 @@ async function main(): Promise<void> {
   const send = (channel: string, ...args: unknown[]) => {
     if (!win.isDestroyed()) win.webContents.send(channel, ...args);
   };
+
+  // Keep our computed window title (feature 012): the renderer ships
+  // <title>HyppoVisor</title>, which Electron would otherwise copy onto the
+  // window on load. A no-op for the default instance (title unchanged).
+  win.webContents.on("page-title-updated", (e) => {
+    e.preventDefault();
+    win.setTitle(windowTitle);
+  });
+
+  // An accidental relaunch of this same profile raises the running window (FR-008).
+  app.on("second-instance", () => {
+    if (win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
 
 
   const queue = new ActionQueue();
@@ -106,17 +177,31 @@ async function main(): Promise<void> {
   let existed = loaded.existed;
   const env = readEnvOverrides();
   let httpHandle: HttpMcpHandle | undefined;
+  // HTTP bind outcome (feature 012): flips to "port-unavailable" / "error" if the
+  // listener throws at startup, and back to "listening" once the panel rebinds.
+  let serverStatus: EffectiveConnection["serverStatus"] = env.stdio ? "stdio" : "listening";
 
   const currentEffective = (): EffectiveConnection => ({
-    ...resolveEffective(curSettings, env, existed),
+    ...resolveEffective(curSettings, env, existed, resolved.cliPort),
     lastRequest: httpHandle?.lastRequest() ?? null,
+    serverStatus,
+    instanceLabel,
+    serverName,
   });
   const computeStdioLaunch = (): StdioLaunch => ({
     command: process.execPath,
-    args: [join(here, "index.js")],
+    // A named instance re-passes --instance so the copied config reselects the
+    // same profile and keeps the hyppovisor-<name> handshake (feature 012).
+    args: resolved.name
+      ? [join(here, "index.js"), "--instance", resolved.name]
+      : [join(here, "index.js")],
     env: { HYPPO_MCP_STDIO: "1" },
   });
   const pushConnection = () => send("connection:changed", currentEffective());
+
+  // Shared tool dependencies for both the startup MCP listener and a later
+  // panel-driven (re)start of a server that never bound (feature 012, FR-015).
+  const mcpDeps = { queue, tabs, log, onToolInvoked: () => throttledPush() };
 
   // Person-initiated actions from the renderer chrome.
   ipcMain.handle("chrome:open-url", (_e, url: string) =>
@@ -154,21 +239,49 @@ async function main(): Promise<void> {
       return { ok: false, error: "port is set by the HYPPO_MCP_PORT environment variable" };
     if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)
       return { ok: false, error: "port must be an integer between 1 and 65535" };
-    if (!httpHandle) return { ok: false, error: "the HTTP MCP server is not running" };
-    if (port === httpHandle.port) return { ok: true, port };
-    try {
-      await httpHandle.rebind(port);
+
+    const persistPort = () => {
       curSettings = { ...curSettings, port };
       saveSettings(app.getPath("userData"), curSettings);
       existed = true;
+    };
+    const bindError = (e: unknown) => {
+      const msg = String((e as Error).message ?? e);
+      return {
+        ok: false as const,
+        error: /EADDRINUSE|in use/i.test(msg) ? `port ${port} is already in use` : msg,
+      };
+    };
+
+    // The listener never bound (port-unavailable / error at startup) — start it
+    // now on the requested port rather than only rebinding a live one (FR-015).
+    if (!httpHandle) {
+      try {
+        httpHandle = await startHttpMcpServer(mcpDeps, {
+          port,
+          token: currentEffective().token,
+          serverName,
+          onActivity: throttledPush,
+        });
+        serverStatus = "listening";
+        persistPort();
+        pushConnection();
+        return { ok: true, port };
+      } catch (e) {
+        serverStatus = classifyListenError(e);
+        pushConnection();
+        return bindError(e);
+      }
+    }
+
+    if (port === httpHandle.port) return { ok: true, port };
+    try {
+      await httpHandle.rebind(port);
+      persistPort();
       pushConnection();
       return { ok: true, port };
     } catch (e) {
-      const msg = String((e as Error).message ?? e);
-      return {
-        ok: false,
-        error: /EADDRINUSE|in use/i.test(msg) ? `port ${port} is already in use` : msg,
-      };
+      return bindError(e);
     }
   });
 
@@ -229,18 +342,21 @@ async function main(): Promise<void> {
   };
 
   try {
-    const deps = { queue, tabs, log, onToolInvoked: () => throttledPush() };
     if (env.stdio) {
-      await startStdioMcpServer(deps);
+      await startStdioMcpServer(mcpDeps, { serverName });
     } else {
-      const eff = resolveEffective(curSettings, env, existed);
-      httpHandle = await startHttpMcpServer(deps, {
+      const eff = resolveEffective(curSettings, env, existed, resolved.cliPort);
+      httpHandle = await startHttpMcpServer(mcpDeps, {
         port: eff.port,
         token: eff.token,
+        serverName,
         onActivity: throttledPush,
       });
     }
   } catch (err) {
+    // A bind failure is a first-class connection state, not just a log line
+    // (feature 012, FR-011): the panel renders it with the remedy.
+    serverStatus = classifyListenError(err);
     console.error("[hyppovisor] MCP server did not start:", err);
   }
 

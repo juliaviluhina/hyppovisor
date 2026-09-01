@@ -47,6 +47,20 @@ Drop `--scope user` to add it for the current project only.
 
 **C. Paste the endpoint** wherever your agent app accepts an MCP URL.
 
+### Running a named instance?
+
+If you launched with `--instance <name>` (see
+[Run more than one HyppoVisor](./configuration.md#run-more-than-one-hyppovisor)),
+the panel's snippets use the server name `hyppovisor-<name>` and the instance's
+live port, so registering a second instance never overwrites the first:
+
+```bash
+claude mcp add --transport http --scope user hyppovisor-work http://127.0.0.1:7358/mcp
+```
+
+The `initialize` handshake reports the same name, so a connected agent can
+confirm which instance it reached.
+
 ## Then
 
 ```bash
@@ -68,4 +82,10 @@ claude mcp add hyppovisor -e HYPPO_MCP_STDIO=1 -- \
 ```
 
 You cannot attach to an already-running instance this way — the client owns the
-process.
+process. For a named stdio instance, append `--instance <name>` after the script
+path and name the server `hyppovisor-<name>`:
+
+```bash
+claude mcp add hyppovisor-work -e HYPPO_MCP_STDIO=1 -- \
+  /absolute/path/to/node_modules/.bin/electron /absolute/path/to/dist/main/index.js --instance work
+```

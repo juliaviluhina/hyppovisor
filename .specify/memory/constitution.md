@@ -76,7 +76,11 @@ babysitting.
   opens as a transient modal child of the main window (moves with it, no separate taskbar
   entry, closes itself when the OAuth flow ends) — an OAuth `ux_mode=popup` flow needs a
   real window with `window.opener`. Autonomous or non-http window spawning stays denied and
-  reported.
+  reported. Running that one artifact more than once at a time is permitted: each process is
+  one window with its own profile directory under the app-support root (`instances/<name>/`),
+  shares no state with the others, and is identified by its `--instance` label and the OS
+  process list. This is N independent single-window instances, not a multi-window app; there
+  is no cross-instance registry or shared index.
 - The only persistent state is a single configured local data directory of plain
   Markdown / CSV. No database, no background services, no hidden state.
 - All state a human or HyppoGraph needs to inspect MUST be human-readable files in that
@@ -215,6 +219,13 @@ capture of a page the human opened is both defensible and sufficient for the pip
 One or two lines per version. Records why a bump type was judged as it was — git holds the
 diffs.
 
+- **1.4.1** (2026-09-01) — Principle III: added a sentence permitting several concurrent
+  instances of the one artifact, each one window with its own `instances/<name>/` profile
+  directory and no shared state, identified by an `--instance` label. PATCH: a scoped
+  clarification of "one window" — redefines no principle, adds no persistent store *kind*
+  (the per-instance dir holds the existing per-profile files), adds no MCP tool, adds no
+  external act. Precedent: 1.3.1 / 1.3.2 (scoped clarifications of the same principle).
+  Recorded in feature `012-multi-instance` and `specs/issues/006-multiple-instances-per-machine.md`.
 - **1.4.0** (2026-08-31) — Principle I: added the "revealing an in-page repeatable sub-form
   is preparation" clause — a `click` on a non-submit in-form `<button type="button">` (no
   `formaction`, not the implicit submit, own label not an outward act) to expand a repeatable
@@ -266,4 +277,4 @@ diffs.
   `specs/initial/business-logic.md`, plus Architecture Constraints, Development Workflow, and
   Governance.
 
-**Version**: 1.4.0 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-08-31
+**Version**: 1.4.1 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-09-01

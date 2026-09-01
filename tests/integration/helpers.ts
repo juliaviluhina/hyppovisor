@@ -12,6 +12,11 @@ import { _electron as electron, type ElectronApplication } from "@playwright/tes
 const fixturesDir = fileURLToPath(new URL("../fixtures/", import.meta.url));
 const mainEntry = fileURLToPath(new URL("../../dist/main/index.js", import.meta.url));
 
+/** The `--instance` name every harness launch uses unless a spec overrides it (feature 012). */
+export const E2E_INSTANCE = "e2e";
+/** The MCP server name / snippet key that follows from {@link E2E_INSTANCE}. */
+export const E2E_SERVER_NAME = "hyppovisor-e2e";
+
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -43,10 +48,32 @@ export async function startFixtureServer(): Promise<{ server: Server; base: stri
 export async function launchApp(
   extraEnv: Record<string, string> = {},
 ): Promise<ElectronApplication> {
+  // Give every launch its own throwaway HYPPO_USER_DATA_DIR (feature 012, R11):
+  // the single-instance lock is keyed on userData, so sharing the real dev
+  // profile would make back-to-back specs — or a spec run while `npm start` is
+  // open — hit the collision guard. A caller that needs a specific dir passes it
+  // in extraEnv, which wins and is left for the caller to clean up.
+  const ownDir = !extraEnv.HYPPO_USER_DATA_DIR;
+  const userDataDir = ownDir
+    ? await mkdtemp(join(tmpdir(), "hyppo-e2e-"))
+    : extraEnv.HYPPO_USER_DATA_DIR;
   const app = await electron.launch({
-    args: [mainEntry],
-    env: { ...process.env, HYPPO_E2E: "1", ...extraEnv },
+    // A fixed --instance so the window title, MCP server name, and panel label
+    // are deterministic (feature 012): "HYPPO_USER_DATA_DIR alone" would derive
+    // the label from the random temp-dir basename.
+    args: [mainEntry, "--instance", E2E_INSTANCE],
+    env: { ...process.env, HYPPO_E2E: "1", HYPPO_USER_DATA_DIR: userDataDir, ...extraEnv },
   });
+  if (ownDir) {
+    const origClose = app.close.bind(app);
+    app.close = async (...args: Parameters<typeof origClose>) => {
+      try {
+        await origClose(...args);
+      } finally {
+        await rm(userDataDir, { recursive: true, force: true });
+      }
+    };
+  }
   // main() wires globalThis.__hyppo asynchronously after app.whenReady() and
   // window setup; wait for it before any test calls in.
   const deadline = Date.now() + 15_000;
@@ -73,6 +100,7 @@ export function tempUserDataDir(): Promise<string> {
 export async function launchAppFull(
   extraEnv: Record<string, string> = {},
   reuseDir?: string,
+  extraArgs: string[] = [],
 ): Promise<{
   app: ElectronApplication;
   userDataDir: string;
@@ -80,8 +108,11 @@ export async function launchAppFull(
   close: () => Promise<void>;
 }> {
   const userDataDir = reuseDir ?? (await mkdtemp(join(tmpdir(), "hyppo-e2e-")));
+  const hasInstance = extraArgs.some((a) => a === "--instance" || a.startsWith("--instance="));
   const app = await electron.launch({
-    args: [mainEntry],
+    // Deterministic identity by default (feature 012); a spec that passes its own
+    // --instance in extraArgs opts out.
+    args: [mainEntry, ...(hasInstance ? [] : ["--instance", E2E_INSTANCE]), ...extraArgs],
     env: { ...process.env, HYPPO_USER_DATA_DIR: userDataDir, ...extraEnv },
   });
   const page = await app.firstWindow();

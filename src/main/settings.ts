@@ -103,16 +103,28 @@ function sourceFor(fromEnv: boolean, existed: boolean): ConnectionSource {
   return existed ? "persisted" : "default";
 }
 
+/** Port source, with the `--port` launch flag (feature 012) sitting between env and persisted. */
+function portSourceFor(fromEnv: boolean, fromCli: boolean, existed: boolean): ConnectionSource {
+  if (fromEnv) return "env";
+  if (fromCli) return "cli";
+  return existed ? "persisted" : "default";
+}
+
 /**
  * Fold the persisted settings and the environment into the read-only state the
- * panel renders. `lastRequest` is filled by the caller.
+ * panel renders. `lastRequest`, `serverStatus`, `instanceLabel`, and `serverName`
+ * are filled by the caller (`currentEffective()` in index.ts).
+ *
+ * @param cliPort the `--port <n>` launch flag value (feature 012), applied after
+ *   `HYPPO_MCP_PORT` but before the persisted / default port.
  */
 export function resolveEffective(
   settings: ConnectionSettings,
   env: EnvOverrides,
   existed: boolean,
+  cliPort?: number,
 ): EffectiveConnection {
-  const port = env.port ?? settings.port;
+  const port = env.port ?? cliPort ?? settings.port;
   const tokenFromEnv = env.token !== undefined;
   const tokenRequired = tokenFromEnv ? true : settings.tokenRequired;
   const token = tokenFromEnv
@@ -127,8 +139,11 @@ export function resolveEffective(
     endpointUrl: env.stdio ? "" : `http://${mcpHost}:${port}/mcp`,
     tokenRequired,
     token,
-    portSource: sourceFor(env.port !== undefined, existed),
+    portSource: portSourceFor(env.port !== undefined, cliPort !== undefined, existed),
     tokenSource: sourceFor(tokenFromEnv, existed),
     lastRequest: null,
+    serverStatus: env.stdio ? "stdio" : "listening",
+    instanceLabel: "",
+    serverName: "hyppovisor",
   };
 }

@@ -27,14 +27,20 @@ import { defaultMcpPort, mcpHost } from "../config.js";
 import { registerTools, type ToolDeps } from "./tools.js";
 import type { LastRequestInfo } from "../../shared/types.js";
 
-function makeServer(deps: ToolDeps): McpServer {
-  const server = new McpServer({ name: "hyppovisor", version: "0.1.0" });
+function makeServer(deps: ToolDeps, serverName = "hyppovisor"): McpServer {
+  // `serverName` surfaces in the MCP `initialize` response as `serverInfo.name`
+  // (feature 012): "hyppovisor" for the default instance, "hyppovisor-<label>"
+  // for a named one, so a connected agent can confirm which instance it reached.
+  const server = new McpServer({ name: serverName, version: "0.1.0" });
   registerTools(server, deps);
   return server;
 }
 
-export async function startStdioMcpServer(deps: ToolDeps): Promise<McpServer> {
-  const server = makeServer(deps);
+export async function startStdioMcpServer(
+  deps: ToolDeps,
+  opts: { serverName?: string } = {},
+): Promise<McpServer> {
+  const server = makeServer(deps, opts.serverName);
   await server.connect(new StdioServerTransport());
   console.error("[hyppovisor] MCP server connected on stdio");
   return server;
@@ -63,6 +69,8 @@ export async function startHttpMcpServer(
     port?: number;
     host?: string;
     token?: string | null;
+    /** MCP `serverInfo.name` for this instance (feature 012); default `"hyppovisor"`. */
+    serverName?: string;
     /** Called after `lastRequest()` changes (a served tool call or a 401), so
      *  the connection panel can be nudged to refresh (feature 007). */
     onActivity?: () => void;
@@ -99,7 +107,7 @@ export async function startHttpMcpServer(
 
     // Fresh server + stateless transport per request; the tools close over the
     // one shared deps (queue, tabs, log), so app state persists across requests.
-    const server = makeServer(wrappedDeps);
+    const server = makeServer(wrappedDeps, opts.serverName);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     let torndown = false;
     const teardown = () => {

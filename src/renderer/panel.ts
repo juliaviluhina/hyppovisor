@@ -22,7 +22,7 @@ import {
   type StdioLaunchLike,
 } from "./snippets.js";
 
-type ConnectionSource = "env" | "persisted" | "default";
+type ConnectionSource = "env" | "cli" | "persisted" | "default";
 
 interface LastRequestInfo {
   at: number;
@@ -39,6 +39,12 @@ interface EffectiveConnection {
   portSource: ConnectionSource;
   tokenSource: ConnectionSource;
   lastRequest: LastRequestInfo | null;
+  /** feature 012 — HTTP bind outcome; `"stdio"` when `transport === "stdio"`. */
+  serverStatus: "listening" | "port-unavailable" | "error" | "stdio";
+  /** feature 012 — instance display label; `""` for the default instance. */
+  instanceLabel: string;
+  /** feature 012 — `"hyppovisor"` or `"hyppovisor-<label>"`. */
+  serverName: string;
 }
 
 interface GetConnectionReply extends EffectiveConnection {
@@ -182,6 +188,10 @@ export function mountConnectionPanel(): void {
     lastConn = c;
     body.innerHTML = "";
 
+    // feature 012 — instance label beside the panel title (blank for the default).
+    const instanceEl = document.getElementById("panel-instance");
+    if (instanceEl) instanceEl.textContent = c.instanceLabel || "";
+
     renderAbout(c);
     renderHowItWorks();
     renderAgentText();
@@ -214,6 +224,28 @@ export function mountConnectionPanel(): void {
   }
 
   function renderHttp(c: EffectiveConnection): void {
+    // feature 012 — a failed bind is a first-class state with a remedy, above
+    // the (still valid, once the port is fixed) Endpoint + snippet blocks.
+    if (c.serverStatus === "port-unavailable") {
+      body.append(
+        el("div", {
+          className: "panel-error",
+          textContent:
+            `Port ${c.port} is in use — another HyppoVisor instance? ` +
+            "Change the port below and Apply, or relaunch with a different --port.",
+        }),
+      );
+    } else if (c.serverStatus === "error") {
+      body.append(
+        el("div", {
+          className: "panel-error",
+          textContent:
+            "The MCP server could not start. Change the port below and Apply, " +
+            "or relaunch with a different --port.",
+        }),
+      );
+    }
+
     // Endpoint
     const epUrl = endpointUrl(c.port);
     const ep = el("div", { className: "section" });
@@ -253,6 +285,10 @@ export function mountConnectionPanel(): void {
       input.disabled = true;
       apply.disabled = true;
       notice.textContent = "Set by the HYPPO_MCP_PORT environment variable.";
+    } else if (c.portSource === "cli") {
+      // feature 012 — --port set the value, but the field stays editable so a
+      // --port instance in the port-unavailable state can still recover.
+      notice.textContent = portNoticeText || `Launched with --port ${c.port}.`;
     } else {
       notice.textContent = portNoticeText;
     }
@@ -335,7 +371,7 @@ export function mountConnectionPanel(): void {
     body.append(s);
   }
 
-  function renderStdio(_c: EffectiveConnection): void {
+  function renderStdio(c: EffectiveConnection): void {
     const s = el("div", { className: "section" });
     s.append(
       el("h3", { textContent: "Transport" }),
@@ -343,7 +379,7 @@ export function mountConnectionPanel(): void {
     );
     body.append(s);
     if (extras) {
-      const json = stdioJsonConfig(extras.stdioLaunch);
+      const json = stdioJsonConfig(extras.stdioLaunch, c.serverName);
       body.append(snippetBlock("stdio JSON config", "stdio", json));
     }
   }
