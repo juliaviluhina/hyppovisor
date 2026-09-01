@@ -63,7 +63,7 @@ row cannot be closed (spec US1 Independent Test; quickstart.md §1–§3).
 ### Tests for User Story 1 ⚠️ (write first, ensure they FAIL)
 
 - [x] T005 [P] [US1] Unit spec `tests/unit/instances-registry.test.ts` — `readRuntimeFile` parse / `schema` guard / malformed-and-absent tolerance; `enumerateProfiles` against a fake profile tree (missing `instances/` dir tolerated); `listInstances` filtering (live PID vs dead PID vs absent file vs junk file; stale file unlinked; `self` merged authoritatively; sort order); `isPidAlive` (ESRCH→false, EPERM→true); `closeInstance` SIGTERM→grace→SIGKILL with `vi.useFakeTimers()` and a stubbed `process.kill`, plus ESRCH→`alreadyGone` and EPERM→`{ok:false}` (data-model.md §4, contracts/instance-registry.md, contracts/instance-shutdown.md)
-- [ ] T006 [P] [US1] Integration spec `tests/integration/instance-management.spec.ts` — via `launchAppFull` (real app), 3 instances on `freePort()`s, one with `--background`: (a) `window.hyppo.listInstances()` in one returns all 3 with correct `label` / `port` / `mode` / `state` / `isCurrent`, in < 3 s (SC-001); (b) `closeInstance(pid)` of a non-current instance → that app's process exits and `mcpPost(port, ping)` stops answering within 10 s (SC-003) and it drops from a second instance's list within 5 s (SC-005); (c) `closeInstance(process.pid-of-current)` is refused (SC-004); (d) an instance closed via `app.close()` outside the panel drops from the list on the next poll (US1 scenario 4). Offline / loopback only.
+- [x] T006 [P] [US1] Integration spec `tests/integration/instance-management.spec.ts` — via `launchAppFull` (real app), 3 instances on `freePort()`s, one with `--background`: (a) `window.hyppo.listInstances()` in one returns all 3 with correct `label` / `port` / `mode` / `state` / `isCurrent`, in < 3 s (SC-001); (b) `closeInstance(pid)` of a non-current instance → that app's process exits and `mcpPost(port, ping)` stops answering within 10 s (SC-003) and it drops from a second instance's list within 5 s (SC-005); (c) `closeInstance(process.pid-of-current)` is refused (SC-004); (d) an instance closed via `app.close()` outside the panel drops from the list on the next poll (US1 scenario 4). Offline / loopback only.
 
 ### Implementation for User Story 1
 
@@ -93,7 +93,7 @@ every content tab is gone, the instance is still running and serving MCP, and it
 
 ### Tests for User Story 2 ⚠️ (write first, ensure they FAIL)
 
-- [ ] T014 [P] [US2] Integration spec `tests/integration/close-all-tabs.spec.ts` — via `launchAppFull`: open 3 tabs with `window.hyppo.openUrl` against the fixture server; `window.hyppo.closeAllTabs()` → `window.hyppo.listTabs()` returns `[]` and MCP `list_open_tabs` (via `mcpPost`) returns `[]`; the same instance still answers MCP `initialize`; `settings.json` is byte-unchanged (read before/after); the button is `disabled` when no tabs are open (FR-013, SC-006; contracts/close-all-tabs.md). Offline / loopback only.
+- [x] T014 [P] [US2] Integration spec `tests/integration/close-all-tabs.spec.ts` — via `launchAppFull`: open 3 tabs with `window.hyppo.openUrl` against the fixture server; `window.hyppo.closeAllTabs()` → `window.hyppo.listTabs()` returns `[]` and MCP `list_open_tabs` (via `mcpPost`) returns `[]`; the same instance still answers MCP `initialize`; `settings.json` is byte-unchanged (read before/after); the button is `disabled` when no tabs are open (FR-013, SC-006; contracts/close-all-tabs.md). Offline / loopback only.
 
 ### Implementation for User Story 2
 
