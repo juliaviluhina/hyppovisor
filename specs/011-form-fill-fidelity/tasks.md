@@ -272,6 +272,19 @@ Adjustment recorded during implementation: US5 keeps `selectorSynthesised` / `du
 in the default record (small, workflow-critical); only the options triplet is dropped from
 non-dropdown records. See research.md R6, data-model.md.
 
-- [ ] T040 Manual acceptance against the live A2Z Sync Workable form (memory
-  `feature-011-test-form`) — pending a live logged-in session; the fixture suite above is
-  the deterministic proof of SC-001…SC-010.
+- [X] T040 Manual acceptance against the live A2Z Sync Workable form (memory
+  `feature-011-test-form`), 2026-09-01 — all three issue-005 blockers cleared on the exact
+  form:
+  - **US1**: `[name="start_date"]` / `[name="end_date"]` (masked `MM/YYYY`, `inputMode:tel`)
+    filled to `03/2021` / `08/2024` and a re-read confirmed them; issue 005 had `written:1`
+    with the field empty. Every `fill` returned `currentValue`. Batch fills 5/5 then 3/3
+    written, 0 errored.
+  - **US2/US3**: `#CA_42882` ("Do you have startup experience?") filled with text containing
+    "startup"/"applied"/"apply", then re-filled with a revised answer — `permitted` both
+    times; `read_form_fields` reports `fillVerdict: permitted` on every read. Issue 005 hit
+    `REFUSED_EXTERNAL_ACT` / `external-act-label` on every call after the first.
+  - **US4**: "Add Experience" / "Add Education" (`<button type="button">`) report
+    `clickVerdict: permitted`; clicking "Add Experience" revealed the sub-form and its
+    fields became fillable. "Submit application" and the "Clear …" links stay `refused`.
+  Nothing was submitted. Live markup has drifted since issue 005 (start/end dates are now
+  "(Optional)"); the fixture suite is the deterministic SC-001…SC-010 proof.
