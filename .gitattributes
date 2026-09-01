@@ -1,0 +1,34 @@
+# Store every text file with LF in the repo, regardless of the contributor's OS.
+# Without this, Windows checkouts reintroduce CRLF and tooling that parses files
+# line-by-line (e.g. tests/unit/release-notes.test.ts) breaks only on that runner.
+* text=auto eol=lf
+
+# Be explicit for the formats we read or execute literally.
+*.ts   text eol=lf
+*.js   text eol=lf
+*.cjs  text eol=lf
+*.mjs  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+*.sh   text eol=lf
+.nvmrc text eol=lf
+
+# Binary assets — never normalise or diff as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.otf  binary
+*.pdf  binary
+*.zip  binary
+*.dmg  binary
