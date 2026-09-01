@@ -31,6 +31,13 @@ navigating, and preparing drafts or checklists.
   plain, non-credential, non-consent `<select>` or combobox — by the option's visible name
   or its value, with the app locating the option only within that one control's own list —
   is preparation on the same footing: it builds a draft and cannot submit.
+- **Revealing an in-page repeatable sub-form is preparation.** Clicking a non-submit control
+  inside a `<form>` — a `<button type="button">` that declares no `formaction`, is not the
+  form's implicit submit control, and whose own accessible name reads as no outward action —
+  to expand a repeatable section ("Add Experience", "Add Education") is permitted: it exposes
+  fields the human will review and it cannot submit, send, or navigate. Every submit control,
+  `formaction` button, implicit submit, consent toggle, and outward-labelled control inside a
+  form stays refused for every operation, and no operation may press Enter.
 - Any future capability that would perform an external act MUST be added to this document as
   an explicit, separately approved amendment before it is built.
 
@@ -208,6 +215,14 @@ capture of a page the human opened is both defensible and sufficient for the pip
 One or two lines per version. Records why a bump type was judged as it was — git holds the
 diffs.
 
+- **1.4.0** (2026-08-31) — Principle I: added the "revealing an in-page repeatable sub-form
+  is preparation" clause — a `click` on a non-submit in-form `<button type="button">` (no
+  `formaction`, not the implicit submit, own label not an outward act) to expand a repeatable
+  section is permitted. MINOR: same reasoning as 1.2.0 / 1.3.0 — a binding clarification that
+  materially expands existing "preparing drafts" guidance, redefines no principle, and
+  invalidates no conforming artifact; every submit / consent / outward-labelled control and
+  the Enter key stay refused. Recorded in feature `011-form-fill-fidelity` and
+  `specs/issues/005-form-fill-second-workable-session.md`.
 - **1.3.2** (2026-08-30) — Principle III: clarified how page-opened windows are handled,
   driven by real blockers (a site offering only "Continue with Google" whose `ux_mode=popup`
   flow the universal popup-deny killed; job links opening via `target="_blank"`). A plain
@@ -251,4 +266,4 @@ diffs.
   `specs/initial/business-logic.md`, plus Architecture Constraints, Development Workflow, and
   Governance.
 
-**Version**: 1.3.2 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-08-30
+**Version**: 1.4.0 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-08-31

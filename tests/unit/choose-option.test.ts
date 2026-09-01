@@ -122,6 +122,7 @@ describe("blocklist coverage for choose_option (research.md R4)", () => {
     hasFormAncestor: false,
     name: "",
     autocomplete: null,
+    formAction: null,
     isContentEditable: false,
     ...o,
   });

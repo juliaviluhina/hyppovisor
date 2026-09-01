@@ -327,6 +327,9 @@ async function main(): Promise<void> {
                 ...(r.value && typeof r.value === "object" && "chosenOption" in r.value
                   ? { chosenOption: r.value.chosenOption }
                   : {}),
+                ...(r.value && typeof r.value === "object" && "currentValue" in r.value
+                  ? { currentValue: (r.value as { currentValue: string }).currentValue }
+                  : {}),
                 queueDepth: r.queueDepth,
               };
             }),

@@ -34,6 +34,7 @@ const baseDescriptor: TargetDescriptor = {
   hasFormAncestor: false,
   name: "",
   autocomplete: null,
+  formAction: null,
   isContentEditable: false,
 };
 const desc = (o: Partial<TargetDescriptor>): TargetDescriptor => ({ ...baseDescriptor, ...o });

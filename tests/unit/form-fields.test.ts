@@ -13,6 +13,7 @@ import {
   isRequiredUnfilled,
   checkReadFormFieldsShape,
   operationForKind,
+  domReadyScript,
   type SelectorCounts,
 } from "../../src/main/page/form-fields.js";
 import {
@@ -168,25 +169,23 @@ describe("readFormFields applies both caps from config", () => {
       label: `o${i}`,
       value: String(i),
     }));
-    const map = await readFormFields(
-      wcYielding({
-        containerFound: true,
-        observedAt: "2026-08-30T00:00:00.000Z",
-        hardCeilingHit: false,
-        records: [
-          rawRecord(desc({ tagName: "select", type: null }), {
-            options: opts,
-            optionsAvailable: true,
-          }),
-        ],
-      }),
-      "tab-1",
-      undefined,
-      0,
-    );
-    expect(map.records[0].options.length).toBe(config.formFieldOptionCap);
-    expect(map.records[0].optionsTruncated).toBe(true);
-    expect(map.records[0].optionsAvailable).toBe(true);
+    const raw = {
+      containerFound: true,
+      observedAt: "2026-08-30T00:00:00.000Z",
+      hardCeilingHit: false,
+      records: [
+        rawRecord(desc({ tagName: "select", type: null }), {
+          options: opts,
+          optionsAvailable: true,
+        }),
+      ],
+    };
+    // feature 011 US5: a dropdown keeps the full options triplet in the default
+    // read (it is the point of reading a dropdown).
+    const dflt = await readFormFields(wcYielding(raw), "tab-1", undefined, 0);
+    expect(dflt.records[0].options!.length).toBe(config.formFieldOptionCap);
+    expect(dflt.records[0].optionsTruncated).toBe(true);
+    expect(dflt.records[0].optionsAvailable).toBe(true);
   });
 });
 
@@ -197,6 +196,7 @@ const desc = (o: Partial<TargetDescriptor>): TargetDescriptor => ({
   hasFormAncestor: false,
   name: "",
   autocomplete: null,
+  formAction: null,
   isContentEditable: false,
   ...o,
 });
@@ -542,5 +542,74 @@ describe("record assembly — credential currentValue is omitted entirely (FR-00
       0,
     );
     expect(map.records[0].currentValue).toBe("hello");
+  });
+});
+
+// ─── feature 011 US3: verdict computed against a settled DOM ──────────────────
+
+describe("domReadyScript (feature 011, US3 / FR-018)", () => {
+  it("resolves immediately when the document is already complete", () => {
+    const s = domReadyScript(1000);
+    expect(s).toContain('document.readyState === "complete"');
+    expect(s).toContain("resolve(true)");
+  });
+
+  it("is bounded — falls through after the timeout and never rejects", () => {
+    const s = domReadyScript(1000);
+    expect(s).toContain("setTimeout(finish, 1000)");
+    expect(s).not.toContain("reject");
+  });
+
+  it("floors a negative/fractional timeout to a safe integer", () => {
+    expect(domReadyScript(-5)).toContain("setTimeout(finish, 0)");
+    expect(domReadyScript(12.9)).toContain("setTimeout(finish, 12)");
+  });
+});
+
+describe("leaner default record (feature 011, US5)", () => {
+  const raw = {
+    containerFound: true,
+    observedAt: "2026-08-31T00:00:00.000Z",
+    hardCeilingHit: false,
+    records: [rawRecord(desc({ tagName: "input", type: "text", name: "first name" }))],
+  };
+
+  it("omits the options triplet for a non-dropdown control in the default read", async () => {
+    const map = await readFormFields(wcYielding(raw), "tab-1", undefined, 0);
+    const rec = map.records[0];
+    expect(rec.options).toBeUndefined();
+    expect(rec.optionsAvailable).toBeUndefined();
+    expect(rec.optionsTruncated).toBeUndefined();
+    // selectorSynthesised / duplicateId stay — small and they flag a fragile selector
+    expect(rec.selectorSynthesised).toBeDefined();
+    expect(rec.duplicateId).toBeDefined();
+    // planning fields are still there
+    expect(rec.selector).toBeDefined();
+    expect(rec.fillVerdict).toBeDefined();
+    expect(rec.clickVerdict).toBeDefined();
+    expect(rec.operation).toBeDefined();
+  });
+
+  it("includeNonInteractive restores the options triplet on every record", async () => {
+    const map = await readFormFields(wcYielding(raw), "tab-1", undefined, 0, {
+      includeNonInteractive: true,
+    });
+    const rec = map.records[0];
+    expect(rec.options).toBeDefined();
+    expect(rec.optionsAvailable).toBeDefined();
+    expect(rec.optionsTruncated).toBeDefined();
+  });
+});
+
+describe("verdict is a pure function of the descriptor (feature 011, US3)", () => {
+  it("the same descriptor yields the same fill/click verdict every call", () => {
+    const dd = desc({ tagName: "textarea", name: "do you have startup experience?" });
+    const f1 = fillVerdictFor(dd);
+    const f2 = fillVerdictFor({ ...dd });
+    expect(f1).toEqual(f2);
+    expect(f1.verdict).toBe("permitted");
+    // a drafted value is NOT part of the descriptor the reader builds for a
+    // value-bearing control (US2), so a re-read cannot flip the verdict
+    expect(clickVerdictFor(dd)).toEqual(clickVerdictFor({ ...dd }));
   });
 });

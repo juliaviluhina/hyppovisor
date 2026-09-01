@@ -308,7 +308,9 @@ test("SC-008: a batch built from only the reader's permitted selectors passes 00
 
   const batch = map.records
     .filter((r) => r.selector != null && r.fillVerdict.verdict === "permitted" && r.visible)
-    .map((r) => [r.selector as string, "sample"] as [string, string]);
+    // feature 011: `fill` now reads back, so a value must be one the field accepts
+    // — a plain "sample" is rejected by <input type="number">.
+    .map((r) => [r.selector as string, r.type === "number" ? "42" : "sample"] as [string, string]);
   expect(batch.length).toBeGreaterThan(3);
 
   const r = await callHandle<{ outcome: string; summary: { requested: number; written: number; errored: number } }>(
@@ -316,6 +318,7 @@ test("SC-008: a batch built from only the reader's permitted selectors passes 00
     "fillBatch",
     [tabId, batch],
   );
+  // the pre-write check passed (not BATCH_REJECTED); every value landed
   expect(r.outcome).toBe("permitted");
   expect(r.summary).toEqual({ requested: batch.length, written: batch.length, errored: 0 });
 });
@@ -519,4 +522,48 @@ test("US4: more controls than the cap truncates to the first cap-many with the f
     await capped.close();
     small.server.close();
   }
+});
+
+// ─── feature 011 US5: the default record is leaner so a big form fits ─────────
+
+test("US5: an unscoped read of a big form stays within budget with no record trimmed", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+
+  const dflt = await callHandle<FormFieldMap>(app, "readFormFields", [tabId]);
+  expect(dflt.truncated).toBe(false);
+  expect(dflt.records.length).toBeGreaterThan(20);
+
+  // the serialised payload is within the 64 KB byte budget
+  const bytes = Buffer.byteLength(JSON.stringify(dflt), "utf8");
+  expect(bytes).toBeLessThanOrEqual(65536);
+
+  // a non-dropdown record is lean: no empty options triplet
+  const text = dflt.records.find((r) => r.kind === "text")!;
+  expect(text.options).toBeUndefined();
+  expect(text.optionsAvailable).toBeUndefined();
+  expect(text.optionsTruncated).toBeUndefined();
+  // planning fields survive
+  expect(text.fillVerdict).toBeDefined();
+  expect(text.operation).toBeDefined();
+  expect(text.selectorSynthesised).toBeDefined();
+
+  // a dropdown record keeps its options in the default read
+  const select = dflt.records.find((r) => r.kind === "select");
+  if (select) expect(Array.isArray(select.options)).toBe(true);
+});
+
+test("US5: includeNonInteractive restores the options triplet on every record", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const full = await readOpts(tabId, { includeNonInteractive: true });
+  // a plain text control now carries the (empty) options triplet again
+  const text = full.records.find((r) => r.kind === "text")!;
+  expect(text.options).toBeDefined();
+  expect(text.optionsAvailable).toBeDefined();
+  expect(text.optionsTruncated).toBeDefined();
+});
+
+test("US5: a fields-projected read is unaffected (still scoped, records returned)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
+  const map = await readOpts(tabId, { fields: ["#first_name", "#email"] });
+  expect(map.records.map((r) => r.selector)).toEqual(["#first_name", "#email"]);
 });

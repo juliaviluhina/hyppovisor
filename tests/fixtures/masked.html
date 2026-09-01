@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Masked-input Fixture</title>
+  </head>
+  <body>
+    <h1>Masked inputs</h1>
+
+    <!-- feature 011 US1: inputs whose value is rebuilt from key events. A bulk
+         programmatic `.value` assignment is discarded; only per-character typing
+         (keydown / beforeinput / input) lands a value. -->
+    <form id="theform" action="/submitted" method="post" onsubmit="event.preventDefault(); window.__submitted = true;">
+      <label for="start_date">Start date (MM/YYYY)</label>
+      <input type="text" id="start_date" name="start_date" placeholder="MM/YYYY" autocomplete="off" />
+
+      <label for="phone">Phone</label>
+      <input type="text" id="phone" name="phone" placeholder="(###) ###-####" autocomplete="off" />
+
+      <!-- a plain unmasked control on the same page, as a control group -->
+      <label for="plain">Plain field</label>
+      <input type="text" id="plain" name="plain" autocomplete="off" />
+
+      <button type="submit" id="submitBtn">Apply now</button>
+    </form>
+
+    <script>
+      window.__submitted = false;
+
+      // An MM/YYYY mask: it ignores any value it did not build itself, and
+      // reformats the digits it receives via key events into MM/YYYY. A bulk
+      // `.value = "09/1992"` (no key events) is wiped on the next microtask.
+      (function () {
+        var el = document.getElementById("start_date");
+        var digits = "";
+        function render() {
+          var d = digits.slice(0, 6);
+          var out = d.slice(0, 2);
+          if (d.length > 2) out += "/" + d.slice(2);
+          el.value = out;
+        }
+        el.addEventListener("beforeinput", function (e) {
+          // consume the keystroke ourselves; block the browser's own insert
+          if (e.inputType === "insertText" && e.data) {
+            e.preventDefault();
+            var ch = e.data.replace(/[^0-9]/g, "");
+            if (ch) digits += ch;
+            render();
+          } else if (e.inputType && e.inputType.indexOf("delete") === 0) {
+            e.preventDefault();
+            digits = digits.slice(0, -1);
+            render();
+          }
+        });
+        // any value set without going through beforeinput is not real input
+        el.addEventListener("input", function (e) {
+          if (!e.data && el.value && !digits) {
+            // a bulk assignment slipped in — discard it
+            Promise.resolve().then(function () {
+              if (!digits) el.value = "";
+            });
+          }
+        });
+      })();
+
+      // A US phone mask: (###) ###-#### built from typed digits only.
+      (function () {
+        var el = document.getElementById("phone");
+        var digits = "";
+        function render() {
+          var d = digits.slice(0, 10);
+          var out = "";
+          if (d.length > 0) out = "(" + d.slice(0, 3);
+          if (d.length >= 3) out += ") " + d.slice(3, 6);
+          if (d.length >= 6) out += "-" + d.slice(6, 10);
+          el.value = out;
+        }
+        el.addEventListener("beforeinput", function (e) {
+          if (e.inputType === "insertText" && e.data) {
+            e.preventDefault();
+            var ch = e.data.replace(/[^0-9]/g, "");
+            if (ch) digits += ch;
+            render();
+          } else if (e.inputType && e.inputType.indexOf("delete") === 0) {
+            e.preventDefault();
+            digits = digits.slice(0, -1);
+            render();
+          }
+        });
+        el.addEventListener("input", function (e) {
+          if (!e.data && el.value && !digits) {
+            Promise.resolve().then(function () {
+              if (!digits) el.value = "";
+            });
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

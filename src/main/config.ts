@@ -38,6 +38,12 @@ export const config = {
   screenshotJpegQualityFloor: numFromEnv("HYPPO_SCREENSHOT_JPEG_QUALITY_FLOOR", 30),
   /** Max recent-URL history entries kept for the address-bar dropdown (feature 009, FR-006). */
   recentUrlsCap: numFromEnv("HYPPO_RECENT_URLS_CAP", 20),
+  /**
+   * Bounded wait for `document.readyState === "complete"` before read_form_fields
+   * computes verdicts, so a verdict is never derived from a still-parsing DOM
+   * (feature 011, US3 / FR-018). Proceeds anyway on timeout.
+   */
+  domReadyTimeoutMs: numFromEnv("HYPPO_DOM_READY_TIMEOUT_MS", 1000),
   /** Chrome height reserved at the top of the window for the renderer UI. */
   chromeHeight: 104,
 };

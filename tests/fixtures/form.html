@@ -85,6 +85,19 @@
            space is permitted (feature 003 US3) -->
       <button type="button" id="addAnother">Add another</button>
 
+      <!-- feature 011 US2: a required free-text question whose OWN label is
+           innocuous, sitting right next to the submit button, with an id/name in
+           the CA_/ATS shape. A drafted answer that happens to contain "apply" /
+           "join" must NOT make a later fill refuse (external-act-label scoped to
+           the control's own name). -->
+      <label for="startup_q">Do you have startup experience?</label>
+      <textarea id="startup_q" name="CA_42882"></textarea>
+
+      <!-- feature 011 US2: a field whose OWN label reads as an outward act —
+           stays refused for fill. -->
+      <label for="submit_note">Submit application</label>
+      <textarea id="submit_note" name="submit_note"></textarea>
+
       <button type="submit" id="submitBtn">Apply now</button>
     </form>
 

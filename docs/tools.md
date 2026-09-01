@@ -26,18 +26,28 @@ and `maxLength` / `pattern` / `inputMode` where declared.
 
 Bounded by a `fields` projection, `only: "required-unfilled"`, and a 64 KB byte
 budget. Derived and read-only — it acts on nothing and writes no audit entry.
-`read_page` is unaffected.
+The default record is lean (selector, kind, label, value, required, operation,
+verdicts); `includeNonInteractive: true` adds the diagnostic fields
+(`selectorSynthesised`, `duplicateId`, `optionsAvailable`, `optionsTruncated`)
+and every record's `options`. Verdicts are computed after the DOM settles, so a
+re-read of an unchanged page returns the same verdict. `read_page` is unaffected.
 
 ## interact
 
 - **`fill`** — type a value into a plain field (`text` / `email` / `tel` / `url`
   / `search` / `number`, `<textarea>`, `contenteditable`), including inside a
-  `<form>` and a combobox filter input. Also takes an ordered `fields` batch
-  (max 50) that drafts a whole form in one call under the same rules. Prepares a
-  draft; never submits.
+  `<form>` and a combobox filter input. Types character by character with real
+  key events so an input mask receives it, then reads the value back: a permitted
+  `fill` returns `currentValue`; a well-formed value the page would not accept is
+  `WRITE_NOT_APPLIED` (not a refusal), and the field was not filled. Also takes
+  an ordered `fields` batch (max 50) that drafts a whole form in one call under
+  the same rules. Prepares a draft; never submits.
 - **`choose_option`** — select one option in a `<select>` or combobox by exact
   `label` / `value` (no fuzzy, no creation), then re-read to confirm it stuck.
 - **`list_options`** — list a dropdown's choices, read-only.
-- **`click` / `space`** — reveal content, toggle non-outward controls.
+- **`click` / `space`** — reveal content, toggle non-outward controls. Since
+  constitution 1.4.0 a `click` on a non-submit in-form `<button type="button">`
+  (no `formaction`, own label not an outward act) is permitted, to expand a
+  repeatable sub-form.
 
 What it refuses, and the exact nuances: [Safety](safety.md).

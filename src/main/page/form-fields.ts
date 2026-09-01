@@ -198,6 +198,22 @@ type CollectorResult =
  * matching those selectors (unioned, deduped, document order) — including
  * elements a default read would exclude as non-interactive (FR-010).
  */
+/**
+ * In-page: resolve once `document.readyState === "complete"`, or after
+ * `timeoutMs`, whichever comes first (feature 011, US3). Never rejects.
+ */
+export function domReadyScript(timeoutMs: number): string {
+  return `new Promise((resolve) => {
+    if (document.readyState === "complete") return resolve(true);
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(true); } };
+    document.addEventListener("readystatechange", () => {
+      if (document.readyState === "complete") finish();
+    });
+    setTimeout(finish, ${Math.max(0, Math.floor(timeoutMs))});
+  })`;
+}
+
 export function formFieldsScript(
   containerSelector: string | undefined,
   fields: string[] | undefined,
@@ -631,6 +647,11 @@ export async function readFormFields(
   const shapeError = checkReadFormFieldsShape(containerSelector, fields);
   if (shapeError) throw shapeError;
 
+  // feature 011 (US3 / FR-018): wait, briefly and bounded, for the document to
+  // finish parsing so a fill/click/choose verdict is never computed against a
+  // half-built DOM. Proceeds anyway on timeout; `read_page` is not gated this way.
+  await wc.executeJavaScript(domReadyScript(config.domReadyTimeoutMs), true);
+
   const raw = (await wc.executeJavaScript(
     formFieldsScript(containerSelector, fields),
     true,
@@ -711,6 +732,26 @@ export async function readFormFields(
 
   if (only === "required-unfilled") {
     mapped = mapped.filter(isRequiredUnfilled);
+  }
+
+  // feature 011 (US5): lean the default record so a large form's first,
+  // unprojected read fits the byte budget without trimming any control. A
+  // dropdown keeps the full options triplet (`options` / `optionsAvailable` /
+  // `optionsTruncated`) — it is the point of reading a dropdown. Every other
+  // kind carried an empty `options: []` plus two always-false flags; those go,
+  // and `includeNonInteractive` restores them. `selectorSynthesised` /
+  // `duplicateId` stay in the default record — small, and they tell an agent
+  // when a suggested selector is fragile.
+  if (!includeNonInteractive) {
+    const dropdown = new Set(["select", "combobox", "listbox"]);
+    mapped = mapped.map((rec) => {
+      if (dropdown.has(rec.kind)) return rec;
+      const lean: FormFieldRecord = { ...rec };
+      delete lean.options;
+      delete lean.optionsAvailable;
+      delete lean.optionsTruncated;
+      return lean;
+    });
   }
 
   const capped = capList(mapped, config.formFieldControlCap);
