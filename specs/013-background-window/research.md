@@ -15,15 +15,25 @@ form is ignored as "not the flag"). `main()` creates the `BrowserWindow` with `s
 **always**, then, immediately after `await win.loadFile(...)`, runs one switch:
 
 ```
-if (resolved.background)            → leave hidden; app.dock?.hide(); win.setSkipTaskbar(true)
-else if (resolved.source === "default") → win.show()          // shown + focused, unchanged
-else                                → win.showInactive()      // named / env-dir: visible, no focus
+if (resolved.background)              → leave hidden; app.dock?.hide(); win.setSkipTaskbar(true)
+                                        win.webContents.setBackgroundThrottling(false)
+else if (resolved.source === "instance") → win.showInactive()   // named --instance: visible, no focus
+else                                  → win.show()             // default + env-dir: shown + focused
 ```
 
-`resolved.source` is the feature-012 field (`"instance" | "env-dir" | "default"`). Only
-`"default"` — no `--instance`, no `HYPPO_USER_DATA_DIR` — may take focus (FR-004 / SC-007).
-Every other launch is either background-hidden or shown-inactive (FR-003, extended to
-`env-dir` too: a CI / wrapper launch has no business stealing focus).
+`resolved.source` is the feature-012 field (`"instance" | "env-dir" | "default"`).
+
+**Implementation note (deviates from the first draft):** `showInactive()` is scoped to
+`source === "instance"` only. `env-dir` launches (`HYPPO_USER_DATA_DIR` — CI, wrappers, the
+e2e harness) fall in the `win.show()` branch with `default`. Reasons: (1) the only FR that
+requires no-focus is FR-003, which names `--instance`; FR-004 / SC-007 pin the default to
+shown+focused; `env-dir` is unconstrained. (2) `show: false` + `showInactive()` with several
+`WebContentsView` children stacked on a never-activated window reproducibly SIGSEGV'd the
+renderer on macOS (Electron 33) in `recent-urls.spec.ts` — a real crash, not a test artifact.
+Keeping every non-`--instance` path on plain `win.show()` avoids it and leaves the whole
+existing e2e suite on its pre-013 visibility behaviour. A spec that needs a genuinely hidden
+window passes `--background` (harness default); one that needs a visible interactive window
+passes `--no-background`.
 
 **Rationale**:
 - One `show: false` construction + one post-load switch is smaller than a three-way branch
@@ -214,9 +224,17 @@ signal: present iff a window is on screen.
 
 ## R7 — Background throttling and the tab views
 
-**Decision**: `backgroundThrottling: false` in `webPreferences` on **both**:
-- the main `BrowserWindow` (chrome renderer), and
-- every tab `WebContentsView` created in `src/main/tabs/tab-manager.ts`.
+**Decision**: disable background throttling for a `--background` instance only, applied at
+runtime rather than in `webPreferences`:
+- `win.webContents.setBackgroundThrottling(false)` in the reveal switch's `--background` branch;
+- `view.webContents.setBackgroundThrottling(false)` per tab in `tab-manager.ts`, gated by a
+  constructor flag (`new TabManager(win, events, log, resolved.background)`).
+
+**Implementation note (deviates from the first draft):** the `webPreferences.backgroundThrottling: false`
+form on the `BrowserWindow` / `WebContentsView` was part of the macOS SIGSEGV repro in R2's
+recent-urls case; the runtime `setBackgroundThrottling(false)` call is the documented
+equivalent (see Alternatives) and is only invoked for `--background`, so a foreground
+instance's views are byte-identical to pre-013.
 
 **Rationale**: Chromium throttles timers and `requestAnimationFrame` in occluded /
 backgrounded renderers. A `--background` instance's tabs are always occluded, so a site that

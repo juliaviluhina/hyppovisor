@@ -17,10 +17,14 @@ const win = new BrowserWindow({
     preload: join(here, "../preload/chrome.cjs"),
     contextIsolation: true,
     sandbox: false,
-    backgroundThrottling: false,                 // NEW — hidden tabs must not throttle
   },
 });
 ```
+
+> **As-built note:** `webPreferences.backgroundThrottling: false` was NOT set here. It is
+> applied at runtime for a `--background` instance only (see reveal decision + tab views
+> below). Setting it in `webPreferences` was part of a macOS Electron-33 SIGSEGV repro — see
+> `research.md` R2 / R7 implementation notes.
 
 ## Reveal decision — immediately after `await win.loadFile(...)`
 
@@ -28,13 +32,20 @@ const win = new BrowserWindow({
 if (resolved.background) {
   win.setSkipTaskbar(true);
   if (process.platform === "darwin") app.dock?.hide();
+  win.webContents.setBackgroundThrottling(false);
   // window stays hidden
-} else if (resolved.source === "default") {
-  win.show();          // shown + focused — byte-identical end state to feature 012
+} else if (resolved.source === "instance") {
+  win.showInactive();  // a named --instance: visible, never focused (FR-003)
 } else {
-  win.showInactive();  // named / env-dir: visible, never focused
+  win.show();          // default AND env-dir: shown + focused — pre-013 behaviour
 }
 ```
+
+> **As-built note:** `showInactive()` is scoped to `source === "instance"`. `env-dir`
+> (`HYPPO_USER_DATA_DIR`) launches join `default` on `win.show()`: no FR constrains their
+> focus, and `show: false` + `showInactive()` + stacked `WebContentsView`s crashed on macOS
+> (`research.md` R2). The e2e harness is an `env-dir` launch, so every existing spec keeps
+> its pre-013 visibility unless it opts into `--background`.
 
 `loadFile` is already `await`-ed before `send("tabs:changed", …)` / `pushConnection()` in
 feature 012 — the reveal slots in at that point, so the window never appears blank.

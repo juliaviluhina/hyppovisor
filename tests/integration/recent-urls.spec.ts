@@ -61,7 +61,9 @@ const INIT = {
 
 // ── US1 ─────────────────────────────────────────────────────────────────────
 test("US1: opening URLs from the address bar fills the datalist newest-first, live", async () => {
-  const { app, close } = await launchAppFull({}, undefined);
+  // This spec observes tab loading through the renderer datalist, so it needs a
+  // real visible window — opt out of the harness's default --background (013).
+  const { app, close } = await launchAppFull({}, undefined, ["--no-background"]);
   try {
     const page = await app.firstWindow();
     expect(await options(page)).toEqual([]);
@@ -84,7 +86,9 @@ test("US2: cap eviction, move-to-front dedupe, restart persistence", async () =>
   const userDataDir = await tempUserDataDir();
   try {
     // Cap of 2 so a third distinct open evicts the oldest.
-    const first = await launchAppFull({ HYPPO_RECENT_URLS_CAP: "2" }, userDataDir);
+    const first = await launchAppFull({ HYPPO_RECENT_URLS_CAP: "2" }, userDataDir, [
+      "--no-background",
+    ]);
     try {
       const page = await first.app.firstWindow();
       await openFromBar(page, `${base}/static.html`);
@@ -102,7 +106,7 @@ test("US2: cap eviction, move-to-front dedupe, restart persistence", async () =>
     }
 
     // Relaunch, same user-data dir, no cap override → identical datalist on load.
-    const again = await launchAppFull({}, userDataDir);
+    const again = await launchAppFull({}, userDataDir, ["--no-background"]);
     try {
       const page = await again.app.firstWindow();
       await expect(page.locator("#recent-urls option")).toHaveCount(2);
@@ -122,7 +126,7 @@ test("US2: a malformed recent-urls.json → empty datalist, file left untouched 
   const file = join(userDataDir, "recent-urls.json");
   writeFileSync(file, "{ not json");
   try {
-    const { app, close } = await launchAppFull({}, userDataDir);
+    const { app, close } = await launchAppFull({}, userDataDir, ["--no-background"]);
     try {
       const page = await app.firstWindow();
       expect(await options(page)).toEqual([]);
@@ -141,7 +145,7 @@ test("US2: a malformed recent-urls.json → empty datalist, file left untouched 
 });
 
 test("US2: the connection panel's Clear recent URLs empties the datalist and the file", async () => {
-  const { app, userDataDir, close } = await launchAppFull();
+  const { app, userDataDir, close } = await launchAppFull({}, undefined, ["--no-background"]);
   try {
     const page = await app.firstWindow();
     await openFromBar(page, `${base}/static.html`);
@@ -171,7 +175,7 @@ test("US3: an agent open_url and a failed load never enter the history; a redire
   );
   await new Promise<void>((r) => dead.close(() => r()));
 
-  const { app, close } = await launchAppFull();
+  const { app, close } = await launchAppFull({}, undefined, ["--no-background"]);
   try {
     const page = await app.firstWindow();
     const port = ((await page.evaluate(() =>

@@ -80,7 +80,10 @@ babysitting.
   one window with its own profile directory under the app-support root (`instances/<name>/`),
   shares no state with the others, and is identified by its `--instance` label and the OS
   process list. This is N independent single-window instances, not a multi-window app; there
-  is no cross-instance registry or shared index.
+  is no cross-instance registry or shared index. The one window may also start hidden
+  (`--background`) and be brought to the foreground by re-launching the instance; while
+  hidden it shows no Dock, taskbar, or app-switcher entry. This is presentation of the same
+  one window — no second surface, no background service, nothing persisted.
 - The only persistent state is a single configured local data directory of plain
   Markdown / CSV. No database, no background services, no hidden state.
 - All state a human or HyppoGraph needs to inspect MUST be human-readable files in that
@@ -219,6 +222,13 @@ capture of a page the human opened is both defensible and sufficient for the pip
 One or two lines per version. Records why a bump type was judged as it was — git holds the
 diffs.
 
+- **1.4.2** (2026-09-01) — Principle III: the one window may start hidden (`--background`)
+  and be summoned by re-launching the instance; its Dock / taskbar / ⌘-Tab presence follows
+  its visibility. PATCH: a scoped clarification of "one window" — redefines no principle,
+  adds no persistent store (the flag persists nothing), adds no MCP tool, adds no external
+  act, adds no UI surface (the summon gesture is the existing relaunch; quit is the existing
+  menu / Ctrl-C). Precedent: 1.3.2 / 1.4.1 (scoped clarifications of the same sentence).
+  Recorded in feature `013-background-window`.
 - **1.4.1** (2026-09-01) — Principle III: added a sentence permitting several concurrent
   instances of the one artifact, each one window with its own `instances/<name>/` profile
   directory and no shared state, identified by an `--instance` label. PATCH: a scoped
@@ -277,4 +287,4 @@ diffs.
   `specs/initial/business-logic.md`, plus Architecture Constraints, Development Workflow, and
   Governance.
 
-**Version**: 1.4.1 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-09-01
+**Version**: 1.4.2 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-09-01

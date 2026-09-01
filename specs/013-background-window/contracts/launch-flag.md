@@ -22,11 +22,14 @@ flags (`--instance`, `--port`) are unchanged from feature 012.
 window visibility & focus, decided after win.loadFile():
 
   --background present                         → hidden;  never focused
-  else source === "default" (no --instance,
-       no HYPPO_USER_DATA_DIR)                 → shown;   focused        (unchanged from 012)
-  else (named --instance, or HYPPO_USER_DATA_DIR
-       env-dir launch)                         → shown;   never focused  (revises 012)
+  else source === "instance" (named --instance)→ shown;   never focused  (revises 012)
+  else (source "default" or "env-dir")         → shown;   focused        (unchanged from 012)
 ```
+
+**As-built note:** `env-dir` (`HYPPO_USER_DATA_DIR`) joins `default` on shown+focused, not
+`showInactive()`. No FR constrains env-dir focus (FR-003 names `--instance`, FR-004 the
+default), and `show:false` + `showInactive()` + stacked `WebContentsView`s crashed on macOS.
+See `research.md` R1 / `contracts/window-lifecycle.md`.
 
 `source` is the feature-012 `ResolvedInstance.source`. `--background` outranks `source`:
 a `--background` default instance is still hidden.

@@ -58,6 +58,12 @@ npx electron . --instance <slug> --port <port>
 open -na HyppoVisor --args --instance <slug> --port <port>
 ```
 
+Add **`--background`** when running several instances at once (or to keep the
+window off the user's screen): the instance starts hidden and never takes focus,
+but every MCP tool works exactly the same. To sign in, the user re-runs the same
+`--instance <slug>` line to summon the window, then closes it — the instance
+drops back to the background and keeps serving.
+
 The window title reads `HyppoVisor — <slug>`. If the port is already in use, the
 app's **Connection & MCP** panel shows a "port in use" error — the user frees the
 port or relaunches with a different `--port`. HyppoVisor never silently picks
@@ -106,4 +112,5 @@ Run one HyppoVisor per project or persona — each its own `--instance` / `--por
 / profile (separate logins, settings, recent URLs, interaction log). They don't
 interfere: a form-fill in one instance never blocks a read in another. Register
 each with its own `hyppovisor-<slug>` name so the client entries don't clobber
-each other.
+each other. Launch each with `--background` so the parallel instances add no
+windows and no focus changes to the user's screen.

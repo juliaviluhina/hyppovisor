@@ -100,7 +100,9 @@ test("US4: no --instance and an unusable env-dir basename → bare title and ser
   let app: ElectronApplication | undefined;
   try {
     app = await electron.launch({
-      args: [mainEntry],
+      // --background (feature 013): this spec only reads label / server name /
+      // title / handshake — no window needs to be visible (SC-005).
+      args: [mainEntry, "--background"],
       env: { ...process.env, HYPPO_USER_DATA_DIR: dir },
     });
     const page = await app.firstWindow();
@@ -157,7 +159,7 @@ test("US3: an in-use port surfaces as port-unavailable; browser still works; pan
   let app: ElectronApplication | undefined;
   try {
     app = await electron.launch({
-      args: [mainEntry, "--port", String(busy)],
+      args: [mainEntry, "--port", String(busy), "--background"],
       env: { ...process.env, HYPPO_USER_DATA_DIR: dir },
     });
     const page = await app.firstWindow();

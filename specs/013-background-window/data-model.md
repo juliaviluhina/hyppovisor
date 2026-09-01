@@ -42,15 +42,21 @@ resolved.background === true
     → (leave hidden)
       app.dock?.hide()                       // macOS: no Dock icon, no ⌘-Tab
       win.setSkipTaskbar(true)               // Windows/Linux
+      win.webContents.setBackgroundThrottling(false)   // runtime, --background only
 
 resolved.background === false
-  && resolved.source === "default"
+  && resolved.source === "instance"
+    → win.showInactive()                     // named --instance: visible, never focused
+
+resolved.background === false
+  && resolved.source !== "instance"          // "default" or "env-dir"
     → win.show()                             // shown + focused — unchanged from today
-
-resolved.background === false
-  && resolved.source !== "default"
-    → win.showInactive()                     // named / env-dir: visible, never focused
 ```
+
+**As-built note:** `showInactive()` is scoped to `source === "instance"`; `env-dir` joins
+`default` on `win.show()`. `backgroundThrottling` is a runtime call in the `--background`
+branch, not a `webPreferences` key. Both changes avoid a macOS / Electron-33 SIGSEGV — see
+`research.md` R1 / R7.
 
 ### `quitting` flag
 

@@ -23,6 +23,13 @@ export interface ResolvedInstance {
   cliPort: number | undefined;
   /** Which rule set `userDataDir` — for diagnostics and the panel's "launched with…" notice. */
   source: "instance" | "env-dir" | "default";
+  /**
+   * `true` iff a bare `--background` token appears anywhere in argv (feature 013).
+   * A boolean flag: it takes no value, and `--background=…` forms are not the flag
+   * (ignored as an unknown arg). Drives window visibility in `main()` — a
+   * `--background` instance starts hidden and never takes focus. Never aborts startup.
+   */
+  background: boolean;
 }
 
 export interface ResolveInstanceError {
@@ -117,6 +124,9 @@ export function resolveInstance(
 ): ResolveInstanceResult {
   const rawInstance = readFlag(argv, "--instance");
   const rawPort = readFlag(argv, "--port");
+  // Bare boolean flag (feature 013): present anywhere → hidden launch. An
+  // `--background=…` form is deliberately not matched — the flag has no value.
+  const background = argv.includes("--background");
 
   let name: string | null = null;
   if (rawInstance !== undefined) {
@@ -154,5 +164,5 @@ export function resolveInstance(
 
   const label = name ?? (envDir ? deriveLabel(basename(envDir)) : "");
 
-  return { name, label, userDataDir, cliPort, source };
+  return { name, label, userDataDir, cliPort, source, background };
 }

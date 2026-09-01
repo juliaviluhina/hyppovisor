@@ -61,6 +61,12 @@ claude mcp add --transport http --scope user hyppovisor-work http://127.0.0.1:73
 The `initialize` handshake reports the same name, so a connected agent can
 confirm which instance it reached.
 
+For several instances at once, add `--background` so none of them opens a window
+or steals focus — the MCP server, reads, drafts, and screenshots all work the
+same. Summon one when you need to sign in (`npx electron . --instance <name>`),
+close the window, and it drops back to the background. See
+[Background instances](./configuration.md#background-instances).
+
 ## Then
 
 ```bash
