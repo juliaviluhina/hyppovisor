@@ -26,4 +26,9 @@ contextBridge.exposeInMainWorld("hyppo", {
   regenerateToken: () => ipcRenderer.invoke("chrome:regenerate-token"),
   setPanelOpen: (o) => ipcRenderer.invoke("chrome:set-panel-open", o),
   onConnectionChanged: (cb) => ipcRenderer.on("connection:changed", (_e, c) => cb(c)),
+
+  // Local instance-management panel (feature 014).
+  listInstances: () => ipcRenderer.invoke("chrome:list-instances"),
+  closeInstance: (pid) => ipcRenderer.invoke("chrome:close-instance", pid),
+  closeAllTabs: () => ipcRenderer.invoke("chrome:close-all-tabs"),
 });

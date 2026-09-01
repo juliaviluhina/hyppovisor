@@ -139,6 +139,25 @@ export class TabManager {
     this.events.onChange();
   }
 
+  /**
+   * Close every content tab at once (feature 014, US2). Returns the window to the
+   * freshly-launched zero-tab state — HyppoVisor has no placeholder/home tab.
+   * Fires exactly one `onChange` (not one per tab); a no-op with no event when
+   * there is nothing open. Leaves `overlay`, the MCP server, settings, and the
+   * shared browser session untouched.
+   */
+  closeAll(): void {
+    if (this.tabs.size === 0) return;
+    for (const tab of this.tabs.values()) {
+      this.win.contentView.removeChildView(tab.view);
+      tab.view.webContents.close();
+    }
+    this.tabs.clear();
+    this.activeId = null;
+    this.layout();
+    this.events.onChange();
+  }
+
   list(): TabSummary[] {
     return [...this.tabs.values()].map((t) => this.summary(t));
   }

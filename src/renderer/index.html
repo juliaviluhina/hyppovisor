@@ -331,6 +331,88 @@
       .about-titles .row {
         margin: 2px 0;
       }
+
+      /* feature 014 — instance list + confirm modal + close-all-tabs */
+      .inst-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 6px 0;
+      }
+      .inst-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 8px;
+        border: 1px solid rgba(128, 128, 128, 0.3);
+        border-radius: 6px;
+      }
+      .inst-row.inst-current {
+        background: rgba(128, 128, 128, 0.12);
+      }
+      .inst-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+        flex: 1;
+      }
+      .inst-name {
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .inst-sub {
+        font-size: 11px;
+        opacity: 0.7;
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+      }
+      .inst-tag {
+        flex: none;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        opacity: 0.6;
+      }
+      .inst-close {
+        flex: none;
+      }
+      #inst-confirm-wrap {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        display: flex;
+        background: rgba(0, 0, 0, 0.35);
+        border-radius: 10px;
+      }
+      .inst-confirm {
+        margin: auto;
+        width: 340px;
+        max-width: 90%;
+        padding: 16px;
+        border-radius: 10px;
+        background: Canvas;
+        color: CanvasText;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+      }
+      .inst-confirm-title {
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .inst-confirm-body {
+        font-size: 12px;
+        opacity: 0.85;
+        margin-bottom: 12px;
+      }
+      .inst-confirm-row {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .inst-confirm-go {
+        color: crimson;
+      }
     </style>
   </head>
   <body>
@@ -359,7 +441,7 @@
       <div id="panel-card">
         <div id="panel-head">
           <div id="panel-head-title">
-            <h2>Connection &amp; MCP</h2>
+            <h2>HyppoVisor</h2>
             <span id="panel-instance"></span>
           </div>
           <button id="panel-close" title="Close" aria-label="Close">✕</button>

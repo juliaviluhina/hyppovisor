@@ -331,6 +331,49 @@ export interface EffectiveConnection {
   serverName: string;
 }
 
+// ─── feature 014: local instance-management panel ───────────────────────────
+
+/** Foreground vs. `--background` (feature 013) launch. */
+export type InstanceMode = "foreground" | "background";
+
+/**
+ * The `<profile>/runtime.json` file each running instance writes into its **own**
+ * profile directory once its MCP server has bound, and removes on `before-quit`
+ * (feature 014, data-model.md §2). Transient runtime coordinates only — not a
+ * cross-instance registry: N instances ⇒ N independent files, each written by its
+ * owner alone. A reader that sees any `schema` but `1` ignores the file.
+ */
+export interface InstanceRuntime {
+  schema: 1;
+  /** `process.pid` of the owning instance. */
+  pid: number;
+  /** Effective MCP HTTP port at write time; `null` in stdio mode. */
+  port: number | null;
+  mode: InstanceMode;
+  /** `ResolvedInstance.label` — `""` for the default instance. */
+  label: string;
+  /** ISO 8601, set once when the file is first written. */
+  startedAt: string;
+}
+
+/**
+ * One row in the panel's instance list (feature 014, data-model.md §3). Produced
+ * by `listInstances()`, carried by `chrome:list-instances`.
+ */
+export interface InstanceSummary {
+  pid: number;
+  /** `""` renders as `"(default)"`. */
+  label: string;
+  /** `null` renders as `"stdio"`. */
+  port: number | null;
+  mode: InstanceMode;
+  /** Loopback `connect` probe result; `"stdio"` when `port === null`. */
+  state: "responding" | "not-responding" | "stdio";
+  /** `pid === process.pid` — row marked "this instance", close control disabled. */
+  isCurrent: boolean;
+  startedAt: string;
+}
+
 export interface InteractionLogEntry {
   at: string;
   tabId: string;
