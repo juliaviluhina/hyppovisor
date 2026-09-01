@@ -38,6 +38,16 @@ redirects.
 **Notes**: uses the person's existing in-app session; never triggers an app-initiated login
 (FR-002, FR-016). Does not follow in-page links on its own (FR-006).
 
+**Link-shim resolution** (feature 002): before validation and loading, a known
+redirect-interstitial URL is resolved to the `http(s)` destination it carries — LinkedIn
+`www.linkedin.com/safety/go/?url=`, Google `www.google.<tld>/url?q=`, Facebook
+`l.facebook.com/l.php?u=`, Reddit `out.reddit.com/?url=`, Outlook Safe Links
+`*.safelinks.protection.outlook.com/?url=`. A shim wrapping another shim resolves through,
+up to 3 hops. A URL not on this list — including one that merely carries a `url`/`q`/`u`
+parameter — opens verbatim, as does a shim whose destination is not `http(s)`
+(`javascript:` / `data:` / `mailto:` / unparseable) or is absent/empty. The recognized set
+is enumerable via `listShimRules()`.
+
 ---
 
 ## `list_open_tabs`
@@ -70,13 +80,24 @@ visible text offline (SC-010).
 
 ## `navigate`
 
-Points an existing tab at a new URL.
+Points an existing tab at a new URL. Applies the same **link-shim resolution** as
+`open_url` (feature 002) to the target URL before the tab is pointed at it.
 
 **Input**: `{ tabId: string, url: string }`
 
 **Returns**: `{ tabId, url, title, loadState, queueDepth }`
 
 **Errors**: `TAB_NOT_FOUND`, `INVALID_URL`, `SCHEME_NOT_ALLOWED`, `LOAD_FAILED`.
+
+---
+
+## Interaction audit log — `operation: "unwrap"`
+
+New entry type (feature 002), appended **only when a link-shim resolution changed the
+opened URL**: `{ operation: "unwrap", url: <wrapper>, target: <destination>, outcome:
+"permitted", ruleId: null, error: null, unwrap: { hops: 1..3 } }`. `open_url` / `navigate`
+write no audit entry for an ordinary navigation — this feature does not introduce general
+navigation logging.
 
 ---
 

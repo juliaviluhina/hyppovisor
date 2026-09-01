@@ -6,7 +6,9 @@ import { config } from "../config.js";
 import { HyppoError } from "../errors.js";
 import type { LoadState, OpenedBy, TabDetail, TabSummary } from "../../shared/types.js";
 import { validateUrl } from "./url-policy.js";
+import { unwrapUrl } from "./unwrap-url.js";
 import { isAuthPopupUrl, authPopupLabel } from "./auth-popups.js";
+import type { InteractionLog } from "../safety/interaction-log.js";
 
 interface Tab {
   id: string;
@@ -45,6 +47,7 @@ export class TabManager {
   constructor(
     private readonly win: BrowserWindow,
     private readonly events: TabEvents,
+    private readonly log: InteractionLog,
   ) {
     this.win.on("resize", () => this.layout());
     this.win.webContents.session.on("will-download", (event, item) => {
@@ -53,10 +56,34 @@ export class TabManager {
     });
   }
 
+  /**
+   * Record a link-shim resolution in the interaction audit log (feature 002).
+   * One `operation: "unwrap"` entry, only when the opened URL actually changed;
+   * ordinary navigations stay unlogged.
+   */
+  private recordUnwrap(tabId: string, r: ReturnType<typeof unwrapUrl>): void {
+    if (r.hops === 0) return;
+    this.log.record({
+      tabId,
+      url: r.wrapper as string,
+      operation: "unwrap",
+      target: r.url,
+      outcome: "permitted",
+      ruleId: null,
+      error: null,
+      unwrap: { hops: r.hops },
+    });
+  }
+
   /** Open a URL in a new tab. Throws HyppoError for policy / load failures. */
   async open(rawUrl: string, openedBy: OpenedBy): Promise<TabSummary> {
-    const url = validateUrl(rawUrl);
+    // Resolve a known redirect-interstitial / link-shim URL to its stated
+    // destination BEFORE validation and loading (FR-013). Non-shim URLs pass
+    // through untouched.
+    const resolved = unwrapUrl(rawUrl);
+    const url = validateUrl(resolved.url);
     const id = `tab-${++this.seq}`;
+    this.recordUnwrap(id, resolved);
 
     const view = new WebContentsView({
       webPreferences: { sandbox: true, contextIsolation: true },
@@ -82,7 +109,9 @@ export class TabManager {
   /** Point an existing tab at a new URL (FR: navigate). */
   async navigate(tabId: string, rawUrl: string): Promise<TabSummary> {
     const tab = this.require(tabId);
-    const url = validateUrl(rawUrl);
+    const resolved = unwrapUrl(rawUrl); // link-shim resolution first (FR-013)
+    const url = validateUrl(resolved.url);
+    this.recordUnwrap(tabId, resolved);
     this.setActive(tabId);
     this.events.onActivity(tabId, `navigate → ${url}`);
     await this.load(tab, url);

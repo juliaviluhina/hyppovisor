@@ -329,6 +329,8 @@ export interface InteractionLogEntry {
   error: string | null;
   /** Set only on a batch-summary entry (`operation: "fill_batch"`, feature 004). */
   batch?: { requested: number; written: number; errored: number; refused: number };
+  /** Set only on an `operation: "unwrap"` entry (feature 002 — a link-shim resolution). */
+  unwrap?: { hops: number };
   /**
    * Set only on a non-rule `choose_option` refusal (feature 006) — one of
    * `ChooseOptionReason`. `ruleId` stays `null` in that case.

@@ -43,6 +43,18 @@ Boundaries set by the project constitution:
   pages. Following meta-refresh or JavaScript redirects encountered *after* a page loads is
   explicitly out of scope because that set is not enumerable.
 
+## Clarifications
+
+### Session 2026-09-01
+
+- Q: `open_url` and `navigate` write nothing to the interaction audit log today (only
+  `interact` / `choose_option` / `wait_for_selector` do). Where should an unwrap be
+  recorded? → A: A **dedicated audit entry with `operation: "unwrap"`**, written **only when
+  a hop occurred** — `url` is the wrapper, `target` is the final destination, `outcome` is
+  `"permitted"`, and a typed `unwrap: { hops }` field carries the hop count (mirroring the
+  `batch` field feature 004 added). Ordinary navigations still write nothing (FR-011). This
+  feature does **not** start logging every navigation.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Reach the destination behind a link shim (Priority: P1)
@@ -188,9 +200,14 @@ to the log as if it were a real page.
 - **FR-009**: Link-shim unwrapping MUST apply to both the "open a URL in a new tab" operation
   and the "point an existing tab at a new URL" operation, with identical resolution behavior.
 - **FR-010**: Whenever an unwrap changes the URL that is actually opened, the app MUST append
-  one entry to the interaction audit log recording both the original wrapper URL and the
-  final resolved destination, and (when more than one hop occurred) the hop count.
-- **FR-011**: When no unwrap occurs, the app MUST NOT write any unwrap-related audit entry.
+  exactly one entry to the interaction audit log with `operation: "unwrap"`, `outcome:
+  "permitted"`, `url` set to the original wrapper URL, `target` set to the final resolved
+  destination, and a typed `unwrap: { hops }` field carrying the hop count (analogous to the
+  `batch` field on a `fill_batch` summary entry). This requires threading the interaction
+  log into the "open a URL" and "point a tab at a URL" paths, which do not write to it today.
+- **FR-011**: When no unwrap occurs, the app MUST NOT write any audit entry for the
+  navigation — `open_url` / `navigate` remain unlogged in the no-unwrap case. This feature
+  does not introduce general navigation logging.
 - **FR-012**: The description of the "open a URL" tool MUST be updated: it currently states
   the tool "does not log in, submit, or follow links on its own"; it MUST now also state that
   it resolves known link-shim / redirect-interstitial URLs to their stated destination before
@@ -216,8 +233,10 @@ to the log as if it were a real page.
 - **Unwrap result**: the outcome of resolving an input URL — the final URL to open, whether
   an unwrap occurred, and the number of hops. Drives both what is navigated to and what is
   logged.
-- **Audit log entry**: the existing interaction-log record type, extended to represent an
-  unwrap event carrying the wrapper URL, the resolved destination, and the hop count.
+- **Audit log entry**: a new `operation: "unwrap"` record in the existing interaction log —
+  `url` = wrapper, `target` = resolved destination, `outcome: "permitted"`, plus a typed
+  `unwrap: { hops }` field. It is the only audit line `open_url` / `navigate` ever produce,
+  and only when a hop occurred.
 
 ## Success Criteria *(mandatory)*
 
@@ -232,9 +251,10 @@ to the log as if it were a real page.
   in no navigation to that destination.
 - **SC-004**: No shim chain, however constructed, causes more than 3 resolution iterations or
   a non-terminating loop.
-- **SC-005**: Every unwrap that changes the opened URL produces exactly one audit entry
-  naming both the wrapper and the destination; every navigation with no unwrap produces no
-  such entry.
+- **SC-005**: Every unwrap that changes the opened URL produces exactly one
+  `operation: "unwrap"` audit entry naming both the wrapper (`url`) and the destination
+  (`target`) with the hop count; every navigation with no unwrap produces no audit entry at
+  all.
 - **SC-006**: The recognized shim set can be listed programmatically and every entry is
   covered by a unit test asserting its wrapper→destination transform.
 - **SC-007**: The resolution function is pure — a test that runs it offline, with no app or
@@ -249,6 +269,9 @@ to the log as if it were a real page.
   LinkedIn safety link wrapping the real URL) while still bounding pathological input.
 - The existing interaction audit log (`interaction-log.jsonl` in the app's `userData`
   directory) is the correct place to record unwrap events; a new log or store is not needed.
+  The `open_url` / `navigate` paths do not currently write to it, so the plan threads the
+  logger through and adds one `operation: "unwrap"` entry type (see Clarifications
+  2026-09-01).
 - Host-variant matching is handled per-rule (explicit variant lists or a documented pattern),
   not by a general public-suffix library.
 - The wrapper URL's own fragment and extra parameters are not carried onto the destination;

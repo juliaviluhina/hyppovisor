@@ -77,7 +77,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   server.tool(
     "open_url",
     "Open an http(s) URL in a new embedded tab using the person's existing session. " +
-      "Does not log in, submit, or follow links on its own.",
+      "Does not log in or submit. Resolves a known redirect-interstitial / link-shim URL " +
+      "(LinkedIn /safety/go/, Google /url, Facebook /l.php, Reddit out.reddit.com, Outlook " +
+      "Safe Links) to the http(s) destination carried in its query parameter and opens that " +
+      "directly; every other URL opens verbatim.",
     { url: z.string().describe("Absolute http or https URL") },
     async ({ url }) => {
       seen("open_url");
@@ -129,7 +132,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
 
   server.tool(
     "navigate",
-    "Point an existing tab at a new http(s) URL.",
+    "Point an existing tab at a new http(s) URL. Resolves known link-shim / " +
+      "redirect-interstitial URLs to their stated destination before navigating.",
     { tabId: z.string(), url: z.string() },
     async ({ tabId, url }) => {
       seen("navigate");
