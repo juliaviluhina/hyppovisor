@@ -3,6 +3,7 @@
 // collision-dialog copy, and listen-error classification.
 // See specs/012-multi-instance/{data-model.md §1, contracts/instance-launch.md}.
 
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   INSTANCE_NAME_RE,
@@ -16,7 +17,9 @@ import {
   type ResolvedInstance,
 } from "../../src/main/instance.js";
 
-const BASE = "/home/u/.config/hyppovisor";
+// Built with join() so the expectations match the platform separator (CI runs on Windows too).
+const BASE = join("home", "u", ".config", "hyppovisor");
+const instancesDir = (name: string) => join(BASE, "instances", name);
 const ok = (r: ReturnType<typeof resolveInstance>): ResolvedInstance => {
   if (isResolveError(r)) throw new Error(`unexpected error: ${r.reason}`);
   return r;
@@ -90,14 +93,14 @@ describe("resolveInstance — precedence", () => {
     const r = ok(resolveInstance(["electron", ".", "--instance", "work"], {}, BASE));
     expect(r.name).toBe("work");
     expect(r.label).toBe("work");
-    expect(r.userDataDir).toBe(`${BASE}/instances/work`);
+    expect(r.userDataDir).toBe(instancesDir("work"));
     expect(r.source).toBe("instance");
   });
 
   it("--instance=<name> form is accepted too", () => {
     const r = ok(resolveInstance(["electron", ".", "--instance=client-2"], {}, BASE));
     expect(r.name).toBe("client-2");
-    expect(r.userDataDir).toBe(`${BASE}/instances/client-2`);
+    expect(r.userDataDir).toBe(instancesDir("client-2"));
   });
 
   it("HYPPO_USER_DATA_DIR wins for the dir; label falls back to its basename", () => {
