@@ -276,8 +276,11 @@ export interface FormFieldMap {
 // ─── feature 007: MCP connection panel ──────────────────────────────────────
 
 export type ConnectionTransport = "http" | "stdio";
-/** Where an effective value came from — env var, persisted settings, or the built-in default. */
-export type ConnectionSource = "env" | "persisted" | "default";
+/**
+ * Where an effective value came from — env var, a `--port` launch flag (feature
+ * 012), persisted settings, or the built-in default.
+ */
+export type ConnectionSource = "env" | "cli" | "persisted" | "default";
 
 /** The persisted shape of `<userData>/settings.json` (feature 007, contracts/settings-file.md). */
 export interface ConnectionSettings {
@@ -316,6 +319,16 @@ export interface EffectiveConnection {
   portSource: ConnectionSource;
   tokenSource: ConnectionSource;
   lastRequest: LastRequestInfo | null;
+  /**
+   * HTTP bind outcome (feature 012). `"listening"` on success; `"port-unavailable"`
+   * when the port was in use (EADDRINUSE); `"error"` for any other bind failure;
+   * `"stdio"` when `transport === "stdio"`.
+   */
+  serverStatus: "listening" | "port-unavailable" | "error" | "stdio";
+  /** Instance display label (feature 012); `""` for the default instance. */
+  instanceLabel: string;
+  /** MCP server name (feature 012): `"hyppovisor"` or `"hyppovisor-<label>"`. */
+  serverName: string;
 }
 
 export interface InteractionLogEntry {

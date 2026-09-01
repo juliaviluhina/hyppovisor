@@ -179,6 +179,28 @@
         margin: 0;
         font-size: 15px;
       }
+      #panel-head-title {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        min-width: 0;
+      }
+      #panel-instance {
+        font-size: 12px;
+        font-weight: 600;
+        opacity: 0.7;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #panel-instance:empty {
+        display: none;
+      }
+      .panel-error {
+        color: crimson;
+        font-weight: 600;
+        margin: 8px 0;
+      }
       #panel-close {
         flex: none;
         border: 0;
@@ -336,7 +358,10 @@
       <div id="panel-backdrop"></div>
       <div id="panel-card">
         <div id="panel-head">
-          <h2>Connection &amp; MCP</h2>
+          <div id="panel-head-title">
+            <h2>Connection &amp; MCP</h2>
+            <span id="panel-instance"></span>
+          </div>
           <button id="panel-close" title="Close" aria-label="Close">✕</button>
         </div>
         <div id="panel-body"></div>

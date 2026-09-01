@@ -89,3 +89,36 @@ describe("stdioJsonConfig", () => {
     expect(obj.mcpServers.hyppovisor.env).toEqual({ HYPPO_MCP_STDIO: "1" });
   });
 });
+
+// ── feature 012 — per-instance server name ──────────────────────────────────
+describe("serverName threading (feature 012)", () => {
+  const named: SnippetState = { port: 7358, tokenRequired: false, token: null, serverName: "hyppovisor-work" };
+
+  it("mcpAddCommand uses the given serverName as the add name", () => {
+    expect(mcpAddCommand(named)).toBe(
+      "claude mcp add --transport http --scope user hyppovisor-work http://127.0.0.1:7358/mcp",
+    );
+  });
+
+  it("mcpJsonConfig keys mcpServers by the given serverName", () => {
+    const obj = JSON.parse(mcpJsonConfig(named));
+    expect(Object.keys(obj.mcpServers)).toEqual(["hyppovisor-work"]);
+    expect(obj.mcpServers["hyppovisor-work"].url).toBe("http://127.0.0.1:7358/mcp");
+  });
+
+  it("stdioJsonConfig keys mcpServers by the given serverName", () => {
+    const obj = JSON.parse(
+      stdioJsonConfig(
+        { command: "/x/electron", args: ["/x/index.js", "--instance", "work"], env: { HYPPO_MCP_STDIO: "1" } },
+        "hyppovisor-work",
+      ),
+    );
+    expect(Object.keys(obj.mcpServers)).toEqual(["hyppovisor-work"]);
+  });
+
+  it("omitting serverName keeps the bare hyppovisor default", () => {
+    expect(mcpAddCommand(noToken)).toContain(" hyppovisor http://");
+    expect(Object.keys(JSON.parse(mcpJsonConfig(noToken)).mcpServers)).toEqual(["hyppovisor"]);
+    expect(Object.keys(JSON.parse(stdioJsonConfig({ command: "e", args: [], env: { HYPPO_MCP_STDIO: "1" } })).mcpServers)).toEqual(["hyppovisor"]);
+  });
+});

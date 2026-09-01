@@ -128,5 +128,30 @@ describe("resolveEffective", () => {
     const e = resolveEffective(DEFAULTS, { stdio: true }, false);
     expect(e.transport).toBe("stdio");
     expect(e.endpointUrl).toBe("");
+    expect(e.serverStatus).toBe("stdio");
+  });
+
+  // ── feature 012 — the --port launch flag (cliPort) ─────────────────────────
+  it("cliPort sits between env and persisted: used when no env, over persisted", () => {
+    const e = resolveEffective({ port: 9000, tokenRequired: false, token: null }, noEnv, true, 7358);
+    expect(e.port).toBe(7358);
+    expect(e.portSource).toBe("cli");
+  });
+
+  it("env.port still wins over cliPort", () => {
+    const e = resolveEffective(DEFAULTS, { port: 5555, stdio: false }, false, 7358);
+    expect(e.port).toBe(5555);
+    expect(e.portSource).toBe("env");
+  });
+
+  it("no cliPort → persisted / default unchanged", () => {
+    expect(resolveEffective(DEFAULTS, noEnv, false).portSource).toBe("default");
+    expect(resolveEffective(DEFAULTS, noEnv, false).serverStatus).toBe("listening");
+  });
+
+  it("carries feature-012 placeholders the caller overrides", () => {
+    const e = resolveEffective(DEFAULTS, noEnv, false);
+    expect(e.instanceLabel).toBe("");
+    expect(e.serverName).toBe("hyppovisor");
   });
 });

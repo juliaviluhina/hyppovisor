@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-01
 
-**Status**: Draft
+**Status**: Implemented (2026-09-01)
 
 **Input**: User description: "Run more than one HyppoVisor on one machine — supported and
 safe multi-instance." Take the **lean cut** of issue 006: make the existing stopgap

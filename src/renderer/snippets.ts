@@ -7,6 +7,8 @@ export interface SnippetState {
   port: number;
   tokenRequired: boolean;
   token: string | null;
+  /** MCP server name (feature 012): `"hyppovisor"` or `"hyppovisor-<label>"`. Default `"hyppovisor"`. */
+  serverName?: string;
 }
 
 /** Launch descriptor for the stdio JSON block (mirrors shared `StdioLaunch`). */
@@ -22,7 +24,8 @@ export function endpointUrl(port: number): string {
 
 /** `claude mcp add …` — runnable unedited for the current settings (SC-006). */
 export function mcpAddCommand(s: SnippetState): string {
-  const base = `claude mcp add --transport http --scope user hyppovisor ${endpointUrl(s.port)}`;
+  const name = s.serverName ?? "hyppovisor";
+  const base = `claude mcp add --transport http --scope user ${name} ${endpointUrl(s.port)}`;
   return s.tokenRequired && s.token
     ? `${base} --header "Authorization: Bearer ${s.token}"`
     : base;
@@ -30,6 +33,7 @@ export function mcpAddCommand(s: SnippetState): string {
 
 /** The `mcpServers` JSON block for an HTTP endpoint — valid JSON as displayed. */
 export function mcpJsonConfig(s: SnippetState): string {
+  const name = s.serverName ?? "hyppovisor";
   const entry: Record<string, unknown> = {
     type: "http",
     url: endpointUrl(s.port),
@@ -37,15 +41,15 @@ export function mcpJsonConfig(s: SnippetState): string {
   if (s.tokenRequired && s.token) {
     entry.headers = { Authorization: `Bearer ${s.token}` };
   }
-  return JSON.stringify({ mcpServers: { hyppovisor: entry } }, null, 2);
+  return JSON.stringify({ mcpServers: { [name]: entry } }, null, 2);
 }
 
 /** The `mcpServers` JSON block for a stdio launch (shown only in stdio mode). */
-export function stdioJsonConfig(launch: StdioLaunchLike): string {
+export function stdioJsonConfig(launch: StdioLaunchLike, serverName = "hyppovisor"): string {
   return JSON.stringify(
     {
       mcpServers: {
-        hyppovisor: { command: launch.command, args: launch.args, env: launch.env },
+        [serverName]: { command: launch.command, args: launch.args, env: launch.env },
       },
     },
     null,

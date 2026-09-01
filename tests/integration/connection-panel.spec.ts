@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { createServer, type Server } from "node:http";
-import { launchAppFull, mcpPost, tempUserDataDir } from "./helpers.js";
+import { E2E_SERVER_NAME, launchAppFull, mcpPost, tempUserDataDir } from "./helpers.js";
 
 const INIT = {
   jsonrpc: "2.0",
@@ -39,14 +39,14 @@ test("US1: panel shows the endpoint, a claude mcp add command, and a JSON block;
     const bodyText = () => page.locator("#panel-body").innerText();
     expect(await bodyText()).toContain("http://127.0.0.1:7357/mcp");
     expect(await bodyText()).toContain(
-      "claude mcp add --transport http --scope user hyppovisor http://127.0.0.1:7357/mcp",
+      `claude mcp add --transport http --scope user ${E2E_SERVER_NAME} http://127.0.0.1:7357/mcp`,
     );
 
     const jsonText = await page.locator('.section:has([data-copy="json"]) pre.snippet').innerText();
     const parsed = JSON.parse(jsonText);
-    expect(Object.keys(parsed.mcpServers)).toEqual(["hyppovisor"]);
-    expect(parsed.mcpServers.hyppovisor.url).toBe("http://127.0.0.1:7357/mcp");
-    expect(parsed.mcpServers.hyppovisor.headers).toBeUndefined();
+    expect(Object.keys(parsed.mcpServers)).toEqual([E2E_SERVER_NAME]);
+    expect(parsed.mcpServers[E2E_SERVER_NAME].url).toBe("http://127.0.0.1:7357/mcp");
+    expect(parsed.mcpServers[E2E_SERVER_NAME].headers).toBeUndefined();
 
     // Windows normalises clipboard line endings to CRLF on read-back; the
     // snippets are authored with LF, so compare on LF.
@@ -54,7 +54,7 @@ test("US1: panel shows the endpoint, a claude mcp add command, and a JSON block;
       app.evaluate(({ clipboard }) => clipboard.readText()).then((s) => s.replace(/\r\n/g, "\n"));
     for (const [kind, expected] of [
       ["endpoint", "http://127.0.0.1:7357/mcp"],
-      ["command", "claude mcp add --transport http --scope user hyppovisor http://127.0.0.1:7357/mcp"],
+      ["command", `claude mcp add --transport http --scope user ${E2E_SERVER_NAME} http://127.0.0.1:7357/mcp`],
     ] as const) {
       await page.locator(`[data-copy="${kind}"]`).click();
       await expect(page.locator(`[data-copy="${kind}"]`)).toHaveClass(/\bok\b/);
@@ -309,9 +309,10 @@ test("§7: port + token changes reflow the panel and stay board-free; stdio mode
     const json = JSON.parse(
       await page.locator('.section:has([data-copy="stdio"]) pre.snippet').innerText(),
     );
-    expect(json.mcpServers.hyppovisor.command.toLowerCase()).toContain("electron");
-    expect(json.mcpServers.hyppovisor.args[0]).toMatch(/dist[/\\]main[/\\]index\.js$/);
-    expect(json.mcpServers.hyppovisor.env).toEqual({ HYPPO_MCP_STDIO: "1" });
+    expect(json.mcpServers[E2E_SERVER_NAME].command.toLowerCase()).toContain("electron");
+    expect(json.mcpServers[E2E_SERVER_NAME].args[0]).toMatch(/dist[/\\]main[/\\]index\.js$/);
+    expect(json.mcpServers[E2E_SERVER_NAME].args).toContain("--instance");
+    expect(json.mcpServers[E2E_SERVER_NAME].env).toEqual({ HYPPO_MCP_STDIO: "1" });
   } finally {
     await stdio.close();
   }
