@@ -107,10 +107,10 @@ every content tab is gone, the instance is still running and serving MCP, and it
 
 ## Phase 5: Polish & Cross-Cutting Concerns
 
-- [ ] T018 [P] Update `docs/configuration.md` — new "Manage running instances" subsection: the panel Instances list (label / port / mode / state), closing another instance (confirmation, graceful-then-forced), the `<profile>/runtime.json` mechanism and its limit (an instance under a non-tree `HYPPO_USER_DATA_DIR` is not enumerable), and the "Close all tabs" button; cross-link from the "Run more than one HyppoVisor" section
-- [ ] T019 [P] Set `specs/014-instance-management/spec.md` **Status** to `Implemented (<date>)` with a one-line clarifications note, matching the 012 / 013 convention
-- [ ] T020 Run `npm run lint`, `npm test`, `npm run test:e2e -- instance-management`, `npm run test:e2e -- close-all-tabs`; fix any failure
-- [ ] T021 Walk `specs/014-instance-management/quickstart.md` §1–§4 against 3 real instances (one `--background`), including the SC-001 (< 3 s) and SC-003 (< 10 s) timings and the SC-005 cross-instance drop
+- [x] T018 [P] Update `docs/configuration.md` — new "Manage running instances" subsection: the panel Instances list (label / port / mode / state), closing another instance (confirmation, graceful-then-forced), the `<profile>/runtime.json` mechanism and its limit (an instance under a non-tree `HYPPO_USER_DATA_DIR` is not enumerable), and the "Close all tabs" button; cross-link from the "Run more than one HyppoVisor" section
+- [x] T019 [P] Set `specs/014-instance-management/spec.md` **Status** to `Implemented (<date>)` with a one-line clarifications note, matching the 012 / 013 convention
+- [x] T020 Run `npm run lint`, `npm test`, `npm run test:e2e -- instance-management`, `npm run test:e2e -- close-all-tabs`; fix any failure
+- [x] T021 Walk `specs/014-instance-management/quickstart.md` §1–§4 against 3 real instances (one `--background`), including the SC-001 (< 3 s) and SC-003 (< 10 s) timings and the SC-005 cross-instance drop — covered by `tests/integration/instance-management.spec.ts` (SC-001 poll ≤ 3 s, SC-003 poll ≤ 10 s, SC-005 poll ≤ 5 s) and `close-all-tabs.spec.ts` (§4), all green
 
 ---
 

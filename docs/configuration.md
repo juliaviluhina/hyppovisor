@@ -89,6 +89,8 @@ open -na HyppoVisor --args --instance work --port 7358
 For a multi-instance setup, add **`--background`** to each launch: no windows
 appear, nothing steals focus, and every instance still serves its agent. Summon
 one only when you need to sign in. See [Background instances](#background-instances).
+To see every running instance and shut one down without hunting for its PID, use
+the connection panel — see [Manage running instances](#manage-running-instances).
 
 - **Re-launching a profile that is already running is the summon gesture.** The
   second process opens no window and exits quietly (a stderr line, no dialog);
@@ -156,3 +158,53 @@ does **not** quit. Summoning or dismissing one instance never affects another.
 Quitting one instance leaves every other running instance untouched. `--background`
 is a launch flag only — it persists nothing; a standing setup is your own shell
 alias or per-project launch line.
+
+## Manage running instances
+
+The connection panel (the hippo button, top-right) has an **Instances** section
+that lists every HyppoVisor this user is running on this machine — including
+`--background` ones that have no window, Dock icon, or ⌘-Tab entry. Each row shows
+the instance label (or `(default)`), its MCP port (or `stdio`), its mode
+(foreground / background), and whether the port is currently responding. The row
+for the instance you are looking at is tagged **this instance** and its close
+control is disabled — you cannot shut down the window you are in by accident. The
+list refreshes on its own about every 2 seconds
+(`HYPPO_INSTANCE_POLL_MS`).
+
+**Close** on any other row asks for a one-line confirmation naming the target and
+its port, then shuts that instance down: a `SIGTERM` (its own handler turns that
+into a clean quit — window closed, process ended, MCP port released), escalating
+to `SIGKILL` if it has not exited within a grace window
+(`HYPPO_INSTANCE_SHUTDOWN_GRACE_MS`, default 5000 ms). There is no undo. Any MCP
+call in flight against that instance fails cleanly for its caller — the shutdown
+does not wait for it. An instance that exits or crashes on its own (or is closed
+from another instance's panel) drops off every list within a few seconds.
+
+How discovery works: each instance writes a small `runtime.json` (`pid`, `port`,
+`mode`, `label`, `startedAt`) into its **own** profile directory once its MCP
+server has bound, and removes it on quit; the panel reads those sibling files,
+drops any whose process is gone (reclaiming the stale file), and probes each live
+port on loopback. There is no shared registry, no index, no daemon — just N
+independent per-instance files. **Limitation:** an instance launched with
+`HYPPO_USER_DATA_DIR` pointing outside the app-support `instances/` tree (test
+harnesses, wrapper scripts) is not enumerable from other instances; its own panel
+still lists it and shows a "can't list other instances" note if nothing else is
+found.
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `HYPPO_INSTANCE_POLL_MS` | `2000` | How often the panel re-lists instances while open. |
+| `HYPPO_INSTANCE_PROBE_TIMEOUT_MS` | `400` | Loopback connect deadline for the responding / not-responding check. |
+| `HYPPO_INSTANCE_SHUTDOWN_GRACE_MS` | `5000` | `SIGTERM` → `SIGKILL` window when closing another instance. |
+
+On Windows `SIGTERM` is an immediate terminate (no graceful hook), so the close is
+abrupt there and the `SIGKILL` escalation is a no-op; macOS and Linux get the true
+graceful-then-forced behaviour.
+
+### Close all tabs
+
+The same panel has a **Tabs** section with a **Close all tabs** button: it tears
+down every open content tab in the current instance and leaves it in the
+freshly-launched state (no tabs — HyppoVisor has no placeholder/home tab). The MCP
+server, `settings.json`, recent URLs, and every logged-in browser session are
+untouched; only the tabs close. The button is disabled when no tab is open.

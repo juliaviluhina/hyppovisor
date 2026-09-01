@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-01
 
-**Status**: Draft
+**Status**: Implemented (2026-09-01) — clarify session 2026-09-01 (4 Qs); Principle III amended to 1.5.0 for the local instance-management surface (FR-014).
 
 **Input**: User description: "given few hyppovisor instances executed on local machine (and
 some of them might be in background mode) — to simplify instances management, add a page
