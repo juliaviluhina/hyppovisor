@@ -97,7 +97,7 @@ async function main(): Promise<void> {
       saveRecentUrls(app.getPath("userData"), recentUrls);
       send("recent-urls:changed", recentUrls);
     },
-  });
+  }, log);
 
   // MCP connection state (feature 007): persisted settings + the environment,
   // folded into one effective view the panel and status line render.

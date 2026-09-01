@@ -5,9 +5,9 @@ error returns a named code.
 
 | Tool | Purpose |
 |---|---|
-| `open_url` | Open an http(s) URL in a new tab. |
+| `open_url` | Open an http(s) URL in a new tab. Resolves known link-shim / redirect-interstitial URLs first (see below). |
 | `list_open_tabs` | List open tabs: id, URL, title, load state. |
-| `navigate` | Point an existing tab at a new URL. |
+| `navigate` | Point an existing tab at a new URL. Same link-shim resolution as `open_url`. |
 | `read_page` | One tab's verbatim visible text; DOM only when asked. Nothing stored. |
 | `read_form_fields` | Read-only view of a tab's form controls (see below). |
 | `interact` | One bounded action: `click` / `fill` / `scroll` / `space` / `choose_option` / `list_options`. Never submits. |
@@ -16,6 +16,18 @@ error returns a named code.
 
 Full contract:
 [`specs/001-open-any-url/contracts/mcp-tools.md`](../specs/001-open-any-url/contracts/mcp-tools.md).
+
+## Link-shim resolution
+
+`open_url` and `navigate` recognize five redirect-interstitial families and open the
+`http(s)` destination the wrapper carries, so an agent never stalls at a "Continue" button
+the blocklist refuses: LinkedIn `/safety/go/?url=`, Google `/url?q=` (all regional
+domains), Facebook `l.facebook.com/l.php?u=`, Reddit `out.reddit.com/?url=`, Outlook Safe
+Links `*.safelinks.protection.outlook.com/?url=`. A shim wrapping a shim resolves through,
+up to 3 hops. Everything else — any other host, a non-matching path, an absent parameter,
+or a destination that is not `http(s)` — opens verbatim. It is a pure string transform: no
+network request, no page read. Each resolution that changes the opened URL writes one
+`operation: "unwrap"` line to the interaction audit log.
 
 ## read_form_fields
 
