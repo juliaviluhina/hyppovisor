@@ -38,10 +38,10 @@ legitimate draft.
 This feature makes `fill` and the form-field verdict **faithful**: a success means the
 value landed, a refusal names a rule that genuinely applies to *that* control, and the
 verdict a caller sees is a function of the page as it is at call time. It adds nothing
-that acts on the outside world. Two adjacent items ride along: whether the agent may
-click a non-submit "Add row" button to reveal a sub-form it then fills (a Principle I
-scope question, see Clarifications), and trimming the default form-read payload so a large
-form's map fits in one response.
+that acts on the outside world. Two adjacent items ride along: letting the agent click a
+non-submit in-form button to reveal a repeatable sub-form it then fills — a narrow
+carve-out to `in-form` that needs a MINOR constitution amendment (see Clarifications) —
+and trimming the default form-read payload so a large form's map fits in one response.
 
 ## Clarifications
 
@@ -57,15 +57,28 @@ form's map fits in one response.
 - Q: `in-form` currently refuses every `click` inside a `<form>`, including a non-submit
   `<button type="button">` that only reveals a sub-form ("Add Experience" / "Add
   Education"). Permit a narrow carve-out, or keep the refusal and treat "Add row" as a
-  human step? → A: [NEEDS CLARIFICATION: this is a Principle I scope decision — see
-  Question 1 below. The rest of the spec is written to be correct either way; US4 and
-  FR-013–FR-016 are the only parts that change.]
+  human step? → A: **Permit the narrow carve-out (Option B / B1).** `click` on an in-form
+  `<button>` is permitted when it is `type="button"`, declares no `formaction`, is not the
+  form's implicit submit control, and its own accessible name matches none of the
+  external-act-label patterns — **regardless of whether the form also contains a separate
+  submit / save control**. Every submit control, `formaction` button, implicit submit, and
+  outward-labelled button stays refused. Each permitted in-form click is written to the
+  interaction-audit log. This touches Principle I and MUST land as a MINOR constitution
+  amendment (a "revealing a repeatable sub-form via a non-submit in-form button is
+  preparation" clause) before implementation.
 - Q: For the oversized default form-read payload (P5), lower what each record carries by
   default, or make "required controls not yet filled" the implicit default projection
   when the caller gives none? → A: **Lower the default record** — move the rarely-read
   diagnostic flags behind the existing verbose / non-interactive opt-in; keep an unscoped
   read returning every control so existing callers are not surprised by a changed default
   scope.
+- Q: In a batch `fill`, when one entry is written but a read-back shows it did not land (a
+  masked-input no-op), what happens to the batch's other entries? → A: **Partial success,
+  per-entry report.** Every other entry is still written and confirmed; the no-op entry
+  reports the FR-003 non-success outcome. The batch response is a list of per-entry
+  results, not one pass/fail. Atomicity stays on the pre-check stage (one blocklist
+  refusal still refuses the whole batch with nothing written); it does not extend to
+  mid-write page behaviour.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -195,15 +208,17 @@ A form has an "Add Experience" / "Add Education" button that opens an empty sub-
 sub-form's fields do not exist in the page until the button is clicked. The button is a
 plain `<button type="button">` that submits nothing. Today every click inside a `<form>`
 is refused, so the agent cannot create a single Experience row — it can only fill sections
-a human already expanded. The agent needs a bounded way to reveal such a sub-form, *if*
-the project decides a non-submit in-form button is preparation rather than an external
-act.
+a human already expanded. The agent needs a bounded way to reveal such a sub-form: a
+`click` on an in-form button that is `type="button"`, declares no `formaction`, is not the
+form's implicit submit control, and whose own label reads as no outward act — permitted
+whether or not the form also holds a separate submit / save control.
 
 **Why this priority**: In the captured session this meant zero Experience rows could be
-added by tooling — a real capability gap. But permitting any in-form click touches
-Principle I, so it ranks behind the fidelity fixes and is gated on the constitution
-decision in Question 1. If the decision is "keep the refusal", this story becomes a
-documentation-only change (US4 acceptance scenario 4).
+added by tooling — a real capability gap. Permitting any in-form click touches Principle I,
+so it ranks behind the fidelity fixes and depends on a MINOR constitution amendment
+landing first (Clarifications, 2026-08-31). Everything the amendment blesses is still
+preparation: no submit, no send, no Enter, and every genuinely terminal control stays
+refused.
 
 **Independent Test**: On a form with an "Add row" button that is `type="button"`, has no
 submit or `formaction` behaviour, and whose label matches none of the outward-action
@@ -212,22 +227,25 @@ form submission occurred (URL unchanged, no navigation, no network submit), and 
 entry recorded the click. Then confirm a `type="submit"` button, and a `type="button"`
 labelled "Save and continue", are both still refused.
 
-**Acceptance Scenarios** *(scenarios 1–3 apply only if Question 1 resolves to "permit the
-carve-out"; scenario 4 applies otherwise)*:
+**Acceptance Scenarios**:
 
 1. **Given** an in-form `<button type="button">` with no submit semantics and an
    innocuous label, **When** the agent clicks it to reveal a sub-form, **Then** the click
-   is permitted, the sub-form's fields become readable, and no submission occurred.
+   is permitted, the sub-form's fields become readable, no submission occurred (URL
+   unchanged, no navigation, no network submit), and an interaction-audit entry recorded
+   the click.
 2. **Given** an in-form button that is `type="submit"`, has `formaction`, or is the form's
    implicit submit control, **When** the agent targets it, **Then** it is refused,
    unchanged from today.
-3. **Given** an in-form `type="button"` whose label reads as an outward act ("Save",
+3. **Given** an in-form `type="button"` whose own label reads as an outward act ("Save",
    "Apply", "Send", "Continue"), **When** the agent targets it, **Then** it is refused by
    the external-act-label rule.
-4. **Given** the decision is to keep the in-form refusal, **When** the agent encounters an
-   "Add row" button, **Then** the refusal reason and the tool documentation both state
-   that expanding a repeatable section is a human step, in the same terms the file-upload
-   and submit hand-offs already use.
+4. **Given** a form that contains *no* separate submit / save control, **When** the agent
+   clicks a qualifying `type="button"` in it, **Then** the click is still permitted — the
+   carve-out does not require a sibling submit control to exist (decision B1).
+5. **Given** the carve-out ships without the constitution amendment merged, **When** a
+   plan or PR proposes the code change, **Then** the review gate blocks it until the
+   amendment lands.
 
 ---
 
@@ -294,6 +312,10 @@ default record are still returned when the verbose / non-interactive option is s
 - **`read_form_fields` default-record change interacting with the 64 KB trim** — if a
   form is still over budget with the leaner records, the existing trim-and-flag behaviour
   applies unchanged.
+- **Batch `fill` where one entry no-ops mid-write** — the entries before and after it are
+  still written and confirmed; the batch response lists a per-entry outcome for every
+  entry, and the caller can hand off exactly the entries that did not land. A batch that
+  fails a *pre-check* (a blocklist refusal on any target) still writes nothing, unchanged.
 
 ## Requirements *(mandatory)*
 
@@ -313,10 +335,12 @@ default record are still returned when the verbose / non-interactive option is s
   with a written count of zero and a reason, and MUST NOT report success.
 - **FR-004**: When the read-back confirms the value, `fill` MUST report success and MUST
   include the value as read back (the final stored form, post-formatting) in the response.
-- **FR-005**: In a batch `fill`, each entry's outcome (success with final value, or the
-  non-success outcome from FR-003) MUST be reported independently per entry, consistent
-  with the existing batch result shape; a masked-field no-op MUST NOT be reported as a
-  batch-wide success.
+- **FR-005**: In a batch `fill` where all entries pass the pre-check stage, each entry
+  MUST be attempted and MUST report its own outcome (success with final value, or the
+  FR-003 non-success outcome) independently — a mid-write no-op on one entry MUST NOT stop
+  the others being written and MUST NOT be reported as a batch-wide success or a
+  batch-wide failure. The existing pre-check atomicity is unchanged: a single blocklist
+  refusal still refuses the whole batch with nothing written.
 - **FR-006**: FR-001–FR-005 MUST NOT change behaviour for a plain unmasked field: the
   value is set, read back, and confirmed exactly as before, and the response shape for the
   already-working case stays backward compatible (the read-back value is additive).
@@ -343,25 +367,32 @@ default record are still returned when the verbose / non-interactive option is s
   whose own label reads as an outward act. No control that is refused today may become
   permitted except the specific mislabel class this story fixes.
 
-#### In-form non-submit button — governed by the Question 1 decision (US4)
+#### In-form non-submit button carve-out (US4)
 
-> The wording below assumes Question 1 resolves to **permit the narrow carve-out**. If it
-> resolves to **keep the refusal**, FR-013–FR-015 are dropped and only FR-016 applies.
+> Decided 2026-08-31: permit the narrow carve-out, interpretation B1 (no sibling submit
+> control required). Depends on a MINOR constitution amendment landing first (FR-016).
 
-- **FR-013**: `click` on a `<button>` inside a `<form>` MUST be permitted only when *all*
-  hold: the button's `type` is explicitly `button` (not `submit`, not the form's implicit
-  submit control); it declares no `formaction`; and its own accessible name matches none
-  of the external-act-label patterns.
+- **FR-013**: `click` on a `<button>` inside a `<form>` MUST be permitted when *all* hold:
+  the button's `type` is explicitly `button` (not `submit`, not the form's implicit submit
+  control); it declares no `formaction`; and its own accessible name matches none of the
+  external-act-label patterns. This permission MUST NOT depend on whether the form also
+  contains a separate submit / save control (interpretation B1).
 - **FR-014**: Every other in-form click MUST remain refused exactly as today — any
   `type="submit"` control, any button with `formaction`, the implicit submit control, any
-  control whose label reads as an outward act, and any non-button element inside the form.
+  control whose own label reads as an outward act, and any non-button element inside the
+  form. No operation gains the Enter key.
 - **FR-015**: A permitted in-form click MUST be recorded in the interaction-audit log with
   the same detail as any other permitted interaction, so a click that turns out to have a
-  script-driven side effect is detectable after the fact.
-- **FR-016**: If the decision is to keep the in-form refusal, the `in-form` refusal reason
-  and the `interact` / safety documentation MUST state that revealing or adding a
-  repeatable section is a human step, in the same terms the file-upload and submit
-  hand-offs already use, and no code path changes.
+  script-driven side effect is detectable after the fact. The `in-form` rule's
+  documentation (safety document, `interact` contract) MUST describe the carve-out's four
+  conditions and MUST state that the final Submit and file attachment remain human steps.
+- **FR-016**: The carve-out MUST NOT be implemented until a constitution amendment adding
+  a "revealing a repeatable sub-form via a non-submit in-form button is preparation"
+  clause to Principle I is merged. The amendment is MINOR (a binding clarification that
+  expands existing guidance, by the precedent of amendments 1.2.0 and 1.3.0). The feature
+  plan MUST carry a Constitution Check citing Principle I, and the Amendment History entry
+  MUST reference this feature and
+  `specs/issues/005-form-fill-second-workable-session.md`.
 
 #### Verdict evaluated at call time against a settled DOM (US3)
 
@@ -397,8 +428,8 @@ default record are still returned when the verbose / non-interactive option is s
 
 - **FR-026**: Nothing in this feature adds an operation that acts on the outside world:
   `fill` still cannot submit, no Enter key is introduced, `read_form_fields` still writes
-  no audit entry, and the only new audit entries are for in-form clicks *if* FR-013 is
-  adopted.
+  no audit entry. The only new audit entries are the permitted in-form clicks from FR-013,
+  which the constitution amendment (FR-016) classifies as preparation.
 - **FR-027**: Any change to the tool contract wording (the `fill` non-success outcome, the
   read-back value in the response, the `in-form` decision) MUST be reflected consistently
   everywhere the behaviour is documented for the agent or the human — the tool contract
@@ -438,17 +469,17 @@ default record are still returned when the verbose / non-interactive option is s
   change return the identical verdict — no flip between permitted and refused.
 - **SC-006**: A `fill` immediately followed by a second `fill` on the same selector, same
   page state, is never refused by a rule that did not fire on the first call.
-- **SC-007**: If the carve-out is adopted: every "Add row" button in the captured form is
-  clickable, its sub-form becomes fillable, and no click causes a navigation or a form
-  submission; every submit and every "Save" / "Apply" labelled button in the same form is
-  still refused. If the carve-out is rejected: the `in-form` refusal on those buttons
-  carries the documented "human step" reason and no in-form click is permitted.
+- **SC-007**: Every "Add row" button in the captured form is clickable, its sub-form
+  becomes fillable, and no click causes a navigation or a form submission; every submit
+  and every "Save" / "Apply" labelled button in the same form is still refused. This holds
+  on a form with no separate submit control too (interpretation B1).
 - **SC-008**: An unscoped, unprojected `read_form_fields` on the ~60-control captured form
   returns in one response within the byte budget with no record trimmed, and the calling
   tool does not spill it to a file.
 - **SC-009**: The per-rule safety test suite covers the mislabel class (SC-003's control
-  shape) and, if adopted, the in-form `type="button"` carve-out boundary
-  (submit / formaction / outward-label all still refused), and passes.
+  shape) and the in-form `type="button"` carve-out boundary (submit / formaction /
+  implicit-submit / outward-label all still refused; sibling submit control not required),
+  and passes.
 - **SC-010**: The tool contract, safety document, and README describe the `fill`
   read-back / non-success outcome and the resolved `in-form` behaviour identically — the
   consistency check passes.
@@ -476,13 +507,12 @@ default record are still returned when the verbose / non-interactive option is s
   changes, and only by moving flags behind the existing verbose opt-in.
 - **Constitution — Principles I and IV**: FR-001–FR-012 and FR-017–FR-027 weaken neither.
   `fill` gains a more truthful outcome and a more precise refusal; nothing new acts
-  outward; no credential value is exposed by the read-back. **FR-013–FR-015 (the in-form
-  `type="button"` carve-out) DO touch Principle I** and require the Question 1 decision;
-  if adopted, the plan MUST carry a Constitution Check citing Principle I and the change
-  MUST land as a constitution amendment (a new "revealing a repeatable sub-form via a
-  non-submit in-form button is preparation" clause, versioned MINOR by the precedent of
-  amendments 1.2.0 / 1.3.0), not a normal PR. If rejected, FR-016 keeps the current
-  boundary and no amendment is needed.
+  outward; no credential value is exposed by the read-back. **FR-013–FR-016 (the in-form
+  `type="button"` carve-out) DO touch Principle I.** Decided 2026-08-31 to adopt it
+  (interpretation B1): the plan MUST carry a Constitution Check citing Principle I and the
+  change MUST land as a constitution amendment (a new "revealing a repeatable sub-form via
+  a non-submit in-form button is preparation" clause, versioned MINOR by the precedent of
+  amendments 1.2.0 / 1.3.0), merged before the code change — not a normal PR.
 - **Non-goals unchanged from issues 004 / 005**: file uploads stay refused; value drafting
   gains no address / place autocomplete suggestion-picking; reCAPTCHA and the final Submit
   remain human steps; the Enter key is introduced nowhere.
@@ -495,8 +525,8 @@ default record are still returned when the verbose / non-interactive option is s
 - Reuses the safety blocklist (`in-form`, `external-act-label`) and the shared
   target-descriptor / accessible-name logic that `choose_option` and `read_form_fields`
   share.
-- The in-form-button user story (US4 / FR-013–FR-016) depends on resolving Question 1 and,
-  if it resolves to "permit", on a constitution amendment landing first.
+- The in-form-button user story (US4 / FR-013–FR-016) depends on a constitution amendment
+  (Principle I) landing before its code change — see FR-016.
 - Full background and per-finding rationale:
   `specs/issues/005-form-fill-second-workable-session.md` (and `004` for the carried-over
   non-goals).

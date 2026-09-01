@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,10 +31,11 @@
 
 ## Notes
 
-- One open [NEEDS CLARIFICATION]: **Question 1** — whether to permit a narrow carve-out
-  allowing `click` on a non-submit in-form `<button type="button">` that reveals a
-  sub-form (P4 in issue 005). This is a Principle I scope decision. The spec is written to
-  be correct either way: only US4 and FR-013–FR-016 depend on the answer, and the
-  "keep the refusal" branch (FR-016) is a documentation-only change. All other sections
-  are ready for planning regardless.
-- Resolve Question 1 via `/speckit-clarify` or by answering inline, then this item clears.
+- Clarification session 2026-08-31 resolved both open decisions:
+  1. **In-form non-submit button carve-out** — adopted (interpretation B1: no sibling
+     submit control required). Depends on a MINOR constitution amendment landing before
+     the code change (FR-016). US4 acceptance scenarios and FR-013–FR-016 updated.
+  2. **Batch `fill` partial-write semantics** — partial success with a per-entry report;
+     pre-check atomicity unchanged. FR-005 and an edge case updated.
+- No [NEEDS CLARIFICATION] markers remain. Spec is ready for `/speckit-plan`; the plan's
+  Constitution Check must cite Principle I and the amendment dependency.
