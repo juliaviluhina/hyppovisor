@@ -9,7 +9,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const read = (p: string): string => readFileSync(root + p, "utf8");
+// Normalise CRLF: Git checks these files out with native line endings, and the
+// Windows CI runner would otherwise leave a trailing \r on every split line.
+const read = (p: string): string => readFileSync(root + p, "utf8").replace(/\r\n/g, "\n");
 
 const HEADER_PATH = ".github/RELEASE_NOTES_HEADER.md";
 const HEADER = read(HEADER_PATH);
@@ -20,7 +22,7 @@ const WORKFLOW = read(".github/workflows/release.yml");
 /** The body of a top-level (2-space-indented) job key, up to the next such key or EOF. */
 function jobBlock(name: string): string {
   const lines = WORKFLOW.split("\n");
-  const start = lines.findIndex((l) => l === `  ${name}:`);
+  const start = lines.findIndex((l) => l.trimEnd() === `  ${name}:`);
   expect(start, `job "${name}" present in release.yml`).toBeGreaterThan(-1);
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
