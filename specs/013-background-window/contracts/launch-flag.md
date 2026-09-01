@@ -8,7 +8,7 @@ flags (`--instance`, `--port`) are unchanged from feature 012.
 
 | Flag | Form | Value | Effect |
 |---|---|---|---|
-| `--background` | `--background` (bare) | none — it is a boolean | The instance starts with **no visible window** and never takes focus. On macOS it shows no Dock icon and no ⌘-Tab entry; on Windows/Linux no taskbar button. Everything else (MCP server, tabs, reads, drafts, screenshots) runs exactly as a foreground instance. |
+| `--background` | `--background` (bare) | none — it is a boolean | The instance starts with **no visible window** and never takes focus. On macOS it shows no Dock icon and no ⌘-Tab entry; on Windows/Linux no taskbar button. MCP server, tabs, reads, drafts run exactly as a foreground instance. **`screenshot` is the exception** — a never-shown window has no surface, so it returns `SCREENSHOT_FAILED` (as built; see `research.md` R2). |
 
 - `--background` never takes a value. `--background=1` / `--background=false` do **not**
   match the flag (treated as an unknown arg and ignored) — the flag is present or absent.

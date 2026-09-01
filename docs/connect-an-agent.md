@@ -62,8 +62,9 @@ The `initialize` handshake reports the same name, so a connected agent can
 confirm which instance it reached.
 
 For several instances at once, add `--background` so none of them opens a window
-or steals focus — the MCP server, reads, drafts, and screenshots all work the
-same. Summon one when you need to sign in (`npx electron . --instance <name>`),
+or steals focus — the MCP server, reads, and drafts all work the same. (`screenshot`
+is the one exception: a hidden window has no surface to capture.) Summon one when
+you need to sign in or take a screenshot (`npx electron . --instance <name>`),
 close the window, and it drops back to the background. See
 [Background instances](./configuration.md#background-instances).
 

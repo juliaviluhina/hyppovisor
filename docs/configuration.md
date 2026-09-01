@@ -13,7 +13,7 @@ token** (generated, masked, regenerable). Both persist — see
 |---|---|
 | `--instance <name>` | Run a **named instance**: its own profile directory (`<user-data>/instances/<name>/`) and a display label. `<name>` is 1–32 chars, lowercase letters / digits / `-` / `_`, first char alphanumeric (e.g. `work`, `client-2`). An out-of-form name aborts startup. A named instance's window **opens without taking focus** — it never interrupts what you are typing. |
 | `--port <n>` | MCP HTTP port for this process (integer 1–65535). Omit it and the port resolves per the precedence below. Out-of-range aborts startup. |
-| `--background` | Start with **no visible window** and without taking focus. The MCP server, tabs, reads, drafts, and screenshots all work exactly as a foreground instance's — an agent drives it the same way. On macOS the instance shows **no Dock icon and no ⌘-Tab entry** while hidden; on Windows/Linux no taskbar button. Bare flag, no value. Never aborts startup. Composes with `--instance` / `--port` in any order. On a platform with no hidden-window state it degrades to a visible-but-inactive window (never focused). |
+| `--background` | Start with **no visible window** and without taking focus. The MCP server, tabs, navigation, page reads, form reads, and drafting all work exactly as a foreground instance's — an agent drives it the same way. The one exception is `screenshot`: a never-shown window has no rendered surface, so `screenshot` returns `SCREENSHOT_FAILED` until the instance is summoned. On macOS the instance shows **no Dock icon and no ⌘-Tab entry** while hidden; on Windows/Linux no taskbar button. Bare flag, no value. Never aborts startup. Composes with `--instance` / `--port` in any order. On a platform with no hidden-window state it degrades to a visible-but-inactive window (never focused). |
 
 ```bash
 npx electron . --instance work --port 7358
@@ -110,8 +110,13 @@ For stdio, add `--instance` to the spawn command — see
 ## Background instances
 
 `--background` starts an instance with **no visible window** and without taking
-focus. Its MCP server, tabs, reads, drafts, and screenshots behave exactly as a
-foreground instance's — an agent drives it the same way.
+focus. Its MCP server, tabs, navigation, page reads, form reads, and drafting
+behave exactly as a foreground instance's — an agent drives it the same way.
+
+**`screenshot` is the exception.** A window that has never been shown has no
+rendered surface, so the `screenshot` tool returns `SCREENSHOT_FAILED` for a
+`--background` instance. Every other tool is unaffected. Summon the window (below)
+if you need a picture, or run that instance without `--background`.
 
 ```bash
 # three quiet instances — no windows, no focus changes

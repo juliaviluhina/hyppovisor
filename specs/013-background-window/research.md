@@ -66,6 +66,27 @@ fallback **only in `src/main/page/screenshot.ts`**:
 - move the window fully off every display (`win.setPosition(-32000, -32000)`) while it is
   "shown", capture, restore.
 
+**Outcome (as built) — the fallback was declined; the limitation is documented instead.**
+Manual verification against a real standalone `--background` instance (driven over HTTP MCP,
+no CDP client) showed `capturePage()` **always** fails: `INTERNAL "Current display surface
+not available for capture"`, for local and remote pages, with retries. The e2e
+`screenshot.spec.ts` "proof" is a **false positive** — Playwright attaches a CDP client,
+which forces Chromium to keep compositing a hidden window; a real agent has no such client.
+Rather than take the fallback (a brief off-screen `showInactive()`/`hide()` around every
+capture — extra window churn, a visible flicker risk on some WMs, and threading the owning
+`BrowserWindow` into `screenshot.ts` which today only gets a `WebContents`), the decision is:
+
+- `src/main/page/screenshot.ts` maps the surface failure to a clear
+  `HyppoError("SCREENSHOT_FAILED", …)` naming the fix (summon the window / drop `--background`).
+- the `screenshot` MCP tool description, `docs/configuration.md`, `docs/tools.md`, and
+  `skills/hyppovisor/SKILL.md` state the limitation.
+- `read_page` / `read_form_fields` / `interact` / `wait_for_selector` are unaffected (no
+  surface needed) — the agent still has a full read/draft channel on a hidden instance.
+- FR-002 / SC-002 carry the as-built exception.
+
+If a surfaceless screenshot is wanted later, the off-screen-reveal fallback is the path;
+it is deferred, not lost.
+
 **Rationale**:
 - `read_page` / `read_form_fields` / `interact` / `wait_for_selector` use
   `executeJavaScript` and `sendInputEvent`, which do **not** depend on the window being

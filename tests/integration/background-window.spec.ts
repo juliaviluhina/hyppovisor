@@ -76,15 +76,19 @@ test("US1: two --background instances open no window yet serve MCP and drive the
     expect((await mcpPost(pA, init(1))).status).toBe(200);
     expect((await mcpPost(pB, init(1))).status).toBe(200);
 
-    // Every capability works exactly as for a visible instance — open, read,
-    // fill, screenshot — against a window that is never shown (SC-002).
+    // open / read / fill / list_tabs all work against a window that is never
+    // shown (SC-002). `screenshot` is NOT asserted here: a never-shown window has
+    // no compositor surface, so `capturePage()` fails in real standalone use
+    // (INTERNAL "Current display surface not available for capture"). Under this
+    // harness Playwright's CDP attachment keeps the hidden window painting, which
+    // would mask that — so the limitation is covered by the screenshot.ts
+    // NO_SURFACE mapping + its unit test, and documented (docs/configuration.md
+    // "Background instances", tools.md, SKILL.md). See research.md R2.
     for (const app of [A, B]) {
       const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/form.html`]);
       const page = await callHandle<{ text: string }>(app, "read", [tabId]);
       expect(page.text.length).toBeGreaterThan(0);
       await callHandle(app, "fillBatch", [tabId, [["#name", "Ada Lovelace"]]]);
-      const shot = await callHandle<{ byteLength: number }>(app, "screenshot", [tabId, {}]);
-      expect(shot.byteLength).toBeGreaterThan(0);
       const tabs = await callHandle<{ tabs: unknown[] }>(app, "list", []);
       expect(tabs.tabs.length).toBeGreaterThan(0);
     }

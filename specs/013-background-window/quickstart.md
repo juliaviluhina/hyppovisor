@@ -28,9 +28,12 @@ Expect:
   # → hyppovisor-work / hyppovisor-triage / hyppovisor-draft
   ```
 
-- Point an agent at `hyppovisor-work` and run `open_url`, `read_page`, `interact` (fill),
-  `screenshot` — every call behaves exactly as against a visible instance
+- Point an agent at `hyppovisor-work` and run `open_url`, `read_page`, `read_form_fields`,
+  `interact` (fill) — every call behaves exactly as against a visible instance
   (`contracts/launch-flag.md`, per-situation table).
+- `screenshot` is the **one exception**: a never-shown window has no rendered surface, so it
+  returns `SCREENSHOT_FAILED` naming the fix. Summon the window (step 2) or run without
+  `--background` to capture. Every other tool is unaffected. (`research.md` R2 — as built.)
 
 ## 2. Summon to sign in, then dismiss (US2 / SC-003)
 
@@ -82,19 +85,25 @@ answering. (While summoned, Cmd-Q / Ctrl-Q also quits.)
 npm run test:e2e
 ```
 
-Expect: **no HyppoVisor windows appear** on your screen during the run, and the pass/fail
-result matches a run with visible windows — including `screenshot.spec.ts`
-(`research.md` R2). If a screenshot assertion fails only under the hidden harness, the
-`src/main/page/screenshot.ts` reveal-then-capture fallback (R2) is the fix and the spec is
-re-run unchanged.
+Expect: **almost no HyppoVisor windows appear** during the run. `recent-urls.spec.ts` opts
+out (`--no-background`) because it drives the address bar through the renderer, and
+`auth-popup.spec.ts` opens the OAuth child window; everything else is windowless. Pass/fail
+matches a visible run.
+
+> `screenshot.spec.ts` passes under the hidden harness because Playwright's CDP attachment
+> keeps a hidden window compositing — this does **not** hold for a real standalone
+> `--background` instance, where `screenshot` returns `SCREENSHOT_FAILED`. See `research.md`
+> R2 (as built) and step 1's screenshot note.
 
 ## Automated checks
 
 ```bash
 npm test          # unit: instance.ts — --background parsing + composition with --instance/--port/env
-npm run test:e2e  # background-window.spec.ts: US1 two hidden instances + MCP; US2 summon + close→background;
-                  #                            US3 focus unchanged for a named instance; US5 quit isolates
-                  # screenshot.spec.ts: unchanged, now under the --background harness (R2 proof)
+npm run test:e2e  # background-window.spec.ts: US1 two hidden instances + MCP + open/read/fill;
+                  #                            US2 summon + close→background; US3 named instance no focus;
+                  #                            US5 quit isolates
+                  # screenshot.spec.ts: runs under the --background harness (CDP keeps it painting;
+                  #                     standalone --background returns SCREENSHOT_FAILED — research.md R2)
 npm run build && npm run lint
 ```
 

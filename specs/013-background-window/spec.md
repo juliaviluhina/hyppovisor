@@ -207,9 +207,12 @@ method. Confirm the process exits and any sibling instances are untouched.
 - **A platform with no hidden-window concept** (some Linux window managers). `--background`
   degrades to a visible-but-inactive window — never focused, never foreground — rather than
   failing to start.
-- **Screenshot / page read while the window is hidden.** Must return the same content as
-  when the window is visible. If the platform cannot capture a hidden window, the instance
-  does whatever is needed without the person seeing a window.
+- **Page read while the window is hidden.** Returns the same content as when the window is
+  visible (`read_page` / `read_form_fields` use `executeJavaScript`, no surface needed).
+- **Screenshot while the window is hidden.** As built, `screenshot` returns `SCREENSHOT_FAILED`
+  for a `--background` instance — a never-shown window has no compositor surface. The tool's
+  error names the fix (summon the window, or run without `--background`). This is the one
+  capability that is not at parity; see FR-002 and `research.md` R2.
 - **The terminal that launched a foreground `--background` instance is closed.** Process
   lifetime then follows the launch method (`open -na` detaches; a shell-foreground
   `electron .` does not); this feature does not change that.
@@ -228,8 +231,13 @@ method. Confirm the process exits and any sibling instances are untouched.
   no window visible on screen and without taking keyboard focus from the foreground
   application.
 - **FR-002**: A `--background` instance's MCP server, tabs, navigation, page reading, form
-  reading, drafting (fill / space / choose_option / reveal-click), and screenshot capability
-  MUST all function identically to a foreground instance's.
+  reading, and drafting (fill / space / choose_option / reveal-click) MUST all function
+  identically to a foreground instance's.
+  - **As-built exception:** `screenshot` does **not**. A window that has never been shown has
+    no compositor surface, so `capturePage()` fails; the tool returns `SCREENSHOT_FAILED`
+    with guidance to summon the window or drop `--background`. Every other tool is
+    unaffected. The R2 off-screen-reveal fallback was evaluated and declined as more
+    fragile than a clear, documented refusal; captured in `research.md` R2.
 - **FR-003**: Launching **any** named instance (`--instance <name>`), with or without
   `--background`, MUST NOT move focus away from the application the person is currently
   using and MUST NOT capture keystrokes intended for that application. Without `--background`
@@ -304,8 +312,9 @@ method. Confirm the process exits and any sibling instances are untouched.
 - **SC-001**: A person can start three instances with `--background` and keep working in
   another application with no window appearing and no interruption to their typing.
 - **SC-002**: Every capability that works in a foreground instance also works in a
-  `--background` instance — verified end to end (open, read, fill, screenshot, tab list)
-  against an instance whose window is never shown.
+  `--background` instance — verified end to end (open, read, fill, tab list) against an
+  instance whose window is never shown. **Except `screenshot`**, which needs a rendered
+  surface and returns `SCREENSHOT_FAILED` while hidden (as-built; see FR-002 / `research.md` R2).
 - **SC-003**: A person can bring a chosen background instance's window to the foreground
   within about 2 seconds using one documented gesture, sign in, and return it to the
   background.

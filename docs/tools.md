@@ -12,7 +12,7 @@ error returns a named code.
 | `read_form_fields` | Read-only view of a tab's form controls (see below). |
 | `interact` | One bounded action: `click` / `fill` / `scroll` / `space` / `choose_option` / `list_options`. Never submits. |
 | `wait_for_selector` | Wait for an element, up to a timeout. |
-| `screenshot` | Picture of a tab — viewport, element clip, or full page. JPEG, ≤256 KB, inline, never written to disk. |
+| `screenshot` | Picture of a tab — viewport, element clip, or full page. JPEG, ≤256 KB, inline, never written to disk. Needs a visible window: on a `--background` instance it returns `SCREENSHOT_FAILED` (every other tool still works). |
 
 Full contract:
 [`specs/001-open-any-url/contracts/mcp-tools.md`](../specs/001-open-any-url/contracts/mcp-tools.md).

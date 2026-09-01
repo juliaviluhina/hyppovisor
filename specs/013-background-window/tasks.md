@@ -213,5 +213,18 @@ US1 (MVP) → US2 (summon + close-to-background) → US3 (named-instance focus s
 5. **`multi-instance.spec.ts`** — two direct `electron.launch` calls gained `--background`
    (they only read label / server name / title / handshake; no window needed).
 
-**Result:** unit 301 passed; e2e 119 passed (was 115 — +4 `background-window.spec.ts`);
+6. **`screenshot` is not at parity on `--background` (R2 fallback declined).** Manual
+   verification against a real standalone `--background` instance (HTTP MCP, no CDP) showed
+   `capturePage()` always fails — `INTERNAL "Current display surface not available for
+   capture"`. The e2e `screenshot.spec.ts` pass is a false positive: Playwright's CDP client
+   keeps a hidden window compositing. Decision: **do not** take the off-screen-reveal
+   fallback; instead `screenshot.ts` maps the surface error to a clear
+   `HyppoError("SCREENSHOT_FAILED", …)` (naming the fix), and the limitation is stated in
+   the `screenshot` tool description, `docs/configuration.md`, `docs/tools.md`,
+   `docs/connect-an-agent.md`, `skills/hyppovisor/SKILL.md`, FR-002, SC-002, and
+   `research.md` R2. `background-window.spec.ts` US1 no longer asserts screenshot; a new
+   `screenshot.test.ts` unit block covers the error mapping. `read_page` /
+   `read_form_fields` / `interact` / `wait_for_selector` are unaffected (no surface needed).
+
+**Result:** unit 303 passed; e2e 119 passed (was 115 — +4 `background-window.spec.ts`);
 `npm run build` + `npm run lint` clean.

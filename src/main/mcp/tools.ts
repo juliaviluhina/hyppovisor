@@ -345,7 +345,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       "was downscaled, `limitNotMet: true` means it is still over budget at the compression " +
       "floor. Retrieval only: nothing is written to disk, no interaction-audit entry is made, " +
       "credential inputs stay masked as rendered. The screenshot is a supplementary visual " +
-      "aid — `read_page` remains the verbatim-text channel.",
+      "aid — `read_page` remains the verbatim-text channel. NOTE: an instance launched with " +
+      "`--background` has no rendered surface, so this tool returns SCREENSHOT_FAILED there; " +
+      "`read_page` / `read_form_fields` / `interact` are unaffected. Summon the window " +
+      "(re-launch the same `--instance <name>`) or run without `--background` to capture.",
     {
       tabId: z.string(),
       selector: z.string().optional().describe("Clip to this element's on-screen box"),

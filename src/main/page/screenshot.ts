@@ -124,6 +124,32 @@ function rectScript(selector: string): string {
 
 const NOT_RENDERABLE = "The element resolved but is not renderable (zero-size or fully off-viewport).";
 
+/** Copy for the one case `capturePage` cannot serve: a window that has never been
+ *  shown has no compositor surface (feature 013 `--background`). read_page /
+ *  read_form_fields / interact do not need a surface and are unaffected. */
+const NO_SURFACE =
+  "This instance has no visible window, so there is no rendered surface to capture " +
+  "(it was launched with --background). read_page and read_form_fields still work. " +
+  "To take a screenshot, summon the window — re-launch it with the same `--instance " +
+  "<name>` — or run the instance without --background.";
+
+/** `wc.capturePage()` with the "no display surface" failure mapped to a clear
+ *  HyppoError instead of a raw Chromium INTERNAL string. */
+async function capture(
+  wc: WebContents,
+  rect?: { x: number; y: number; width: number; height: number },
+): Promise<NativeImage> {
+  try {
+    return rect ? await wc.capturePage(rect) : await wc.capturePage();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/display surface|not available for capture/i.test(msg)) {
+      throw new HyppoError("SCREENSHOT_FAILED", NO_SURFACE, { cause: msg });
+    }
+    throw e;
+  }
+}
+
 async function captureElement(wc: WebContents, selector: string): Promise<NativeImage> {
   const probe = (await wc.executeJavaScript(rectScript(selector), true)) as RectProbe;
   assertSelectorValid(probe);
@@ -134,7 +160,7 @@ async function captureElement(wc: WebContents, selector: string): Promise<Native
   if (width < 1 || height < 1 || !probe.inViewport) {
     throw new HyppoError("SCREENSHOT_FAILED", NOT_RENDERABLE);
   }
-  return wc.capturePage({
+  return capture(wc, {
     x: Math.max(0, Math.round(x)),
     y: Math.max(0, Math.round(y)),
     width: Math.round(width),
@@ -166,9 +192,11 @@ async function captureFullPage(wc: WebContents, format: "jpeg" | "png"): Promise
     return img;
   } catch (e) {
     if (e instanceof HyppoError) throw e;
-    throw new HyppoError("SCREENSHOT_FAILED", "The full-page capture pipeline failed.", {
-      cause: e instanceof Error ? e.message : String(e),
-    });
+    const cause = e instanceof Error ? e.message : String(e);
+    if (/display surface|not available for capture/i.test(cause)) {
+      throw new HyppoError("SCREENSHOT_FAILED", NO_SURFACE, { cause });
+    }
+    throw new HyppoError("SCREENSHOT_FAILED", "The full-page capture pipeline failed.", { cause });
   } finally {
     try {
       wc.debugger.detach();
@@ -202,7 +230,7 @@ export async function takeScreenshot(
     image = await captureFullPage(wc, format);
     fullPage = true;
   } else {
-    image = await wc.capturePage();
+    image = await capture(wc);
   }
   if (image.isEmpty()) {
     throw new HyppoError("SCREENSHOT_FAILED", "The capture produced an empty image.");

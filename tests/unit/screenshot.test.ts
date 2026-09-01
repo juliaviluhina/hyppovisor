@@ -3,11 +3,14 @@
 // tests/integration/screenshot.spec.ts.
 
 import { describe, it, expect } from "vitest";
+import type { WebContents } from "electron";
 import {
   fitImage,
   qualitySteps,
+  takeScreenshot,
   type EncodableImage,
 } from "../../src/main/page/screenshot.js";
+import { HyppoError } from "../../src/main/errors.js";
 
 interface StubOpts {
   /** encoded JPEG byte length for a given quality + width */
@@ -94,5 +97,25 @@ describe("fitImage", () => {
     expect(img.resizeCalls.map((c) => c.width)).toEqual([800, 640, 512, 410]);
     expect(r.width).toBe(410);
     expect(r.limitNotMet).toBe(false);
+  });
+});
+
+describe("takeScreenshot — no rendered surface (feature 013 --background)", () => {
+  const wcThatFails = (message: string) =>
+    ({
+      capturePage: () => Promise.reject(new Error(message)),
+    }) as unknown as WebContents;
+
+  it("maps Chromium's 'display surface not available' to a clear SCREENSHOT_FAILED", async () => {
+    const wc = wcThatFails("Current display surface not available for capture");
+    await expect(takeScreenshot(wc, { tabId: "tab-1" })).rejects.toMatchObject({
+      code: "SCREENSHOT_FAILED",
+    });
+    await expect(takeScreenshot(wc, { tabId: "tab-1" })).rejects.toThrow(/--background/);
+  });
+
+  it("passes an unrelated capturePage failure through unchanged", async () => {
+    const wc = wcThatFails("some other GPU error");
+    await expect(takeScreenshot(wc, { tabId: "tab-1" })).rejects.not.toBeInstanceOf(HyppoError);
   });
 });
