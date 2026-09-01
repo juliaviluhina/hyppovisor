@@ -85,15 +85,16 @@ answering. (While summoned, Cmd-Q / Ctrl-Q also quits.)
 npm run test:e2e
 ```
 
-Expect: **almost no HyppoVisor windows appear** during the run. `recent-urls.spec.ts` opts
-out (`--no-background`) because it drives the address bar through the renderer, and
-`auth-popup.spec.ts` opens the OAuth child window; everything else is windowless. Pass/fail
-matches a visible run.
+Expect: **almost no HyppoVisor windows appear** during the run. Three specs keep a visible
+window: `recent-urls.spec.ts` (drives the address bar through the renderer) and
+`screenshot.spec.ts` (`capturePage` needs a rendered surface) both opt out via
+`--no-background` / `{ background: false }`, and `auth-popup.spec.ts` opens the OAuth child
+window. Everything else is windowless. Pass/fail matches a visible run.
 
-> `screenshot.spec.ts` passes under the hidden harness because Playwright's CDP attachment
-> keeps a hidden window compositing — this does **not** hold for a real standalone
-> `--background` instance, where `screenshot` returns `SCREENSHOT_FAILED`. See `research.md`
-> R2 (as built) and step 1's screenshot note.
+> `screenshot` on a real standalone `--background` instance returns `SCREENSHOT_FAILED` — a
+> never-shown window has no compositor surface (and on headless CI the capture hangs the
+> renderer). `screenshot.spec.ts` therefore runs with a visible window. See `research.md` R2
+> (as built) and step 1's screenshot note.
 
 ## Automated checks
 
@@ -102,8 +103,8 @@ npm test          # unit: instance.ts — --background parsing + composition wit
 npm run test:e2e  # background-window.spec.ts: US1 two hidden instances + MCP + open/read/fill;
                   #                            US2 summon + close→background; US3 named instance no focus;
                   #                            US5 quit isolates
-                  # screenshot.spec.ts: runs under the --background harness (CDP keeps it painting;
-                  #                     standalone --background returns SCREENSHOT_FAILED — research.md R2)
+                  # screenshot.spec.ts: runs with a VISIBLE window ({ background: false }) — capture
+                  #                     needs a surface; standalone --background returns SCREENSHOT_FAILED (R2)
 npm run build && npm run lint
 ```
 

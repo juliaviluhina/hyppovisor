@@ -47,6 +47,7 @@ export async function startFixtureServer(): Promise<{ server: Server; base: stri
 
 export async function launchApp(
   extraEnv: Record<string, string> = {},
+  opts: { background?: boolean } = {},
 ): Promise<ElectronApplication> {
   // Give every launch its own throwaway HYPPO_USER_DATA_DIR (feature 012, R11):
   // the single-instance lock is keyed on userData, so sharing the real dev
@@ -57,14 +58,18 @@ export async function launchApp(
   const userDataDir = ownDir
     ? await mkdtemp(join(tmpdir(), "hyppo-e2e-"))
     : extraEnv.HYPPO_USER_DATA_DIR;
+  // --background by default (feature 013): local `npm run test:e2e` shows no
+  // windows (SC-005). Playwright hooks window *creation*, not visibility, so the
+  // test handle and firstWindow() are unaffected. A spec that needs a real
+  // rendered surface — `screenshot.spec.ts` — passes `{ background: false }`:
+  // capturePage() / CDP Page.captureScreenshot on a never-shown window has no
+  // surface and hangs the renderer on headless CI.
+  const background = opts.background !== false;
   const app = await electron.launch({
     // A fixed --instance so the window title, MCP server name, and panel label
     // are deterministic (feature 012): "HYPPO_USER_DATA_DIR alone" would derive
     // the label from the random temp-dir basename.
-    // --background (feature 013): local `npm run test:e2e` shows no windows
-    // (SC-005). Playwright hooks window *creation*, not visibility, so the test
-    // handle and firstWindow() are unaffected.
-    args: [mainEntry, "--instance", E2E_INSTANCE, "--background"],
+    args: [mainEntry, "--instance", E2E_INSTANCE, ...(background ? ["--background"] : [])],
     env: { ...process.env, HYPPO_E2E: "1", HYPPO_USER_DATA_DIR: userDataDir, ...extraEnv },
   });
   if (ownDir) {

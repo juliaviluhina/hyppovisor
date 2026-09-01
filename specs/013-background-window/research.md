@@ -69,9 +69,14 @@ fallback **only in `src/main/page/screenshot.ts`**:
 **Outcome (as built) — the fallback was declined; the limitation is documented instead.**
 Manual verification against a real standalone `--background` instance (driven over HTTP MCP,
 no CDP client) showed `capturePage()` **always** fails: `INTERNAL "Current display surface
-not available for capture"`, for local and remote pages, with retries. The e2e
-`screenshot.spec.ts` "proof" is a **false positive** — Playwright attaches a CDP client,
-which forces Chromium to keep compositing a hidden window; a real agent has no such client.
+not available for capture"`, for local and remote pages, with retries. Running
+`screenshot.spec.ts` under a `--background` harness locally on macOS *seemed* to pass —
+Playwright's CDP attachment keeps a hidden window compositing there — but on headless CI
+(Linux / Windows, GPU disabled) the `fullPage` CDP capture **hangs the renderer** and takes
+the shared app instance down. So `screenshot.spec.ts` runs with a **visible** window
+(`launchApp({}, { background: false })`); a `--background` screenshot is proven to refuse
+cleanly by `screenshot.test.ts` (unit, error mapping) + the manual check.
+
 Rather than take the fallback (a brief off-screen `showInactive()`/`hide()` around every
 capture — extra window churn, a visible flicker risk on some WMs, and threading the owning
 `BrowserWindow` into `screenshot.ts` which today only gets a `WebContents`), the decision is:
@@ -284,14 +289,19 @@ driving.
 
 ### Harness (FR-013 / US4)
 
-`tests/integration/helpers.ts` — `launchApp` and `launchAppFull` append `--background` to
-`args` (both already assemble `args` with `--instance e2e` / caller `extraArgs`). Then:
+`tests/integration/helpers.ts` — `launchApp` and `launchAppFull` add `--background` to
+`args` by default (both already assemble `args` with `--instance e2e` / caller `extraArgs`),
+with an opt-out (`launchApp({}, { background: false })` / `--no-background` in
+`launchAppFull` extraArgs). Then:
 
-- local `npm run test:e2e` shows **no** windows (US4 / SC-005);
+- local `npm run test:e2e` shows **no** windows for the `__hyppo`/MCP-driven specs
+  (US4 / SC-005);
 - `_electron.firstWindow()` still resolves — Playwright hooks window *creation* via CDP, not
   visibility, so `launchAppFull`'s "wait for firstWindow + ping the port" loop is unaffected;
-- `screenshot.spec.ts` becomes the live proof of R2 (capturePage while hidden). If it fails,
-  R2's screenshot-path fallback lands and the spec is re-run — no spec assertion changes.
+- **opt-outs (visible window):** `recent-urls.spec.ts` (drives the address bar through the
+  renderer — Playwright can't reliably click a hidden window) and `screenshot.spec.ts`
+  (`capturePage` / CDP capture need a rendered surface — a `--background` window has none and
+  the `fullPage` path hangs the renderer on headless CI). See R2.
 
 A spec that specifically needs a **visible** window (none today; a future summon-focus
 assertion) can pass its own `extraArgs` without `--background`, or assert via

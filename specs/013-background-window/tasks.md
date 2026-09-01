@@ -216,15 +216,17 @@ US1 (MVP) → US2 (summon + close-to-background) → US3 (named-instance focus s
 6. **`screenshot` is not at parity on `--background` (R2 fallback declined).** Manual
    verification against a real standalone `--background` instance (HTTP MCP, no CDP) showed
    `capturePage()` always fails — `INTERNAL "Current display surface not available for
-   capture"`. The e2e `screenshot.spec.ts` pass is a false positive: Playwright's CDP client
-   keeps a hidden window compositing. Decision: **do not** take the off-screen-reveal
-   fallback; instead `screenshot.ts` maps the surface error to a clear
-   `HyppoError("SCREENSHOT_FAILED", …)` (naming the fix), and the limitation is stated in
-   the `screenshot` tool description, `docs/configuration.md`, `docs/tools.md`,
-   `docs/connect-an-agent.md`, `skills/hyppovisor/SKILL.md`, FR-002, SC-002, and
-   `research.md` R2. `background-window.spec.ts` US1 no longer asserts screenshot; a new
-   `screenshot.test.ts` unit block covers the error mapping. `read_page` /
-   `read_form_fields` / `interact` / `wait_for_selector` are unaffected (no surface needed).
+   capture"`. Running `screenshot.spec.ts` under a `--background` harness *seemed* fine
+   locally on macOS (CDP keeps a hidden window compositing) but on headless CI the `fullPage`
+   CDP capture **hangs the renderer** and takes the shared app instance down (2 CI failures).
+   Decision: **do not** take the off-screen-reveal fallback; instead (a) `screenshot.ts` maps
+   the surface error to a clear `HyppoError("SCREENSHOT_FAILED", …)`; (b) `screenshot.spec.ts`
+   runs with a **visible** window (`launchApp({}, { background: false })` — new opt-out on
+   `launchApp`); (c) a new `screenshot.test.ts` unit block covers the error mapping. The
+   limitation is stated in the `screenshot` tool description, `docs/configuration.md`,
+   `docs/tools.md`, `docs/connect-an-agent.md`, `skills/hyppovisor/SKILL.md`, FR-002, SC-002,
+   `research.md` R2. `background-window.spec.ts` US1 no longer asserts screenshot. `read_page`
+   / `read_form_fields` / `interact` / `wait_for_selector` are unaffected (no surface needed).
 
 7. **Removed the modal collision dialog on a summon relaunch.** Feature 012's
    `requestSingleInstanceLock()` guard called `failStartup(collisionMessage, 0)`, which
@@ -236,5 +238,11 @@ US1 (MVP) → US2 (summon + close-to-background) → US3 (named-instance focus s
    dialog-suppression workaround. `docs/configuration.md` / `research.md` R3 /
    `contracts/launch-flag.md` updated.
 
+8. **Harness opt-outs (visible window).** `--background` is the `launchApp` / `launchAppFull`
+   default; two specs opt out because they need a real window: `recent-urls.spec.ts`
+   (`--no-background` — drives the address bar through the renderer) and `screenshot.spec.ts`
+   (`{ background: false }` — capture needs a surface). Everything else runs windowless.
+
 **Result:** unit 303 passed; e2e 119 passed (was 115 — +4 `background-window.spec.ts`);
-`npm run build` + `npm run lint` clean.
+`npm run build` + `npm run lint` clean. CI (Linux + Windows) required the `screenshot.spec.ts`
+opt-out — see note 6.
