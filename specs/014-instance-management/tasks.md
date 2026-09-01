@@ -43,7 +43,7 @@ Single project: `src/main/**`, `src/renderer/**`, `src/preload/**`, `src/shared/
 **⚠️ CRITICAL for US1**: US1 tasks (Phase 3) MUST NOT be merged before T004. US2 (Phase 4)
 does **not** depend on T004 and may proceed in parallel.
 
-- [ ] T004 Amend `.specify/memory/constitution.md` — Principle III gains a clause permitting a bounded local instance-management surface (one instance MAY enumerate and shut down other instances of the same user on the same machine, via per-instance transient runtime files; no daemon, no shared store, nothing in the shared data directory; Principles I / IV / V reaffirmed), bump **1.4.2 → 1.5.0**, add a `1.5.0` Amendment History entry citing feature `014-instance-management`, update the footer `**Version**` line (research.md R6, plan.md Complexity Tracking). May be done via `/speckit-constitution`.
+- [x] T004 Amend `.specify/memory/constitution.md` — Principle III gains a clause permitting a bounded local instance-management surface (one instance MAY enumerate and shut down other instances of the same user on the same machine, via per-instance transient runtime files; no daemon, no shared store, nothing in the shared data directory; Principles I / IV / V reaffirmed), bump **1.4.2 → 1.5.0**, add a `1.5.0` Amendment History entry citing feature `014-instance-management`, update the footer `**Version**` line (research.md R6, plan.md Complexity Tracking). May be done via `/speckit-constitution`.
 
 **Checkpoint**: Amendment recorded — US1 implementation can be merged.
 

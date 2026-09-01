@@ -37,7 +37,7 @@ one-click way to close all embedded content tabs in the current instance.
 - Q: Should the panel be allowed to shut down other running instances, or only list them? → A: Panel lists all local instances and can shut down any non-current one; Principle III gets a scoped amendment permitting a bounded local instance-management surface (same-user, same-machine).
 - Q: When shutting down another instance that is mid-way through an agent-driven page action, what happens? → A: Shut down immediately; the in-flight action fails cleanly for the MCP caller (clear error, port released).
 - Q: Before an instance is shut down from the panel, is there a confirmation prompt? → A: Yes — a single confirmation prompt naming the target instance and its port.
-- Q: After "Close all tabs" runs, what does the tab area show? → A: A single blank/home tab, the same state as a freshly launched instance.
+- Q: After "Close all tabs" runs, what does the tab area show? → A: The same state as a freshly launched instance. (HyppoVisor has no blank/home tab concept, so "freshly launched" = zero open tabs; see research.md R5.)
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -84,8 +84,7 @@ cannot be closed.
 A person has opened a dozen job pages, an ATS, and LinkedIn as embedded tabs in one
 instance over a work session. They are done and want a clean slate without quitting the
 instance. They click "Close all tabs" and every embedded content tab closes, leaving the
-instance running with a single blank/home tab (the same state as a freshly launched
-instance).
+instance running with no open tabs — the same state as a freshly launched instance.
 
 **Why this priority**: A convenience that stands on its own and is much smaller in scope
 than User Story 1; useful even if User Story 1 is deferred or amended.
@@ -100,8 +99,8 @@ browser state for the instance is unaffected beyond the closed tabs.
    activates "Close all tabs", **Then** all content tabs close and the instance keeps
    running.
 2. **Given** "Close all tabs" has been activated, **When** the person looks at the window,
-   **Then** the tab area shows a single blank/home tab (the freshly-launched state), and no
-   page from a previously open tab is still loaded.
+   **Then** the tab area has no open tabs (the freshly-launched state — HyppoVisor has no
+   placeholder/home tab), and no page from a previously open tab is still loaded.
 3. **Given** there are no content tabs open, **When** the person looks at the control,
    **Then** "Close all tabs" is disabled or is a no-op.
 4. **Given** a tab is mid-load or mid-interaction, **When** "Close all tabs" is activated,
@@ -111,8 +110,11 @@ browser state for the instance is unaffected beyond the closed tabs.
 
 ### Edge Cases
 
-- Two instances were started with the same `--instance` name (misconfiguration): the panel
-  distinguishes them by port so both are still individually identifiable and closable.
+- Two instances share a profile directory (same `--instance` name, no dir override):
+  feature 012's single-instance lock prevents the second from starting, so the panel never
+  sees a collision. Two instances with distinct profile directories but a coincidentally
+  equal label each write their own `runtime.json`; the panel lists both, disambiguated by
+  port, and both are individually closable.
 - An instance is running but its MCP port is not responding (starting up, or wedged): it
   appears with a "not responding" mode/state rather than being hidden, and close still
   attempts a graceful-then-forced shutdown.
@@ -170,10 +172,10 @@ browser state for the instance is unaffected beyond the closed tabs.
 - **FR-012**: Activating close-all-tabs MUST leave the current instance running, with its
   MCP server, configuration, and logged-in browser sessions otherwise unaffected; only the
   open tabs are closed.
-- **FR-013**: After close-all-tabs, the window MUST show a single blank/home tab — the same
-  state as a freshly launched instance — with no previously open page still loaded, and the
-  control MUST be disabled or a no-op when only that blank/home tab (or no content tab) is
-  open.
+- **FR-013**: After close-all-tabs, the window MUST have no open content tabs — the same
+  state as a freshly launched instance (HyppoVisor creates no placeholder/home tab) — with
+  no previously open page still loaded, and the control MUST be disabled or a no-op when no
+  content tab is open.
 
 #### Governance
 
@@ -199,9 +201,9 @@ browser state for the instance is unaffected beyond the closed tabs.
 - **SC-001**: With N instances running (at least one in background), a person opening the
   panel in any one of them sees all N, each with correct name, port, and mode, in under 3
   seconds.
-- **SC-002**: A person can shut down a background instance from the panel in at most two
-  interactions (open panel, trigger close) without using the terminal, the OS process
-  list, or a relaunch.
+- **SC-002**: A person can shut down a background instance entirely from the panel — open
+  panel, trigger close, confirm — without using the terminal, the OS process list, or a
+  relaunch.
 - **SC-003**: After a close is triggered, the target instance's process has exited and its
   MCP port is free within 10 seconds in 95% of cases.
 - **SC-004**: The current instance can never be shut down from the list — 0 occurrences in
