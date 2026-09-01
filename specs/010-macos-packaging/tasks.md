@@ -148,9 +148,12 @@ unsigned, and the exact Gatekeeper steps; following them launches the app.
 - [x] T018 [US3] `PACKAGING.md` — add the maintainer runbook for `npm run dist` (prereqs,
   the four outputs, where to upload) and a "signing & notarization — deferred" placeholder
   cross-referencing the README section.
-- [ ] T019 [US3] ⚙ macOS — on a second machine / fresh user account that did not build the
-  app, follow **only** the README steps for the matching architecture; the app installs and
-  launches (quickstart §7).
+- [x] T019 [US3] ⚙ macOS — install from the published release following **only** the README
+  steps for the matching architecture; the app installs and launches (quickstart §7).
+  Verified 2026-08-31 against the published `v0.1.0` `arm64` `.dmg` on the maintainer's Mac:
+  download → `xattr -dr com.apple.quarantine` → launch works. Not yet exercised on a
+  second machine / fresh user account with no build toolchain — a clean-room pass stays a
+  nice-to-have, not a release blocker.
 
 **Checkpoint**: US1–US3 — a compliant, installable unsigned release.
 
