@@ -18,8 +18,8 @@ Two mascot renders are in play:
 
 | File | Purpose | Source | Size |
 |---|---|---|---|
-| `assets/hyppovisor.png` | Full figure, full resolution — README / social / docs | V10 | 1159×1358 |
-| `src/renderer/mascot.png` | Full figure, downscaled — in-app About panel | V10 | 560px wide |
+| `assets/hyppovisor.png` | Full figure — README / social / docs; sized to 3× its 200 px README render | V10 | 600×703 |
+| `src/renderer/mascot.png` | Full figure, downscaled — in-app About panel; 3× its 72 px render | V10 | 240×281 |
 | `src/renderer/hyppo.png` | Square head, 96 — the top-bar connection-panel button | Ivon v2 | 96×96 |
 | `build/icon.png` | **Sole icon master**, 1024 — `BrowserWindow` at runtime; `electron-builder` generates the macOS `.icns` from it at package time | Ivon v2 | 1024×1024 |
 
@@ -34,11 +34,11 @@ Two mascot renders are in play:
 ```sh
 SRC=specs/initial/branding/HyppoVisorV10.png
 
-# README / docs
-cp "$SRC" assets/hyppovisor.png
+# README / social / docs — 3x the 200px README render
+sips --resampleWidth 600 "$SRC" --out assets/hyppovisor.png
 
-# In-app About panel
-sips -Z 560 "$SRC" --out src/renderer/mascot.png
+# In-app About panel — 3x the 72px render
+sips --resampleWidth 240 "$SRC" --out src/renderer/mascot.png
 ```
 
 ### App icon master + top-bar button — from Ivon v2 (Python)
