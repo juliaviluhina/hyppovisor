@@ -70,10 +70,11 @@ How the line is drawn (see [Safety](safety.md) for the exact rules):
 
 | Allowed — preparation | Refused — outward act (`REFUSED_EXTERNAL_ACT`) |
 |---|---|
-| `fill` a plain, non-credential, non-consent field (incl. inside a `<form>`) | any submit control; any `click` inside a `<form>` |
+| `fill` a plain, non-credential, non-consent field (incl. inside a `<form>`) | any submit control; any `click` inside a `<form>` except the reveal-button carve-out below |
 | `choose_option` in a plain `<select>` / combobox | consent / agreement toggles |
 | `click` / `space` to reveal content or toggle a non-outward control | credential + one-time-code fields |
-| `read_page`, `read_form_fields`, `screenshot`, `scroll`, `wait_for_selector` | file inputs; the Enter key (any operation); autonomous / non-http window spawn |
+| `click` a non-submit in-form `<button type="button">` (no `formaction`, not the implicit submit, own label not an outward act) to expand a repeatable sub-form — constitution 1.4.0 | file inputs; the Enter key (any operation); autonomous / non-http window spawn |
+| `read_page`, `read_form_fields`, `screenshot`, `scroll`, `wait_for_selector` | |
 
 Two design consequences fall out of this:
 
