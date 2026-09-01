@@ -124,7 +124,7 @@ URL, and writes no `unwrap` entry.
 - [X] T021 [P] Update `specs/001-open-any-url/contracts/mcp-tools.md`: `open_url` / `navigate` description + a "Link-shim resolution" paragraph and the new `operation: "unwrap"` log entry, per `contracts/mcp-tools-002-delta.md`
 - [X] T022 [P] Update `docs/tools.md` (the `open_url` line + a short list of the recognized shims) and, if the README has an `open_url` / "what it does" mention, add "resolves known link-shim URLs" there
 - [X] T023 Run `npm run build && npm run lint && npm test && npm run test:e2e`; record pass counts and any known-unrelated failures under a "Verification" heading in this file
-- [ ] T024 Manual smoke per [quickstart.md](./quickstart.md): in a running HyppoVisor, `open_url` a real LinkedIn `safety/go` "Apply" link from a job posting → the tab lands on the ATS page, no "You're leaving LinkedIn" interstitial, no Continue click; note the result
+- [X] T024 Manual smoke per [quickstart.md](./quickstart.md): in a running HyppoVisor, `open_url` a real LinkedIn `safety/go` "Apply" link from a job posting → the tab lands on the ATS page, no "You're leaving LinkedIn" interstitial, no Continue click; note the result
 
 ---
 
@@ -218,6 +218,4 @@ Implementation notes:
   `src/main/index.ts` passes the existing instance. No test double needed — `TabManager`
   is exercised only through the e2e app.
 
-- [ ] T024 Manual smoke against a real LinkedIn `safety/go` link from a job posting —
-  pending a live session; the offline unit + e2e suites above are the deterministic proof
-  of SC-001…SC-007.
+- [X] T024 Manual smoke, 2026-09-01: three wrappers opened via HyppoVisor (Google `/url`, LinkedIn `safety/go`, Reddit `out.reddit.com`), each landed on `https://example.com/` with exactly one `operation:"unwrap"` `hops:1` audit entry and the wrapper's extra params stripped; non-shim / `javascript:` / `/maps?q=` URLs added no log line (FR-011). SC-001…SC-007 confirmed live.
