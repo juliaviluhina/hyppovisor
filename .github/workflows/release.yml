@@ -6,11 +6,10 @@ name: Release
 #   git push --follow-tags
 #
 # The tag must match the package.json version (the build asserts it). This
-# workflow then builds the unsigned macOS artifact on a native Apple Silicon
-# runner (arm64) and attaches it to a GitHub Release for that tag. GitHub has
-# retired the free Intel (`macos-13`) hosted runner, so x64 is no longer built
-# here. `workflow_dispatch` runs the build only (artifacts land on the run page,
-# no Release is created).
+# workflow then builds the unsigned macOS artifacts on a native Apple Silicon
+# runner (electron-builder cross-produces the x64 dmg/zip alongside arm64) and
+# attaches them to a GitHub Release for that tag. `workflow_dispatch` runs the
+# build only (artifacts land on the run page, no Release is created).
 
 on:
   push:
@@ -122,6 +121,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Needed so body_path (.github/RELEASE_NOTES_HEADER.md) resolves — this job
+      # otherwise only downloads the build artifacts, not the repo.
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: hyppovisor-*
