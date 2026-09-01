@@ -63,8 +63,11 @@ open -na HyppoVisor --args --instance work
 ```
 
 The single-instance lock (feature 012) refuses the second window and fires `second-instance`
-in the running process, which reveals + focuses its window (see `window-lifecycle.md`). If
-the instance is **not** running, this is just a normal launch of it.
+in the running process, which reveals + focuses its window (see `window-lifecycle.md`). The
+refused process exits `0` with only a stderr breadcrumb — **feature 013 removed the modal
+collision dialog** that feature 012 showed here, since a relaunch is now a deliberate summon,
+not an accident (`src/main/index.ts`, the `requestSingleInstanceLock()` guard). If the
+instance is **not** running, this is just a normal launch of it.
 
 ## Launch recipes (documented in `docs/configuration.md`)
 

@@ -131,6 +131,12 @@ call needed. The gesture is: `npx electron . --instance <name>` (dev) or
 `open -na HyppoVisor --args --instance <name>` (packaged) — the same relaunch feature 012
 already routes through the single-instance lock.
 
+**As built:** the refused second process now exits `0` with only a stderr line. Feature 012's
+`failStartup(collisionMessage, 0)` at that guard popped a **blocking native error dialog** on
+every relaunch — fine for an accidental double-launch, wrong for a deliberate summon (the
+spec's edge case: "No-op beyond bringing it to the front"). The primary's `second-instance`
+handler is the only user-visible effect now.
+
 **Rationale**: zero new mechanism. The lock is keyed on the profile dir; a second launch of
 a running `--background` instance is refused *for a new window* and instead fires
 `second-instance` in the original — which now reveals it. FR-016 non-goal (falls through to

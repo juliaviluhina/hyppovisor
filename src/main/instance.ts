@@ -86,7 +86,14 @@ export function serverNameFor(label: string): string {
   return label ? `hyppovisor-${label}` : "hyppovisor";
 }
 
-/** The profile-collision dialog copy (FR-007). */
+/**
+ * Human-readable copy for a same-profile launch collision (feature 012).
+ *
+ * No longer shown to the user: feature 013 made a same-profile relaunch the
+ * summon gesture, so `main()` now exits `0` with a one-line stderr breadcrumb
+ * instead of this modal. Retained as documented, unit-tested wording in case a
+ * surface for it returns.
+ */
 export function collisionMessage(r: ResolvedInstance): { title: string; body: string } {
   const which = r.label ? `the "${r.label}" profile` : "the default profile";
   return {

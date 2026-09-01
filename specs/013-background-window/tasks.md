@@ -226,5 +226,15 @@ US1 (MVP) → US2 (summon + close-to-background) → US3 (named-instance focus s
    `screenshot.test.ts` unit block covers the error mapping. `read_page` /
    `read_form_fields` / `interact` / `wait_for_selector` are unaffected (no surface needed).
 
+7. **Removed the modal collision dialog on a summon relaunch.** Feature 012's
+   `requestSingleInstanceLock()` guard called `failStartup(collisionMessage, 0)`, which
+   showed a blocking "HyppoVisor is already running" error box on *every* re-launch of a
+   running profile. Feature 013 makes that relaunch the summon gesture (FR-007), so the
+   refused process now just prints a stderr line and `app.exit(0)` — the primary's
+   `second-instance` handler is the only visible effect. `collisionMessage()` is kept for
+   the breadcrumb + its unit test. `multi-instance.spec.ts` US2 dropped its `HYPPO_E2E=1`
+   dialog-suppression workaround. `docs/configuration.md` / `research.md` R3 /
+   `contracts/launch-flag.md` updated.
+
 **Result:** unit 303 passed; e2e 119 passed (was 115 — +4 `background-window.spec.ts`);
 `npm run build` + `npm run lint` clean.

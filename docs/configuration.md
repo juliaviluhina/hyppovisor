@@ -90,10 +90,11 @@ For a multi-instance setup, add **`--background`** to each launch: no windows
 appear, nothing steals focus, and every instance still serves its agent. Summon
 one only when you need to sign in. See [Background instances](#background-instances).
 
-- **Never point two instances at the same profile directory.** A second launch
-  against a profile another instance already holds shows a dialog and exits
-  without opening a window; an accidental plain re-launch just raises the window
-  already running.
+- **Re-launching a profile that is already running is the summon gesture.** The
+  second process opens no window and exits quietly (a stderr line, no dialog);
+  the running instance raises and un-hides its window. This is how you bring a
+  `--background` instance to the front — see [Background instances](#background-instances).
+  Two instances with genuinely different profiles never collide.
 - Each instance's window title, connection-panel header, and MCP handshake carry
   its label (`HyppoVisor — work`, server name `hyppovisor-work`), so two windows
   and two client registrations never get confused.

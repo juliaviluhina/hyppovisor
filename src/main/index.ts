@@ -10,7 +10,6 @@ import {
   resolveInstance,
   isResolveError,
   serverNameFor,
-  collisionMessage,
   classifyListenError,
 } from "./instance.js";
 import { ActionQueue } from "./queue/action-queue.js";
@@ -98,14 +97,22 @@ async function main(): Promise<void> {
     app.setPath("userData", resolved.userDataDir);
   }
 
-  // One live process per profile directory (FR-007). The lock is keyed on
-  // userData, so distinct instances/<name>/ dirs never collide (FR-009) and a
-  // dead holder's lock is reclaimed automatically (FR-010). A second launch of
-  // the same profile is refused here, before any window.
+  // One live process per profile directory (feature 012). The lock is keyed on
+  // userData, so distinct instances/<name>/ dirs never collide and a dead
+  // holder's lock is reclaimed automatically. A second launch of the same
+  // profile is refused here, before any window.
+  //
+  // Re-launching a running profile is the **summon gesture** (feature 013
+  // FR-007): the primary process's "second-instance" handler raises and un-hides
+  // its window. This second process has nothing to add — exit quietly with a
+  // stderr breadcrumb, no modal. (Feature 012 popped a collision dialog here; a
+  // summon must be a no-op beyond bringing the window forward, and a --background
+  // instance is summoned by exactly this relaunch.)
   if (!app.requestSingleInstanceLock()) {
-    const { title, body } = collisionMessage(resolved);
-    console.error(`[hyppovisor] ${title} — ${body.replace(/\n+/g, " ")}`);
-    return failStartup(title, body, 0);
+    const which = resolved.label ? `"${resolved.label}"` : "the default profile";
+    console.error(`[hyppovisor] ${which} is already running — raised its window (summon).`);
+    app.exit(0);
+    return;
   }
 
   const instanceLabel = resolved.label;
