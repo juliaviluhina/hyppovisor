@@ -271,6 +271,7 @@ async function main(): Promise<void> {
   );
   ipcMain.handle("chrome:activate-tab", (_e, tabId: string) => tabs.setActive(tabId));
   ipcMain.handle("chrome:close-tab", (_e, tabId: string) => tabs.close(tabId));
+  ipcMain.handle("chrome:reload-tab", () => tabs.reloadActive());
   ipcMain.handle("chrome:list-tabs", () => tabs.list());
 
   // ── Local instance-management panel IPC (feature 014, data-model.md §6) ──────

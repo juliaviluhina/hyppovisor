@@ -83,8 +83,9 @@ cannot be closed.
 
 A person has opened a dozen job pages, an ATS, and LinkedIn as embedded tabs in one
 instance over a work session. They are done and want a clean slate without quitting the
-instance. They click "Close all tabs" and every embedded content tab closes, leaving the
-instance running with no open tabs — the same state as a freshly launched instance.
+instance. They click the **Close all tabs** icon in the top bar and every embedded content
+tab closes, leaving the instance running with no open tabs — the same state as a freshly
+launched instance.
 
 **Why this priority**: A convenience that stands on its own and is much smaller in scope
 than User Story 1; useful even if User Story 1 is deferred or amended.
@@ -105,6 +106,27 @@ browser state for the instance is unaffected beyond the closed tabs.
    **Then** "Close all tabs" is disabled or is a no-op.
 4. **Given** a tab is mid-load or mid-interaction, **When** "Close all tabs" is activated,
    **Then** that tab still closes and any in-flight page work for it is abandoned cleanly.
+
+---
+
+### User Story 3 - Reload the current tab (Priority: P3)
+
+A person is looking at a page in the active tab whose content has gone stale (a job board
+list, an ATS queue). They click the **Reload** icon in the top bar and the active tab
+reloads its current page in place — no new tab, no navigation elsewhere, nothing submitted.
+
+**Why this priority**: A small everyday convenience that rides alongside the top-bar tab
+controls; independent of both other stories.
+
+**Independent Test**: Open a tab, click Reload, confirm the same URL is loaded again in the
+same tab (a fresh load, not a navigation away); with no tab open the control is disabled.
+
+**Acceptance Scenarios**:
+
+1. **Given** a tab is active, **When** the person activates Reload, **Then** that tab
+   re-fetches its current URL in place and stays the active tab.
+2. **Given** no tab is open, **When** the person looks at the Reload control, **Then** it is
+   disabled or a no-op.
 
 ---
 
@@ -165,10 +187,10 @@ browser state for the instance is unaffected beyond the closed tabs.
   MUST still show the current instance and MUST show a clear "cannot list other instances"
   state rather than an empty list implying none are running.
 
-#### Close-all-tabs (User Story 2)
+#### Top-bar tab actions (User Stories 2 and 3)
 
-- **FR-011**: The app MUST provide a single control that closes all embedded content tabs
-  in the current instance.
+- **FR-011**: The app MUST provide a single always-visible top-bar control that closes all
+  embedded content tabs in the current instance.
 - **FR-012**: Activating close-all-tabs MUST leave the current instance running, with its
   MCP server, configuration, and logged-in browser sessions otherwise unaffected; only the
   open tabs are closed.
@@ -176,6 +198,9 @@ browser state for the instance is unaffected beyond the closed tabs.
   state as a freshly launched instance (HyppoVisor creates no placeholder/home tab) — with
   no previously open page still loaded, and the control MUST be disabled or a no-op when no
   content tab is open.
+- **FR-015**: The app MUST provide a top-bar control that reloads the current (active) tab's
+  page in place — not a navigation, not a new tab, and nothing that acts on the page. The
+  control MUST be disabled or a no-op when no tab is open.
 
 #### Governance
 
@@ -212,6 +237,8 @@ browser state for the instance is unaffected beyond the closed tabs.
   within 5 seconds.
 - **SC-006**: From a session with 10+ open tabs, a person can clear all tabs in one
   interaction, and the instance is still running and usable afterwards.
+- **SC-007**: A person can reload the active tab's current page in one interaction; the same
+  URL is loaded again in the same tab, with no other tab affected.
 
 ## Assumptions
 

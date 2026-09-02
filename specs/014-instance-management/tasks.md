@@ -114,6 +114,20 @@ every content tab is gone, the instance is still running and serving MCP, and it
 
 ---
 
+## Phase 6: Top-bar tab actions (revision — user request)
+
+Move "Close all tabs" out of the connection panel onto the top bar as an icon
+button, add a "Reload the current tab" icon button beside it (US3 / FR-015), and
+fix the panel poll so it never triggers a full `#panel-body` re-render.
+
+- [x] T022 [US2/US3] Top-bar layout in `src/renderer/index.html` — a `#bar-actions` column between `#bar-main` and `#hyppo` holding icon-only `#refresh-tab` and `#close-all-tabs` buttons (both `disabled` by default), sized to the hippo button's height; CSS for the column and its buttons
+- [x] T023 [US3] `TabManager.reloadActive()` in `src/main/tabs/tab-manager.ts` (`webContents.reload()` on the active tab, no-op when none) + `ipcMain.handle("chrome:reload-tab", …)` in `src/main/index.ts` + `reloadTab()` forwarder in `src/preload/chrome.cjs`
+- [x] T024 [US2/US3] Wire both buttons in `src/renderer/app.ts` — click handlers (`hyppo.reloadTab()` / `hyppo.closeAllTabs()` + a "closed N tabs" notice), disabled state driven by `onTabsChanged` (both disabled when tab count is 0); remove the panel **Tabs** section and its `onTabsChanged` subscription / `tabCount` / `tabNoticeText` from `src/renderer/panel.ts`
+- [x] T025 [US1] Fix the panel poll in `src/renderer/panel.ts` — `refreshInstances()` repaints only a stable `#inst-list-mount` node via `paintInstances()`, never `render(lastConn)` (which wipes `#panel-body` and detached elements mid-interaction — CI `connection-panel.spec.ts` timeouts). Confirm-modal open / cancel / Esc call `renderConfirmModal()` only.
+- [x] T026 Update `tests/integration/close-all-tabs.spec.ts` (top-bar button + `#notice-text`, add US3 reload cases), `docs/configuration.md` ("Top-bar tab actions"), and `spec.md` (US3, FR-011/FR-015, SC-007). Full suite green: 327 unit, 125 e2e.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase dependencies

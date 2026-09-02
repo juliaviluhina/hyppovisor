@@ -125,6 +125,12 @@ export class TabManager {
     return this.summary(tab);
   }
 
+  /** Reload the active tab's page in place (feature 014). No-op when no tab is open. */
+  reloadActive(): void {
+    if (!this.activeId) return;
+    this.tabs.get(this.activeId)?.view.webContents.reload();
+  }
+
   close(tabId: string): void {
     const tab = this.tabs.get(tabId);
     if (!tab) return;

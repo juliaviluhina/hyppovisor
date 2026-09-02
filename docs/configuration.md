@@ -201,10 +201,16 @@ On Windows `SIGTERM` is an immediate terminate (no graceful hook), so the close 
 abrupt there and the `SIGKILL` escalation is a no-op; macOS and Linux get the true
 graceful-then-forced behaviour.
 
-### Close all tabs
+### Top-bar tab actions
 
-The same panel has a **Tabs** section with a **Close all tabs** button: it tears
-down every open content tab in the current instance and leaves it in the
-freshly-launched state (no tabs — HyppoVisor has no placeholder/home tab). The MCP
-server, `settings.json`, recent URLs, and every logged-in browser session are
-untouched; only the tabs close. The button is disabled when no tab is open.
+Two icon buttons sit in the top bar, stacked between the address row and the
+hippo button:
+
+- **Reload the current tab** (circular arrow) — reloads the active tab's page in
+  place. Same as a browser refresh; no navigation, nothing submitted.
+- **Close all tabs** (crossed square) — tears down every open content tab and
+  leaves the instance in the freshly-launched state (no tabs — HyppoVisor has no
+  placeholder/home tab). The MCP server, `settings.json`, recent URLs, and every
+  logged-in browser session are untouched; only the tabs close.
+
+Both are disabled when no tab is open.

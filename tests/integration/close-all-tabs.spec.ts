@@ -1,5 +1,6 @@
-// Feature 014 (T014) — User Story 2: "Close all tabs". Driven through the real
-// app (no HYPPO_E2E) so chrome:close-all-tabs and the MCP server run for real.
+// Feature 014 (T014) — top-bar tab actions: "Close all tabs" (US2) and "Reload
+// the current tab" (US3). Driven through the real app (no HYPPO_E2E) so
+// chrome:close-all-tabs / chrome:reload-tab and the MCP server run for real.
 // Offline — local fixture server + loopback MCP only.
 // See specs/014-instance-management/quickstart.md §4.
 
@@ -92,31 +93,81 @@ test("US2: 'Close all tabs' clears every tab, leaves the instance running and se
   }
 });
 
-test("US2: 'Close all tabs' is a no-op with no tabs open, and the panel button is disabled", async () => {
+test("US2: the top-bar 'Close all tabs' icon is disabled at zero tabs, enabled with tabs, clears in one click", async () => {
   const { app, close } = await launchAppFull();
   try {
     const page = await app.firstWindow();
+    const openUrl = (u: string) =>
+      page.evaluate(
+        (url) => (window as unknown as { hyppo: { openUrl: (s: string) => Promise<unknown> } }).hyppo.openUrl(url),
+        u,
+      );
 
-    // No tabs → the IPC call reports zero closed (FR-013 no-op).
+    // No tabs → the button is disabled and the IPC call is a no-op (FR-013).
+    await expect(page.locator("#close-all-tabs")).toBeDisabled();
     expect(
       await page.evaluate(() =>
         (window as unknown as { hyppo: { closeAllTabs: () => Promise<{ closed: number }> } }).hyppo.closeAllTabs(),
       ),
     ).toEqual({ closed: 0 });
 
-    // Open the connection panel → the "Close all tabs" button is disabled.
-    await page.locator("#hyppo").click();
+    // Two tabs → enabled; one click clears them; back to disabled.
+    await openUrl(`${fixtures.base}/static.html`);
+    await openUrl(`${fixtures.base}/form.html`);
+    await expect(page.locator("#close-all-tabs")).toBeEnabled();
+    await page.locator("#close-all-tabs").click();
     await expect(page.locator("#close-all-tabs")).toBeDisabled();
+    await expect(page.locator("#notice-text")).toContainText("closed 2 tabs");
+    expect(
+      await page.evaluate(() => (window as unknown as { hyppo: { listTabs: () => Promise<unknown[]> } }).hyppo.listTabs()),
+    ).toEqual([]);
+  } finally {
+    await close();
+  }
+});
 
-    // Open a tab → it becomes enabled; click it → back to disabled.
+test("US3: the top-bar 'Reload' icon is disabled at zero tabs and reloads the active tab in place", async () => {
+  const { app, close } = await launchAppFull();
+  try {
+    const page = await app.firstWindow();
+
+    await expect(page.locator("#refresh-tab")).toBeDisabled();
+
     await page.evaluate(
       (u) => (window as unknown as { hyppo: { openUrl: (s: string) => Promise<unknown> } }).hyppo.openUrl(u),
       `${fixtures.base}/static.html`,
     );
-    await expect(page.locator("#close-all-tabs")).toBeEnabled();
-    await page.locator("#close-all-tabs").click();
-    await expect(page.locator("#close-all-tabs")).toBeDisabled();
-    await expect(page.locator("#panel-body")).toContainText("Closed 1 tab.");
+    await expect(page.locator("#refresh-tab")).toBeEnabled();
+
+    const urlBefore = await page.evaluate(
+      () =>
+        (window as unknown as { hyppo: { listTabs: () => Promise<Array<{ url: string }>> } }).hyppo
+          .listTabs()
+          .then((t) => t[0]?.url),
+    );
+
+    // Click reload → the tab briefly re-enters "loading" then settles "loaded"
+    // on the same URL (reloaded in place, not closed, not navigated away).
+    await page.locator("#refresh-tab").click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as unknown as {
+                hyppo: { listTabs: () => Promise<Array<{ url: string; loadState: string }>> };
+              }
+            ).hyppo.listTabs().then((t) => (t[0] ? `${t[0].loadState}` : "gone")),
+        ),
+      )
+      .toBe("loaded");
+    const urlAfter = await page.evaluate(
+      () =>
+        (window as unknown as { hyppo: { listTabs: () => Promise<Array<{ url: string }>> } }).hyppo
+          .listTabs()
+          .then((t) => t[0]?.url),
+    );
+    expect(urlAfter).toBe(urlBefore);
   } finally {
     await close();
   }

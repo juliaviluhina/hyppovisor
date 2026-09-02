@@ -18,6 +18,8 @@ interface HyppoApi {
   closeTab: (id: string) => Promise<void>;
   listTabs: () => Promise<TabSummary[]>;
   onTabsChanged: (cb: (tabs: TabSummary[]) => void) => void;
+  closeAllTabs: () => Promise<{ closed: number }>;
+  reloadTab: () => Promise<void>;
   onActivity: (cb: (a: { tabId: string; description: string }) => void) => void;
   onBlockedAction: (cb: (a: { kind: string; detail: string }) => void) => void;
   recentUrls: () => Promise<string[]>;
@@ -37,6 +39,8 @@ const hyppo = window.hyppo;
 const $ = (id: string) => document.getElementById(id)!;
 const address = $("address") as HTMLInputElement;
 const tabselect = $("tabselect") as HTMLSelectElement;
+const refreshTabBtn = $("refresh-tab") as HTMLButtonElement;
+const closeAllTabsBtn = $("close-all-tabs") as HTMLButtonElement;
 const noticeEl = $("notice");
 const noticeText = $("notice-text");
 let activeId: string | null = null;
@@ -63,6 +67,11 @@ function labelFor(t: TabSummary): string {
 }
 
 function render(tabs: TabSummary[]): void {
+  // feature 014 — top-bar tab actions are live only while a tab is open.
+  const noTabs = tabs.length === 0;
+  refreshTabBtn.disabled = noTabs;
+  closeAllTabsBtn.disabled = noTabs;
+
   // Quick-switch dropdown (shown only when there is more than one tab).
   tabselect.hidden = tabs.length < 2;
   tabselect.innerHTML = "";
@@ -120,6 +129,13 @@ async function open(): Promise<void> {
 $("go").addEventListener("click", open);
 address.addEventListener("keydown", (e) => {
   if (e.key === "Enter") open();
+});
+
+// ── top-bar tab actions (feature 014) ───────────────────────────────────────
+refreshTabBtn.addEventListener("click", () => void hyppo.reloadTab());
+closeAllTabsBtn.addEventListener("click", async () => {
+  const { closed } = await hyppo.closeAllTabs();
+  if (closed > 0) showNotice(`closed ${closed} tab${closed === 1 ? "" : "s"}`, "info");
 });
 
 // ── recent-URLs dropdown (feature 009) ──────────────────────────────────────

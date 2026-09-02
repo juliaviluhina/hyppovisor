@@ -83,9 +83,6 @@ interface HyppoConnectionApi {
   onRecentUrlsChanged(cb: (list: string[]) => void): void;
   listInstances(): Promise<InstanceSummary[]>;
   closeInstance(pid: number): Promise<CloseInstanceReply>;
-  closeAllTabs(): Promise<{ closed: number }>;
-  listTabs(): Promise<unknown[]>;
-  onTabsChanged(cb: (tabs: unknown[]) => void): void;
 }
 
 const MASK = "••••••••••••";
@@ -110,15 +107,12 @@ export function mountConnectionPanel(): void {
   let instTimer: ReturnType<typeof setInterval> | undefined;
   let pendingClose: { pid: number; label: string; port: number | null } | null = null;
   let instNoticeText = "";
-  let tabCount = 0;
-  let tabNoticeText = "";
 
   // ── open / close ────────────────────────────────────────────────────────────
   async function open(): Promise<void> {
     await hyppo.setPanelOpen(true);
     panel.hidden = false;
     recentUrlCount = (await hyppo.recentUrls()).length;
-    tabCount = (await hyppo.listTabs()).length;
     const reply = await hyppo.getConnection();
     extras = {
       stdioLaunch: reply.stdioLaunch,
@@ -139,7 +133,6 @@ export function mountConnectionPanel(): void {
     portNoticeText = "";
     tokenNoticeText = "";
     instNoticeText = "";
-    tabNoticeText = "";
     pendingClose = null;
     if (instTimer) {
       clearInterval(instTimer);
@@ -156,7 +149,9 @@ export function mountConnectionPanel(): void {
       instancesError = true;
       instances = instances.filter((i) => i.isCurrent);
     }
-    if (!panel.hidden && lastConn) render(lastConn);
+    // Repaint ONLY the instance list — never a full render(), which wipes
+    // #panel-body and would detach whatever the user is mid-interaction with.
+    if (!panel.hidden) paintInstances();
   }
 
   $("hyppo").addEventListener("click", () => void open());
@@ -167,7 +162,7 @@ export function mountConnectionPanel(): void {
     // A confirm modal is open — Esc cancels it, not the whole panel (FR-004).
     if (pendingClose) {
       pendingClose = null;
-      if (lastConn) render(lastConn);
+      renderConfirmModal();
       return;
     }
     close();
@@ -259,19 +254,28 @@ export function mountConnectionPanel(): void {
     }
     renderRecentUrls();
     renderInstances();
-    renderTabsSection();
     renderLastRequest(c);
     renderConfirmModal();
   }
 
-  /** Feature 014 — the list of HyppoVisor instances this user runs on this
-   *  machine, with a Close control on every row but the current one. */
+  /** Feature 014 — the Instances section shell. The rows themselves live in a
+   *  stable `#inst-list-mount` node that {@link paintInstances} rewrites on each
+   *  poll, so the 2 s refresh never disturbs the rest of `#panel-body`. */
   function renderInstances(): void {
     const s = el("div", { className: "section" });
-    s.append(el("h3", { textContent: "Instances" }));
+    s.append(el("h3", { textContent: "Instances" }), el("div", { id: "inst-list-mount" }));
+    body.append(s);
+    paintInstances();
+  }
+
+  /** Rewrites ONLY `#inst-list-mount` from the current `instances` snapshot. */
+  function paintInstances(): void {
+    const mount = document.getElementById("inst-list-mount");
+    if (!mount) return;
+    mount.innerHTML = "";
 
     if (instancesError && !instances.some((i) => !i.isCurrent)) {
-      s.append(el("div", { className: "notice", textContent: "Can't list other instances." }));
+      mount.append(el("div", { className: "notice", textContent: "Can't list other instances." }));
     }
 
     const listEl = el("div", { className: "inst-list" });
@@ -303,40 +307,14 @@ export function mountConnectionPanel(): void {
         btn.addEventListener("click", () => {
           pendingClose = { pid: inst.pid, label: inst.label, port: inst.port };
           instNoticeText = "";
-          if (lastConn) render(lastConn);
+          renderConfirmModal();
         });
         row.append(btn);
       }
       listEl.append(row);
     }
-    s.append(listEl);
-    if (instNoticeText) s.append(el("div", { className: "notice", textContent: instNoticeText }));
-    body.append(s);
-  }
-
-  /** Feature 014 — a "Close all tabs" button; disabled when no content tab is open. */
-  function renderTabsSection(): void {
-    const s = el("div", { className: "section" }, el("h3", { textContent: "Tabs" }));
-    const btn = el("button", {
-      id: "close-all-tabs",
-      textContent: "Close all tabs",
-      disabled: tabCount === 0,
-    });
-    btn.addEventListener("click", async () => {
-      const r = await hyppo.closeAllTabs();
-      tabNoticeText =
-        r.closed > 0 ? `Closed ${r.closed} tab${r.closed === 1 ? "" : "s"}.` : "No open tabs.";
-      if (lastConn) render(lastConn);
-    });
-    const idle =
-      tabCount === 0
-        ? "No open tabs."
-        : `${tabCount} open tab${tabCount === 1 ? "" : "s"} in this instance.`;
-    s.append(
-      el("div", { className: "row" }, btn),
-      el("div", { className: "notice", textContent: tabNoticeText || idle }),
-    );
-    body.append(s);
+    mount.append(listEl);
+    if (instNoticeText) mount.append(el("div", { className: "notice", textContent: instNoticeText }));
   }
 
   /** Feature 014 — the in-panel shutdown confirmation (R4). Lives on #panel-card
@@ -366,7 +344,7 @@ export function mountConnectionPanel(): void {
     const cancel = el("button", { className: "inst-confirm-cancel", textContent: "Cancel" });
     cancel.addEventListener("click", () => {
       pendingClose = null;
-      if (lastConn) render(lastConn);
+      renderConfirmModal();
     });
     const confirm = el("button", { className: "inst-confirm-go", textContent: "Close instance" });
     confirm.addEventListener("click", async () => {
@@ -374,6 +352,7 @@ export function mountConnectionPanel(): void {
       const r = await hyppo.closeInstance(pc.pid);
       pendingClose = null;
       instNoticeText = r.ok ? "" : r.error;
+      renderConfirmModal();
       await refreshInstances();
     });
 
@@ -678,12 +657,6 @@ export function mountConnectionPanel(): void {
 
   hyppo.onRecentUrlsChanged((list) => {
     recentUrlCount = list.length;
-    if (!panel.hidden && lastConn) render(lastConn);
-  });
-
-  // feature 014 — keep the "Close all tabs" disabled state live.
-  hyppo.onTabsChanged((tabs) => {
-    tabCount = tabs.length;
     if (!panel.hidden && lastConn) render(lastConn);
   });
 }

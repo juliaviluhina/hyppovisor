@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("hyppo", {
   openUrl: (url) => ipcRenderer.invoke("chrome:open-url", url),
   activateTab: (tabId) => ipcRenderer.invoke("chrome:activate-tab", tabId),
   closeTab: (tabId) => ipcRenderer.invoke("chrome:close-tab", tabId),
+  reloadTab: () => ipcRenderer.invoke("chrome:reload-tab"),
   listTabs: () => ipcRenderer.invoke("chrome:list-tabs"),
   onTabsChanged: (cb) => ipcRenderer.on("tabs:changed", (_e, tabs) => cb(tabs)),
 

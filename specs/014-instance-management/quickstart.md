@@ -69,19 +69,21 @@ code path from it to `chrome:close-instance`, and `main` additionally refuses
 
 ---
 
-## 4. Close all tabs (US2 / SC-006, FR-011–FR-013)
+## 4. Top-bar tab actions (US2 / SC-006 / FR-011–FR-013; US3 / SC-007 / FR-015)
 
-In one instance, open several tabs (address bar, or an agent):
+In one instance, type three URLs into the address bar (or have an agent open them).
 
-```bash
-for u in https://example.com https://example.org https://example.net; do :; done
-# …or just type three URLs into the address bar
-```
+The top bar has two icon buttons stacked between the address row and the hippo button:
+**Reload the current tab** (circular arrow) and **Close all tabs** (crossed square). Both
+are disabled while no tab is open.
 
-Panel → **Tabs** section → **Close all tabs**. Expect:
+Click **Reload** → the active tab re-fetches its current URL in place (same tab, same URL,
+a fresh load). No new tab, nothing navigated away.
+
+Click **Close all tabs**. Expect:
 
 - Every content tab closes; the tab strip is empty (the freshly-launched state).
-- Inline notice: *"Closed 3 tabs."*
+- Notice line: *"closed 3 tabs"*.
 - The instance is still running: the panel's Endpoint / snippets are unchanged, and
   ```bash
   curl -s -XPOST 127.0.0.1:<port>/mcp -H 'content-type: application/json' \
@@ -92,7 +94,7 @@ Panel → **Tabs** section → **Close all tabs**. Expect:
   still returns the server name. MCP `list_open_tabs` → `[]`.
 - `settings.json` is byte-unchanged; a site you had logged into is still logged in when you
   reopen it (session store is not per-tab).
-- With no tabs open, **Close all tabs** is `disabled` (FR-013 no-op).
+- With no tabs open, both **Close all tabs** and **Reload** are `disabled` (no-op).
 
 ---
 
