@@ -33,11 +33,13 @@ const options = (page: Page) =>
     els.map((e) => (e as HTMLOptionElement).value),
   );
 
-/** Type a URL into the address bar, press Open, and wait for the open to land
- *  (the renderer clears #address only after hyppo.openUrl resolves). */
+/** Type a URL into the address bar, open it in a NEW tab, and wait for the open
+ *  to land (the renderer clears #address only after hyppo.openUrl resolves).
+ *  Post-feature-015 the dedicated new-tab affordance is the "+" (#newtab) button
+ *  — #go navigates the active tab in place once one is open. */
 async function openFromBar(page: Page, url: string, expectLoad = true): Promise<void> {
   await page.locator("#address").fill(url);
-  await page.locator("#go").click();
+  await page.locator("#newtab").click();
   if (expectLoad) {
     // Cleared only after hyppo.openUrl resolves — the first WebContentsView on a
     // slow (Windows) CI runner can take well over the 5s default.

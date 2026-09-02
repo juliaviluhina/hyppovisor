@@ -43,8 +43,11 @@ node node_modules/electron/install.js
 ## Standalone use
 
 The window opens with a tab strip and an address bar. Type a URL to try it with
-no agent attached. Log into any site you want available to later reads — sessions
-persist in the app's own profile across restarts.
+no agent attached. The address bar mirrors the active tab's URL; with a tab open,
+Enter and the → button re-point that tab in place, and the **+** button opens a
+new tab. With no tab open, all three open a new tab. Log into any site you want
+available to later reads — sessions persist in the app's own profile across
+restarts.
 
 ## Build a packaged app
 

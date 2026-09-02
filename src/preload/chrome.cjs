@@ -5,11 +5,13 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("hyppo", {
   openUrl: (url) => ipcRenderer.invoke("chrome:open-url", url),
+  navigateActive: (url) => ipcRenderer.invoke("chrome:navigate-active", url),
   activateTab: (tabId) => ipcRenderer.invoke("chrome:activate-tab", tabId),
   closeTab: (tabId) => ipcRenderer.invoke("chrome:close-tab", tabId),
   reloadTab: () => ipcRenderer.invoke("chrome:reload-tab"),
   listTabs: () => ipcRenderer.invoke("chrome:list-tabs"),
-  onTabsChanged: (cb) => ipcRenderer.on("tabs:changed", (_e, tabs) => cb(tabs)),
+  // feature 015: payload is now { tabs, activeTabId } — forwarded verbatim.
+  onTabsChanged: (cb) => ipcRenderer.on("tabs:changed", (_e, payload) => cb(payload)),
 
   // Recent-URLs dropdown (feature 009).
   recentUrls: () => ipcRenderer.invoke("chrome:recent-urls"),

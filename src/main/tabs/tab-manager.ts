@@ -116,13 +116,40 @@ export class TabManager {
   /** Point an existing tab at a new URL (FR: navigate). */
   async navigate(tabId: string, rawUrl: string): Promise<TabSummary> {
     const tab = this.require(tabId);
+    await this.loadInPlace(tab, rawUrl);
+    return this.summary(tab);
+  }
+
+  /**
+   * Point the ACTIVE tab at a new URL in place — the person's own address-bar
+   * navigation (feature 015). Shares `navigate()`'s body, so URL policy,
+   * link-shim unwrapping, and failed-load handling are identical to opening a
+   * new tab (FR-008 / FR-009); never opens a new tab. On a successful load it
+   * fires `onPersonOpen(enteredUrl)` so feature 009's recent-URLs history is fed
+   * (FR-010) — with the `validateUrl`-normalised entered URL, not the redirect
+   * landing URL. Throws `NO_ACTIVE_TAB` when nothing is active (the renderer
+   * normally prevents this; defence in depth — research R7).
+   */
+  async navigateActive(rawUrl: string): Promise<TabSummary> {
+    if (!this.activeId) {
+      throw new HyppoError("NO_ACTIVE_TAB", "No active tab to navigate — open a tab first.");
+    }
+    const tab = this.require(this.activeId);
+    const url = await this.loadInPlace(tab, rawUrl);
+    if (tab.loadState === "loaded") this.events.onPersonOpen(url);
+    return this.summary(tab);
+  }
+
+  /** Shared body of `navigate` / `navigateActive`: unwrap → validate → load the
+   *  given tab in place. Returns the `validateUrl`-normalised URL that was loaded. */
+  private async loadInPlace(tab: Tab, rawUrl: string): Promise<string> {
     const resolved = unwrapUrl(rawUrl); // link-shim resolution first (FR-013)
     const url = validateUrl(resolved.url);
-    this.recordUnwrap(tabId, resolved);
-    this.setActive(tabId);
-    this.events.onActivity(tabId, `navigate → ${url}`);
+    this.recordUnwrap(tab.id, resolved);
+    this.setActive(tab.id);
+    this.events.onActivity(tab.id, `navigate → ${url}`);
     await this.load(tab, url);
-    return this.summary(tab);
+    return url;
   }
 
   /** Reload the active tab's page in place (feature 014). No-op when no tab is open. */
@@ -166,6 +193,12 @@ export class TabManager {
 
   list(): TabSummary[] {
     return [...this.tabs.values()].map((t) => this.summary(t));
+  }
+
+  /** The id of the currently-active tab, or `null` when no tab is open
+   *  (feature 015). Authoritative source for the `tabs:changed` payload. */
+  get activeTabId(): string | null {
+    return this.activeId;
   }
 
   detail(tabId: string): TabDetail {

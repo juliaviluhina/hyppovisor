@@ -14,10 +14,13 @@ interface TabSummary {
 
 interface HyppoApi {
   openUrl: (url: string) => Promise<unknown>;
+  navigateActive: (url: string) => Promise<unknown>;
   activateTab: (id: string) => Promise<void>;
   closeTab: (id: string) => Promise<void>;
   listTabs: () => Promise<TabSummary[]>;
-  onTabsChanged: (cb: (tabs: TabSummary[]) => void) => void;
+  onTabsChanged: (
+    cb: (p: { tabs: TabSummary[]; activeTabId: string | null }) => void,
+  ) => void;
   closeAllTabs: () => Promise<{ closed: number }>;
   reloadTab: () => Promise<void>;
   onActivity: (cb: (a: { tabId: string; description: string }) => void) => void;
@@ -44,6 +47,8 @@ const closeAllTabsBtn = $("close-all-tabs") as HTMLButtonElement;
 const noticeEl = $("notice");
 const noticeText = $("notice-text");
 let activeId: string | null = null;
+/** The tabs from the most recent tabs:changed — read by syncAddress() (feature 015). */
+let latestTabs: TabSummary[] = [];
 let noticeTimer: number | undefined;
 
 // ── notice line ─────────────────────────────────────────────────────────────
@@ -113,9 +118,23 @@ tabselect.addEventListener("change", () => {
 });
 
 // ── address bar ─────────────────────────────────────────────────────────────
-async function open(): Promise<void> {
-  const url = address.value.trim();
-  if (!url) return;
+
+/**
+ * Reflect the active tab's current (post-redirect) URL in #address — unless the
+ * person is mid-edit (input focused), in which case their text is left intact
+ * (FR-003 / US1 scenario 4). Empty when no tab is open (FR-002). Setting the
+ * same string is a no-op, so a title-only change does not flicker the field.
+ * Runs on every tabs:changed and on #address blur.
+ */
+function syncAddress(): void {
+  if (document.activeElement === address) return;
+  const active = activeId ? latestTabs.find((t) => t.tabId === activeId) : undefined;
+  const next = active ? active.url : "";
+  if (address.value !== next) address.value = next;
+}
+
+/** Open `url` in a new tab (the pre-015 address-bar behaviour). */
+async function doOpen(url: string): Promise<void> {
   showNotice(`opening ${url}…`, "info");
   try {
     await hyppo.openUrl(url);
@@ -126,10 +145,49 @@ async function open(): Promise<void> {
   }
 }
 
-$("go").addEventListener("click", open);
+/**
+ * Enter / → : navigate the active tab in place (FR-005); with no tab active,
+ * open a new tab (FR-007). A failed navigation surfaces as a notice with no
+ * silent new-tab fallback (FR-009).
+ */
+async function submit(): Promise<void> {
+  const url = address.value.trim();
+  if (!url) return;
+  if (!activeId) {
+    await doOpen(url);
+    return;
+  }
+  showNotice(`navigating to ${url}…`, "info");
+  try {
+    await hyppo.navigateActive(url);
+    hideNotice();
+    // No force-clear: the ensuing tabs:changed → syncAddress() puts the tab's
+    // resolved URL in the field.
+  } catch (e) {
+    showNotice(`error: ${(e as Error).message}`, "error");
+  }
+}
+
+/** The dedicated "+" control: always opens a new tab, leaving the active tab
+ *  untouched (FR-006); with no tab active it is just an open (US3 scenario 2). */
+async function openNewTab(): Promise<void> {
+  const url = address.value.trim();
+  if (!url) return;
+  await doOpen(url);
+}
+
+$("go").addEventListener("click", submit);
+$("newtab").addEventListener("click", openNewTab);
+// Pressing either button must not blur #address before its click handler reads
+// the value — otherwise the blur-driven syncAddress() wipes an unsubmitted edit.
+// (Standard toolbar-button behaviour; focus stays in the field.)
+for (const id of ["go", "newtab"]) {
+  $(id).addEventListener("mousedown", (e) => e.preventDefault());
+}
 address.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") open();
+  if (e.key === "Enter") submit();
 });
+address.addEventListener("blur", () => syncAddress());
 
 // ── top-bar tab actions (feature 014) ───────────────────────────────────────
 refreshTabBtn.addEventListener("click", () => void hyppo.reloadTab());
@@ -152,11 +210,11 @@ hyppo.recentUrls().then(fillDatalist);
 hyppo.onRecentUrlsChanged(fillDatalist);
 
 // ── live updates ────────────────────────────────────────────────────────────
-hyppo.onTabsChanged((tabs) => {
-  if ((!activeId || !tabs.some((t) => t.tabId === activeId)) && tabs.length) {
-    activeId = tabs[tabs.length - 1].tabId;
-  }
+hyppo.onTabsChanged(({ tabs, activeTabId }) => {
+  latestTabs = tabs;
+  activeId = activeTabId;
   render(tabs);
+  syncAddress();
 });
 hyppo.onActivity((a) => {
   showNotice(`${a.tabId}: ${a.description}`, "info");
@@ -167,4 +225,8 @@ hyppo.onBlockedAction((a) => {
 
 mountConnectionPanel();
 
-hyppo.listTabs().then(render);
+hyppo.listTabs().then((tabs) => {
+  latestTabs = tabs;
+  render(tabs);
+  syncAddress();
+});

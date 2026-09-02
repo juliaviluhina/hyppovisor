@@ -48,17 +48,28 @@
         min-width: 0;
         padding: 5px 8px;
       }
-      #go {
+      #go,
+      #newtab,
+      #refresh-tab,
+      #close-all-tabs {
         flex: none;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         padding: 5px 9px;
       }
-      #go svg {
+      #go svg,
+      #newtab svg,
+      #refresh-tab svg,
+      #close-all-tabs svg {
         width: 15px;
         height: 15px;
         display: block;
+      }
+      #refresh-tab:disabled,
+      #close-all-tabs:disabled {
+        opacity: 0.4;
+        cursor: default;
       }
       #tabs {
         display: flex;
@@ -125,38 +136,6 @@
       }
       #notice-x:hover {
         opacity: 1;
-      }
-      #bar-actions {
-        flex: none;
-        align-self: center;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        height: 84px;
-      }
-      #bar-actions button {
-        flex: 1;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0 10px;
-        border: 1px solid rgba(128, 128, 128, 0.4);
-        border-radius: 6px;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-      }
-      #bar-actions button:hover:not(:disabled) {
-        background: rgba(128, 128, 128, 0.18);
-      }
-      #bar-actions button:disabled {
-        opacity: 0.4;
-        cursor: default;
-      }
-      #bar-actions button svg {
-        width: 16px;
-        height: 16px;
-        display: block;
       }
       #hyppo {
         flex: none;
@@ -452,21 +431,22 @@
       <div id="bar-main">
         <div id="bar-row">
           <select id="tabselect" title="Switch tab" aria-label="Switch tab" hidden></select>
-          <input id="address" list="recent-urls" placeholder="https://…  — Enter opens a new tab" />
+          <input id="address" list="recent-urls" placeholder="https://…  — Enter navigates this tab · + opens a new tab" />
           <datalist id="recent-urls"></datalist>
-          <button id="go" title="Open" aria-label="Open">
+          <button id="go" title="Go" aria-label="Go">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </button>
+          <button id="newtab" title="Open in a new tab" aria-label="Open in a new tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+          <button id="refresh-tab" title="Reload the current tab" aria-label="Reload the current tab" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" /></svg>
+          </button>
+          <button id="close-all-tabs" title="Close all tabs" aria-label="Close all tabs" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 9l6 6M15 9l-6 6" /></svg>
           </button>
         </div>
         <div id="tabs"></div>
-      </div>
-      <div id="bar-actions">
-        <button id="refresh-tab" title="Reload the current tab" aria-label="Reload the current tab" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" /></svg>
-        </button>
-        <button id="close-all-tabs" title="Close all tabs" aria-label="Close all tabs" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 9l6 6M15 9l-6 6" /></svg>
-        </button>
       </div>
       <button id="hyppo" title="Connection &amp; MCP" aria-label="Connection &amp; MCP">
         <img src="./hyppo.png" alt="" />

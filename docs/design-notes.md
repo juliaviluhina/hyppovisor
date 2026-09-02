@@ -88,7 +88,11 @@ Two design consequences fall out of this:
   default, but it blocks legitimate controls nobody enumerated yet.)
 - **No Enter key, ever.** Enter can trigger an implicit form submit with no
   button involved, so it is unavailable on every operation rather than
-  pattern-matched.
+  pattern-matched. This bans Enter within *page-interaction operations on web
+  content*; the app's own chrome address bar is not one of those — its Enter is a
+  top-level `webContents.loadURL` (the already-permitted "navigate" act), never a
+  DOM keypress dispatched into a page (feature 015; see its plan's Constitution
+  Check).
 
 ---
 
