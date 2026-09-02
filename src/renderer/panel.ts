@@ -57,6 +57,20 @@ type OkPort = { ok: true; port: number };
 type Mutated = { ok: true } & EffectiveConnection;
 type Failed = { ok: false; error: string };
 
+// ── feature 014 — local instance-management panel ──────────────────────────
+interface InstanceSummary {
+  pid: number;
+  label: string;
+  port: number | null;
+  mode: "foreground" | "background";
+  state: "responding" | "not-responding" | "stdio";
+  isCurrent: boolean;
+  startedAt: string;
+}
+type CloseInstanceReply =
+  | { ok: true; forced?: boolean; alreadyGone?: boolean }
+  | { ok: false; error: string };
+
 interface HyppoConnectionApi {
   getConnection(): Promise<GetConnectionReply>;
   setPort(port: number): Promise<OkPort | Failed>;
@@ -67,6 +81,8 @@ interface HyppoConnectionApi {
   recentUrls(): Promise<string[]>;
   clearRecentUrls(): Promise<void>;
   onRecentUrlsChanged(cb: (list: string[]) => void): void;
+  listInstances(): Promise<InstanceSummary[]>;
+  closeInstance(pid: number): Promise<CloseInstanceReply>;
 }
 
 const MASK = "••••••••••••";
@@ -85,6 +101,12 @@ export function mountConnectionPanel(): void {
   // connection:changed push a mutation causes) does not wipe them.
   let portNoticeText = "";
   let tokenNoticeText = "";
+  // feature 014 — instance list + confirm modal + close-all-tabs
+  let instances: InstanceSummary[] = [];
+  let instancesError = false;
+  let instTimer: ReturnType<typeof setInterval> | undefined;
+  let pendingClose: { pid: number; label: string; port: number | null } | null = null;
+  let instNoticeText = "";
 
   // ── open / close ────────────────────────────────────────────────────────────
   async function open(): Promise<void> {
@@ -99,6 +121,10 @@ export function mountConnectionPanel(): void {
     };
     lastConn = reply;
     render(reply);
+    // feature 014 — poll the instance list while the panel is open
+    // (config.instancePollMs = 2000; the renderer can't import config).
+    void refreshInstances();
+    instTimer = setInterval(() => void refreshInstances(), 2000);
   }
 
   function close(): void {
@@ -106,14 +132,40 @@ export function mountConnectionPanel(): void {
     revealed = false;
     portNoticeText = "";
     tokenNoticeText = "";
+    instNoticeText = "";
+    pendingClose = null;
+    if (instTimer) {
+      clearInterval(instTimer);
+      instTimer = undefined;
+    }
     void hyppo.setPanelOpen(false);
+  }
+
+  async function refreshInstances(): Promise<void> {
+    try {
+      instances = await hyppo.listInstances();
+      instancesError = false;
+    } catch {
+      instancesError = true;
+      instances = instances.filter((i) => i.isCurrent);
+    }
+    // Repaint ONLY the instance list — never a full render(), which wipes
+    // #panel-body and would detach whatever the user is mid-interaction with.
+    if (!panel.hidden) paintInstances();
   }
 
   $("hyppo").addEventListener("click", () => void open());
   $("panel-close").addEventListener("click", close);
   $("panel-backdrop").addEventListener("click", close);
   document.addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Escape" && !panel.hidden) close();
+    if ((e as KeyboardEvent).key !== "Escape" || panel.hidden) return;
+    // A confirm modal is open — Esc cancels it, not the whole panel (FR-004).
+    if (pendingClose) {
+      pendingClose = null;
+      renderConfirmModal();
+      return;
+    }
+    close();
   });
 
   // ── DOM helpers ────────────────────────────────────────────────────────────
@@ -201,7 +253,123 @@ export function mountConnectionPanel(): void {
       renderHttp(c);
     }
     renderRecentUrls();
+    renderInstances();
     renderLastRequest(c);
+    renderConfirmModal();
+  }
+
+  /** Feature 014 — the Instances section shell. The rows themselves live in a
+   *  stable `#inst-list-mount` node that {@link paintInstances} rewrites on each
+   *  poll, so the 2 s refresh never disturbs the rest of `#panel-body`. */
+  function renderInstances(): void {
+    const s = el("div", { className: "section" });
+    s.append(el("h3", { textContent: "Instances" }), el("div", { id: "inst-list-mount" }));
+    body.append(s);
+    paintInstances();
+  }
+
+  /** Rewrites ONLY `#inst-list-mount` from the current `instances` snapshot. */
+  function paintInstances(): void {
+    const mount = document.getElementById("inst-list-mount");
+    if (!mount) return;
+    mount.innerHTML = "";
+
+    if (instancesError && !instances.some((i) => !i.isCurrent)) {
+      mount.append(el("div", { className: "notice", textContent: "Can't list other instances." }));
+    }
+
+    const listEl = el("div", { className: "inst-list" });
+    for (const inst of instances) {
+      const row = el("div", {
+        className: "inst-row" + (inst.isCurrent ? " inst-current" : ""),
+      });
+      const portTxt = inst.port === null ? "stdio" : String(inst.port);
+      row.append(
+        el(
+          "div",
+          { className: "inst-meta" },
+          el("span", { className: "inst-name", textContent: inst.label || "(default)" }),
+          el("span", { className: "inst-sub", textContent: `${portTxt} · ${inst.mode} · ${inst.state}` }),
+        ),
+      );
+      if (inst.isCurrent) {
+        row.append(el("span", { className: "inst-tag", textContent: "this instance" }));
+        row.append(
+          el("button", {
+            className: "inst-close",
+            textContent: "Close",
+            disabled: true,
+            title: "the instance you're viewing",
+          }),
+        );
+      } else {
+        const btn = el("button", { className: "inst-close", textContent: "Close" });
+        btn.addEventListener("click", () => {
+          pendingClose = { pid: inst.pid, label: inst.label, port: inst.port };
+          instNoticeText = "";
+          renderConfirmModal();
+        });
+        row.append(btn);
+      }
+      listEl.append(row);
+    }
+    mount.append(listEl);
+    if (instNoticeText) mount.append(el("div", { className: "notice", textContent: instNoticeText }));
+  }
+
+  /** Feature 014 — the in-panel shutdown confirmation (R4). Lives on #panel-card
+   *  (not #panel-body), so it survives a body re-render; rebuilt each render. */
+  function renderConfirmModal(): void {
+    document.getElementById("inst-confirm-wrap")?.remove();
+    if (!pendingClose) return;
+    const pc = pendingClose;
+
+    const card = el("div", { className: "inst-confirm" });
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    card.setAttribute("aria-label", "Confirm closing an instance");
+
+    const portTxt = pc.port === null ? "stdio" : `port ${pc.port}`;
+    card.append(
+      el("div", {
+        className: "inst-confirm-title",
+        textContent: `Close instance "${pc.label || "(default)"}" on ${portTxt}?`,
+      }),
+      el("div", {
+        className: "inst-confirm-body",
+        textContent: "Its open tabs and any in-progress work are lost. This can't be undone.",
+      }),
+    );
+
+    const cancel = el("button", { className: "inst-confirm-cancel", textContent: "Cancel" });
+    cancel.addEventListener("click", () => {
+      pendingClose = null;
+      renderConfirmModal();
+    });
+    const confirm = el("button", { className: "inst-confirm-go", textContent: "Close instance" });
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = true;
+      const r = await hyppo.closeInstance(pc.pid);
+      pendingClose = null;
+      instNoticeText = r.ok ? "" : r.error;
+      renderConfirmModal();
+      await refreshInstances();
+    });
+
+    const rowEl = el("div", { className: "inst-confirm-row" }, cancel, confirm);
+    card.append(rowEl);
+
+    // Minimal focus trap: Tab / Shift-Tab cycles between the two buttons.
+    card.addEventListener("keydown", (e) => {
+      const ev = e as KeyboardEvent;
+      if (ev.key !== "Tab") return;
+      ev.preventDefault();
+      (document.activeElement === cancel ? confirm : cancel).focus();
+    });
+
+    const wrap = el("div", { id: "inst-confirm-wrap" }, card);
+    $("panel-card").append(wrap);
+    cancel.focus();
   }
 
   /** Feature 009 — a "Clear recent URLs" action for the address-bar dropdown.

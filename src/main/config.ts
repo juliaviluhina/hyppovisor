@@ -46,6 +46,25 @@ export const config = {
   domReadyTimeoutMs: numFromEnv("HYPPO_DOM_READY_TIMEOUT_MS", 1000),
   /** Chrome height reserved at the top of the window for the renderer UI. */
   chromeHeight: 104,
+
+  // ── feature 014: local instance-management panel ──────────────────────────
+  /**
+   * SIGTERM → SIGKILL grace window when the panel shuts down another instance
+   * (feature 014, R2). The target's own `SIGTERM → app.quit()` handler does the
+   * graceful part; this is how long we wait before escalating to `SIGKILL`.
+   */
+  instanceShutdownGraceMs: numFromEnv("HYPPO_INSTANCE_SHUTDOWN_GRACE_MS", 5000),
+  /**
+   * Deadline for the loopback TCP `connect` that decides an instance's
+   * responding / not-responding state (feature 014, R3).
+   */
+  instanceProbeTimeoutMs: numFromEnv("HYPPO_INSTANCE_PROBE_TIMEOUT_MS", 400),
+  /**
+   * How often the renderer re-lists instances while the panel is open
+   * (feature 014, FR-007 / SC-005). Consumed in `panel.ts` as a literal with a
+   * comment tying it back here — the renderer never imports this module.
+   */
+  instancePollMs: numFromEnv("HYPPO_INSTANCE_POLL_MS", 2000),
 };
 
 /** Default HTTP MCP listening port when nothing overrides it (feature 007). */

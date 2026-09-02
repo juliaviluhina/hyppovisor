@@ -32,6 +32,14 @@ import {
   saveRecentUrls,
   addRecentUrl,
 } from "./recent-urls.js";
+import {
+  writeRuntimeFile,
+  rewriteRuntimePort,
+  clearRuntimeFile,
+  listInstances,
+  closeInstance,
+  type SelfRecord,
+} from "./instances/registry.js";
 import { readPage } from "./page/read.js";
 import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { readFormFields } from "./page/form-fields.js";
@@ -84,7 +92,11 @@ async function main(): Promise<void> {
   // whenReady so setPath("userData") and the single-instance lock act on the
   // result. HYPPO_USER_DATA_DIR still wins for the directory (test isolation /
   // CI / wrapper scripts) and now also supplies the label from its basename.
-  const resolved = resolveInstance(process.argv, process.env, app.getPath("userData"));
+  // The app-support root, captured BEFORE app.setPath below (feature 012's
+  // `baseUserDataDir`). Used by the instance panel (feature 014) to enumerate
+  // sibling `instances/<name>/` profile directories.
+  const appSupportRoot = app.getPath("userData");
+  const resolved = resolveInstance(process.argv, process.env, appSupportRoot);
   if (isResolveError(resolved)) {
     const title = resolved.error === "invalid-port" ? "Invalid --port" : "Invalid --instance name";
     console.error(`[hyppovisor] ${title}: ${resolved.reason}`);
@@ -118,6 +130,10 @@ async function main(): Promise<void> {
   const instanceLabel = resolved.label;
   const serverName = serverNameFor(instanceLabel);
   const windowTitle = instanceLabel ? `HyppoVisor — ${instanceLabel}` : "HyppoVisor";
+  // feature 014: stable for this process's lifetime; written into runtime.json
+  // and echoed by chrome:list-instances so the panel can show an "up for …" hint.
+  const instanceStartedAt = new Date().toISOString();
+  const instanceMode = resolved.background ? "background" : "foreground";
 
   await app.whenReady();
 
@@ -173,6 +189,11 @@ async function main(): Promise<void> {
   let quitting = false;
   app.on("before-quit", () => {
     quitting = true;
+    // feature 014: drop this instance's runtime.json and stop the MCP listener
+    // accepting before teardown, so a panel-driven shutdown releases the port
+    // cleanly (contracts/instance-shutdown.md).
+    clearRuntimeFile(app.getPath("userData"));
+    httpHandle?.close();
   });
   win.on("close", (e) => {
     if (quitting || !resolved.background) return;
@@ -250,7 +271,35 @@ async function main(): Promise<void> {
   );
   ipcMain.handle("chrome:activate-tab", (_e, tabId: string) => tabs.setActive(tabId));
   ipcMain.handle("chrome:close-tab", (_e, tabId: string) => tabs.close(tabId));
+  ipcMain.handle("chrome:reload-tab", () => tabs.reloadActive());
   ipcMain.handle("chrome:list-tabs", () => tabs.list());
+
+  // ── Local instance-management panel IPC (feature 014, data-model.md §6) ──────
+  ipcMain.handle("chrome:list-instances", () => {
+    const self: SelfRecord = {
+      pid: process.pid,
+      label: instanceLabel,
+      port: env.stdio ? null : (httpHandle?.port ?? currentEffective().port),
+      mode: instanceMode,
+      startedAt: instanceStartedAt,
+    };
+    return listInstances(appSupportRoot, self, {
+      probeTimeoutMs: config.instanceProbeTimeoutMs,
+    });
+  });
+  ipcMain.handle("chrome:close-instance", (_e, pid: unknown) => {
+    if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0)
+      return { ok: false, error: "invalid pid" };
+    // Defence in depth behind the renderer's disabled control (FR-005).
+    if (pid === process.pid)
+      return { ok: false, error: "can't close the current instance" };
+    return closeInstance(pid, { graceMs: config.instanceShutdownGraceMs });
+  });
+  ipcMain.handle("chrome:close-all-tabs", () => {
+    const closed = tabs.list().length;
+    tabs.closeAll();
+    return { closed };
+  });
 
   // Recent-URLs dropdown (feature 009). Registered before win.loadFile so the
   // renderer's first read can't race them (feature-007 lesson).
@@ -283,6 +332,8 @@ async function main(): Promise<void> {
       curSettings = { ...curSettings, port };
       saveSettings(app.getPath("userData"), curSettings);
       existed = true;
+      // feature 014: keep runtime.json's advertised port in step with the rebind.
+      rewriteRuntimePort(app.getPath("userData"), port);
     };
     const bindError = (e: unknown) => {
       const msg = String((e as Error).message ?? e);
@@ -422,6 +473,17 @@ async function main(): Promise<void> {
 
   send("tabs:changed", tabs.list());
   pushConnection();
+
+  // feature 014: now the MCP server has bound (or failed) and the renderer is
+  // up, advertise this instance to sibling panels via its own runtime.json. It
+  // is removed again in the before-quit handler above.
+  writeRuntimeFile(app.getPath("userData"), {
+    pid: process.pid,
+    port: env.stdio ? null : (httpHandle?.port ?? currentEffective().port),
+    mode: instanceMode,
+    label: instanceLabel,
+    startedAt: instanceStartedAt,
+  });
 
   const e2e = process.env.HYPPO_E2E === "1";
 

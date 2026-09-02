@@ -80,7 +80,16 @@ babysitting.
   one window with its own profile directory under the app-support root (`instances/<name>/`),
   shares no state with the others, and is identified by its `--instance` label and the OS
   process list. This is N independent single-window instances, not a multi-window app; there
-  is no cross-instance registry or shared index. The one window may also start hidden
+  is no cross-instance registry or shared index. **One bounded carve-out:** an instance MAY
+  enumerate the other instances of the same user on the same machine and shut one down — a
+  local instance-management surface (a read-only list plus a stop control). Discovery is
+  each process writing its own transient runtime file (pid, port, mode, label) into its own
+  profile directory and removing it on quit — N independent files read at display time, with
+  no aggregating store, no append log, no lock, no daemon, and nothing written to the shared
+  data directory. Shutting down a sibling is an OS signal to a process the same user started
+  (the Cmd-Q / Ctrl-C category), not an external act under Principle I and not credential
+  handling under Principle IV; the app-wide pace limit (Principle V) is untouched. The one
+  window may also start hidden
   (`--background`) and be brought to the foreground by re-launching the instance; while
   hidden it shows no Dock, taskbar, or app-switcher entry. This is presentation of the same
   one window — no second surface, no background service, nothing persisted.
@@ -222,6 +231,14 @@ capture of a page the human opened is both defensible and sufficient for the pip
 One or two lines per version. Records why a bump type was judged as it was — git holds the
 diffs.
 
+- **1.5.0** (2026-09-01) — Principle III: added a bounded carve-out from "no cross-instance
+  registry or shared index" — one instance may enumerate and shut down other instances of
+  the same user on the same machine, via per-instance transient runtime files (no daemon, no
+  shared store, nothing in the shared data directory). MINOR, not PATCH like 1.4.1 / 1.4.2:
+  those were scoped clarifications of "one window"; this blesses a genuinely new capability
+  kind (one instance terminating another) and a new UI surface, materially expanding the
+  principle. Principles I / IV / V reaffirmed unaffected (local signal, no external act, no
+  credential handling, pace limit untouched). Recorded in feature `014-instance-management`.
 - **1.4.2** (2026-09-01) — Principle III: the one window may start hidden (`--background`)
   and be summoned by re-launching the instance; its Dock / taskbar / ⌘-Tab presence follows
   its visibility. PATCH: a scoped clarification of "one window" — redefines no principle,
@@ -287,4 +304,4 @@ diffs.
   `specs/initial/business-logic.md`, plus Architecture Constraints, Development Workflow, and
   Governance.
 
-**Version**: 1.4.2 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-09-01
+**Version**: 1.5.0 | **Ratified**: 2026-08-29 | **Last Amended**: 2026-09-01
