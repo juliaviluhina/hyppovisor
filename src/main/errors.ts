@@ -5,6 +5,7 @@ export type ErrorCode =
   | "SCHEME_NOT_ALLOWED"
   | "LOAD_FAILED"
   | "TAB_NOT_FOUND"
+  | "NO_ACTIVE_TAB"
   | "TARGET_NOT_FOUND"
   | "WAIT_TIMEOUT"
   | "REFUSED_EXTERNAL_ACT"

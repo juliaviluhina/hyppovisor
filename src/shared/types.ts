@@ -11,6 +11,18 @@ export interface TabSummary {
   loadState: LoadState;
 }
 
+/**
+ * Payload of the renderer-only `tabs:changed` event (feature 015). Carries the
+ * authoritative active tab id alongside the list so the renderer no longer has
+ * to guess it. `TabSummary` itself is unchanged — it stays the MCP
+ * `list_open_tabs` shape (FR-012 scope guard).
+ */
+export interface TabsChangedPayload {
+  tabs: TabSummary[];
+  /** `null` iff `tabs` is empty. */
+  activeTabId: string | null;
+}
+
 export interface TabDetail extends TabSummary {
   error: string | null;
   openedBy: OpenedBy;

@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,11 +31,9 @@
 
 ## Notes
 
-- **One open clarification (FR-006)**: how a person opens a URL in a *new* tab once Enter
-  navigates the active tab — modifier submit (⌘/Ctrl-Enter), a dedicated "+" button, or
-  keep the → button as "always new tab". A reasonable default is recorded in Assumptions
-  (→ = new tab, Enter = navigate current); `/speckit-clarify` should confirm or change it
-  before `/speckit-plan`.
+- **FR-006 resolved** (clarify session 2026-09-01): a dedicated "+" new-tab button is added
+  to the top bar beside the address row; Enter and the → button both navigate the active
+  tab in place (browser-like). No open clarifications remain.
 - No constitution impact: "navigate" is already a permitted browser action (Principle I)
   and is already exposed to agents via MCP; this feature only surfaces it in the person's
   own chrome (FR-012).

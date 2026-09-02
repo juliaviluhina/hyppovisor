@@ -220,7 +220,7 @@ async function main(): Promise<void> {
   let recentUrls = loadRecentUrls(app.getPath("userData"));
 
   const tabs = new TabManager(win, {
-    onChange: () => send("tabs:changed", tabs.list()),
+    onChange: () => send("tabs:changed", { tabs: tabs.list(), activeTabId: tabs.activeTabId }),
     onBlockedAction: (kind, detail) => send("tabs:blocked-action", { kind, detail }),
     onActivity: (tabId, description) => send("tabs:activity", { tabId, description }),
     onPersonOpen: (url) => {
@@ -267,6 +267,13 @@ async function main(): Promise<void> {
   ipcMain.handle("chrome:open-url", (_e, url: string) =>
     queue
       .run(() => tabs.open(url, "person"))
+      .then((r) => ({ ...r.value, queueDepth: r.queueDepth })),
+  );
+  // feature 015: navigate the ACTIVE tab in place (never a new tab). Same queue,
+  // same policy/unwrap path as chrome:open-url.
+  ipcMain.handle("chrome:navigate-active", (_e, url: string) =>
+    queue
+      .run(() => tabs.navigateActive(url))
       .then((r) => ({ ...r.value, queueDepth: r.queueDepth })),
   );
   ipcMain.handle("chrome:activate-tab", (_e, tabId: string) => tabs.setActive(tabId));
@@ -471,7 +478,7 @@ async function main(): Promise<void> {
     win.show();
   }
 
-  send("tabs:changed", tabs.list());
+  send("tabs:changed", { tabs: tabs.list(), activeTabId: tabs.activeTabId });
   pushConnection();
 
   // feature 014: now the MCP server has bound (or failed) and the renderer is
