@@ -22,13 +22,19 @@ npm run build          # tsc (main + renderer) + copy-assets
 npm start              # builds + launches Electron
 ```
 
+> The address row carries, in order: the tab-switch dropdown, the URL field, then
+> the **→** (go), **+** (new tab), **⟳** (reload), and **✕** (close all) icon
+> buttons. There is no separate button column.
+
 ### US1 — the bar reflects the active tab
 
 1. In the address bar type a URL (e.g. `https://example.com`) and press **Enter**.
-   Since no tab is open yet, a tab opens. ✅ The bar now shows `https://example.com/`
-   (post-redirect / normalised form).
+   Since no tab is open yet, a tab opens. ✅ The field clears (the new-tab open path
+   keeps the pre-015 clear-on-open); click into the page or switch tabs and the bar
+   then shows `https://example.com/` (post-redirect / normalised form).
 2. Open a second tab: type another URL and click the **"+"** button. ✅ A second tab opens
-   and becomes active; the bar shows the second URL; the first tab is unchanged.
+   and becomes active; on the next activation the bar shows the second URL; the first tab
+   is unchanged.
 3. Click the first tab in the strip (or pick it from the dropdown). ✅ The bar switches to
    the first tab's URL with no perceptible delay (SC-001).
 4. In the active tab, click a link that redirects. ✅ Within ~1 s of the load settling the
@@ -39,7 +45,8 @@ npm start              # builds + launches Electron
 
 6. With one tab active, select the bar, replace the URL, press **Enter**. ✅ The **same**
    tab loads the new page; the tab count does not change; it is still the active tab
-   (SC-002). Repeat with the **→** button — same result (in-place, not a new tab).
+   (SC-002); focus leaves the field and the bar settles on the resolved URL. Repeat with
+   the **→** button — same result (in-place, not a new tab).
 7. Enter `ftp://example.com` and press Enter. ✅ Refused with a notice; the tab stays on
    its current page (US2 scenario 2).
 8. Enter a well-formed URL on a dead port. ✅ The tab shows its failed-load state and a
@@ -94,10 +101,11 @@ npm run lint
     the background; assert `#address` still holds the typed text. Then click the other tab;
     assert `#address` now shows that tab's URL.
 
-- **`tests/unit/tab-manager-navigate-active.test.ts`** (new, *only if* `TabManager` is
-  unit-reachable without a window — see research R4): `NO_ACTIVE_TAB` when none active; the
-  URL passed to `onPersonOpen` is the validated entered URL, not the landing URL; no
-  `onPersonOpen` on a failed load.
+- **`tests/unit/tab-manager-navigate-active.test.ts`** — *not added*: `TabManager` imports
+  `electron` and the repo has no mock harness for it (research R4). The three assertions
+  (`NO_ACTIVE_TAB`; `onPersonOpen` gets the validated entered URL, not the landing URL; no
+  `onPersonOpen` on a failed load) are covered by the FR-010 case in
+  `address-bar-navigation.spec.ts`.
 
 ### Must still pass — unchanged
 
@@ -128,5 +136,7 @@ npm run lint
       discards it.
 - [ ] Placeholder text reflects the resolved behaviour (FR-011).
 - [ ] `npm run lint`, `npm run test`, `npm run test:e2e` all green.
-- [ ] PR description notes the new `chrome:navigate-active` IPC channel and the
-      `tabs:changed` payload change for the Principle III review gate.
+- [ ] PR description notes, for the Principle III review gate: the new
+      `chrome:navigate-active` IPC channel, the `tabs:changed` payload change, and the new
+      `NO_ACTIVE_TAB` error code. All inside the renderer↔main chrome boundary; the MCP
+      surface is untouched (FR-012).

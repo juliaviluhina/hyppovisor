@@ -208,6 +208,38 @@ test("US2 / FR-010: a successful in-place navigation feeds recent-URLs; a failed
   });
 });
 
+test("US2 / FR-010: navigating in place through a redirect records the entered URL, not the landing URL", async () => {
+  await withApp(async (page) => {
+    await openNewTab(page, `${base}/form.html`); // first tab on a URL distinct from the redirect target
+
+    // /redirect 302s to /static.html — the tab lands on static.html but the
+    // history must record what the person typed.
+    await page.locator("#address").fill(`${base}/redirect`);
+    await page.locator("#address").press("Enter");
+    await page.locator("#address").blur();
+
+    await expect(page.locator("#address")).toHaveValue(`${base}/static.html`); // landed
+    expect(await recent(page)).toEqual([`${base}/redirect`, `${base}/form.html`]); // recorded the entered URL
+  });
+});
+
+test("US2: navigateActive rejects NO_ACTIVE_TAB when no tab is open (defence in depth)", async () => {
+  await withApp(async (page) => {
+    const err = await page.evaluate(async () => {
+      try {
+        await (window as unknown as { hyppo: { navigateActive: (u: string) => Promise<unknown> } }).hyppo.navigateActive(
+          "https://example.com/",
+        );
+        return null;
+      } catch (e) {
+        return String((e as Error).message ?? e);
+      }
+    });
+    expect(err).toMatch(/No active tab/i);
+    expect(await listUrls(page)).toEqual([]); // no fallback tab was created
+  });
+});
+
 test("US2 / FR-007: with no tab open, Enter opens a new tab", async () => {
   await withApp(async (page) => {
     await page.locator("#address").fill(`${base}/static.html`);

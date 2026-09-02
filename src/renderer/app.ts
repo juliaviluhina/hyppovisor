@@ -161,8 +161,10 @@ async function submit(): Promise<void> {
   try {
     await hyppo.navigateActive(url);
     hideNotice();
-    // No force-clear: the ensuing tabs:changed → syncAddress() puts the tab's
-    // resolved URL in the field.
+    // The edit is submitted — drop focus so syncAddress() can reflect the tab's
+    // resolved (post-redirect) URL, the way a browser omnibox hands focus to the
+    // page after you hit Enter. (The blur listener also runs syncAddress now.)
+    address.blur();
   } catch (e) {
     showNotice(`error: ${(e as Error).message}`, "error");
   }

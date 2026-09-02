@@ -57,8 +57,9 @@ user-data directory. Plain JSON, safe to delete.
 
 ## Recent URLs
 
-The address bar offers a dropdown of the last 20 URLs **you** opened from it
-(newest first, no duplicates). Agent opens and failed loads are not recorded.
+The address bar offers a dropdown of the last 20 URLs **you** opened or
+navigated the active tab to from it (newest first, no duplicates). Agent
+navigations and failed loads are not recorded.
 It persists to `recent-urls.json` in the user-data directory — a plain JSON
 array of strings, safe to hand-edit or delete. The **Connection & MCP** panel
 has a **Clear recent URLs** button. Cap override for tests only:
