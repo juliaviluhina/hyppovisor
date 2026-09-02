@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-01
 
-**Status**: Draft
+**Status**: Clarified (2026-09-01) — clarify session 2026-09-01 (1 Q: FR-006 new-tab affordance)
 
 **Input**: User description: "Tier 2 follow-up to feature 014 — when a tab activates, its
 URL is shown in the address input, and editing + Enter navigates that tab in place (like a
@@ -29,7 +29,7 @@ and "navigate" is already a permitted action under Constitution Principle I — 
 
 ### Session 2026-09-01
 
-<!-- populated by /speckit-clarify -->
+- Q: Once Enter navigates the active tab in place, how does a person open a URL in a new tab instead? → A: A dedicated "+" new-tab button in the top bar (beside the address row); Enter and the → button both navigate the active tab in place.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -79,8 +79,8 @@ without it the bar looks like a browser address bar but silently does something 
 
 **Independent Test**: With one tab open, edit the address input and press Enter; confirm
 the tab count is unchanged, the active tab now shows the new URL, and it is still the
-active tab. Repeat with the primary open control (the → button) per its resolved role
-(see FR-006).
+active tab. Repeat using the → button and confirm it also navigates the active tab in
+place (not a new tab).
 
 **Acceptance Scenarios**:
 
@@ -103,22 +103,22 @@ active tab. Repeat with the primary open control (the → button) per its resolv
 
 ### User Story 3 - Open a new tab even when a tab is active (Priority: P2)
 
-A person has a tab open and wants a *second* tab rather than replacing the first. They use
-the explicit new-tab affordance and the typed URL opens in a new tab, leaving the original
+A person has a tab open and wants a *second* tab rather than replacing the first. They
+click the "+" new-tab button and the typed URL opens in a new tab, leaving the original
 tab untouched.
 
 **Why this priority**: Once Enter means "navigate the current tab", there must still be a
 first-class way to open a new tab; but it is secondary to getting the primary behaviour
 right, and a person can always close and reopen in the meantime.
 
-**Independent Test**: With one tab open, use the explicit new-tab affordance with a URL and
+**Independent Test**: With one tab open, enter a URL and click the "+" new-tab button;
 confirm a second tab is created and activated while the first tab is unchanged.
 
 **Acceptance Scenarios**:
 
-1. **Given** a tab is active, **When** the person invokes the explicit "open in a new tab"
-   affordance with a URL, **Then** a new tab is created with that URL and the previously
-   active tab is unchanged.
+1. **Given** a tab is active, **When** the person enters a URL and clicks the "+" new-tab
+   button, **Then** a new tab is created with that URL and the previously active tab is
+   unchanged.
 2. **Given** no tab is open, **When** the person invokes any open/navigate action with a
    URL, **Then** a new tab is created (there is nothing to navigate).
 
@@ -157,13 +157,14 @@ confirm a second tab is created and activated while the first tab is unchanged.
 
 #### Navigating the active tab (User Story 2)
 
-- **FR-005**: When a tab is active, submitting the address input (Enter, and the primary
-  open control) MUST navigate that tab to the entered URL in place, creating no new tab and
-  keeping it the active tab.
-- **FR-006**: There MUST be an unambiguous way to open a URL in a **new** tab while a tab
-  is active. [NEEDS CLARIFICATION: which affordance — a modifier submit (⌘/Ctrl-Enter), a
-  dedicated "+" new-tab button, or keep the → button as "always new tab" and let Enter mean
-  "navigate current"?]
+- **FR-005**: When a tab is active, submitting the address input — Enter or the → button —
+  MUST navigate that tab to the entered URL in place, creating no new tab and keeping it
+  the active tab.
+- **FR-006**: A dedicated "open in a new tab" control — a "+" button in the top bar beside
+  the address row — MUST open the entered URL in a new tab without disturbing the active
+  tab. It is the only new-tab affordance once Enter and the → button both navigate in
+  place, and MUST be present whenever the address row is. When no tab is active it behaves
+  the same as submitting the input (FR-007).
 - **FR-007**: When no tab is active, submitting the address input MUST open the entered URL
   in a new tab (unchanged from today).
 - **FR-008**: A person-initiated navigation MUST be subject to the same URL policy,
@@ -176,7 +177,8 @@ confirm a second tab is created and activated while the first tab is unchanged.
   new-tab open (feature 009: person-initiated, reached "loaded", entered URL not landing
   URL).
 - **FR-011**: The address input's placeholder / hint text MUST reflect the resolved
-  behaviour (it currently reads "Enter opens a new tab").
+  behaviour — submitting re-points the active tab, and the "+" button opens a new tab (it
+  currently reads "Enter opens a new tab").
 
 #### Scope guard
 
@@ -209,10 +211,10 @@ confirm a second tab is created and activated while the first tab is unchanged.
 - "Navigate the active tab" reuses the existing `TabManager.navigate(tabId, url)` path that
   MCP `navigate` already uses; the only new plumbing is one IPC route + preload forwarder
   and renderer wiring. No change to the tab model or to `url-policy`.
-- The default resolution of FR-006, pending clarification, is: **the → button always opens
-  a new tab; Enter navigates the active tab (or opens a new tab when none is active)**. This
-  keeps a visible, discoverable new-tab control and matches the muscle memory of Enter =
-  "go here".
+- FR-006 resolved (clarify 2026-09-01): a dedicated **"+" new-tab button** is added to the
+  top bar beside the address row; **Enter and the → button both navigate the active tab in
+  place**. This matches browser behaviour — the address bar re-points the current tab, and a
+  separate control makes new tabs.
 - Recent-URLs behaviour (feature 009) treats a person-initiated navigate the same as a
   person-initiated open for history purposes; this is a small change to the `onPersonOpen`
   trigger, not a new store.
