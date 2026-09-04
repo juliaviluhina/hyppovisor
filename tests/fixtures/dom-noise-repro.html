@@ -11,7 +11,8 @@
       caller reading page structure needs:
 
         - Real page, #jack-main-panel scoped DOM: 37,233 bytes total.
-          - 21.6% (8,032 bytes) was inline <svg> icon markup (12 icons).
+          - 21.6% (8,032 bytes) was inline <svg> icon markup (12 icons, all aria-hidden="true"
+            — decorative, per the platform's own accessibility semantics).
           - 42.2% (15,714 bytes) was `class="…"` utility-string content (220 attributes).
           - Crude tag-stripped visible text: ~1,669 chars — under 5% of the DOM bytes.
 
@@ -25,10 +26,13 @@
       What issue 008 proposes: once implemented, a noise-reduction pass on
       `read_page({ selector: "#job-list", includeDom: true, reduceNoise: true })`
       (parameter name/default TBD during specification) should return DOM markup with the
-      <script>/<style>/comment nodes and the presentation-only class/style attributes
-      stripped, while every card's visible text (title + company) survives intact — same
-      spirit as issue 007's fixture: an offline, byte-measurable acceptance check once the
-      feature exists.
+      <script>/<style>/comment nodes, decorative (aria-hidden) icon <svg> elements, and the
+      presentation-only class/style attributes stripped, while every card's visible text
+      (title + company) survives intact — same spirit as issue 007's fixture: an offline,
+      byte-measurable acceptance check once the feature exists. Card one's icon carries
+      aria-hidden="true" (decorative, dropped by reduction); its badge icon instead carries
+      role="img" + aria-label (meaningful, preserved by reduction) — proving reduction
+      distinguishes the two rather than stripping every <svg> unconditionally.
     -->
     <style>
       /* Presentation-only — a noise-reduction pass should be able to drop this node
@@ -52,9 +56,12 @@
       >
         <div class="flex gap-3 overflow-hidden items-center">
           <div class="shrink-0 overflow-hidden bg-white size-10 rounded-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path d="M14.2611 1.29711C14.5548 1.40637 14.7496 1.68669 14.7496 2.00004V10.2502H19.5004C19.7938 10.2502 20.0603 10.4213 20.1824 10.6881C20.3045 10.9549 20.2598 11.2684 20.068 11.4904L10.568 22.4902C10.3632 22.7274 10.0326 22.8122 9.73888 22.7029C9.4452 22.5937 9.2504 22.3134 9.2504 22V13.7499H4.4996C4.20619 13.7499 3.93973 13.5788 3.81763 13.312" />
               <circle cx="12" cy="12" r="10" />
+            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" role="img" aria-label="Verified employer">
+              <path d="M9 12l2 2 4-4" />
             </svg>
           </div>
           <div class="min-w-0 overflow-hidden flex-1">
@@ -72,7 +79,7 @@
       >
         <div class="flex gap-3 overflow-hidden items-center">
           <div class="shrink-0 overflow-hidden bg-white size-10 rounded-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path d="M11.109 3.74829C11.48 3.02037 12.52 3.02037 12.891 3.74829L15.0785 8.0407C15.2237 8.32561 15.4964 8.5239 15.8122 8.5742L20.5671 9.33147C21.373 9.45983 21.6941 10.4474 21.1178 11.0252L17.7138 14.4383" />
               <path d="M12.125 8.25H12M12.25 8.25C12.25 8.11193 12.1381 8 12 8" />
             </svg>
@@ -92,7 +99,7 @@
       >
         <div class="flex gap-3 overflow-hidden items-center">
           <div class="shrink-0 overflow-hidden bg-white size-10 rounded-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path d="M17 17L21 21" />
               <path d="M19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19C15.4183 19 19 15.4183 19 11Z" />
             </svg>

@@ -120,13 +120,21 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         .string()
         .optional()
         .describe("CSS selector to scope the read to one element's subtree"),
+      reduceDom: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe(
+          "When includeDom is true, strip <script>/<style>/comment nodes and class/style " +
+            "attributes from the returned DOM. Set false for the verbatim, unreduced DOM.",
+        ),
     },
-    async ({ tabId, includeDom, selector }) => {
+    async ({ tabId, includeDom, selector, reduceDom }) => {
       seen("read_page");
       try {
         const { value } = await queue.run((depth) => {
           const wc = tabs.webContentsFor(tabId);
-          return readPage(wc, tabId, includeDom, depth, selector);
+          return readPage(wc, tabId, includeDom, depth, selector, reduceDom);
         });
         return ok(value);
       } catch (e) {

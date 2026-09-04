@@ -152,3 +152,183 @@ test("US3: a scoped read reports scopedTo; an unscoped read has no such field", 
   const unscoped = await callHandle<{ scopedTo?: string }>(app, "read", [tabId]);
   expect("scopedTo" in unscoped).toBe(false);
 });
+
+// ─── feature 017 — US1: reduced-by-default DOM strips noise, keeps content ─
+
+test("US1: a reduced DOM read strips script/style/comment/class/style, keeps card text", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#job-list"]);
+  const dom = reduced.dom ?? "";
+
+  expect(dom).not.toContain("<script");
+  expect(dom).not.toContain("<style");
+  expect(dom).not.toContain("<!--");
+  expect(dom).not.toContain("class=");
+  expect(dom).not.toContain("style=");
+
+  expect(dom).toContain("Example Role One");
+  expect(dom).toContain("Example Co");
+  expect(dom).toContain("Example Role Two");
+  expect(dom).toContain("Another Co");
+  expect(dom).toContain("Example Role Three");
+  expect(dom).toContain("Third Co");
+});
+
+test("US1 (FR-011): a decorative (aria-hidden) icon svg is removed; an accessible one is kept", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#job-list"]);
+  const dom = reduced.dom ?? "";
+
+  // Every card's decorative icon is aria-hidden in the fixture — none should survive.
+  expect(dom).not.toContain("aria-hidden");
+  // Card one's accessible badge icon (role="img" + aria-label) is meaningful, not decorative.
+  expect(dom).toContain('aria-label="Verified employer"');
+  expect(dom).toContain("<svg");
+
+  const verbatim = await callHandle<{ dom?: string }>(app, "read", [
+    tabId,
+    true,
+    "#job-list",
+    false,
+  ]);
+  const verbatimSvgCount = (verbatim.dom?.match(/<svg/g) ?? []).length;
+  const reducedSvgCount = (dom.match(/<svg/g) ?? []).length;
+  expect(reducedSvgCount).toBe(verbatimSvgCount - 3); // one decorative icon per card removed
+});
+
+test("US1: a non-presentational attribute survives reduction unchanged", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#job-list"]);
+  const dom = reduced.dom ?? "";
+
+  expect(dom).toContain('id="job-list"');
+  expect(dom).toContain('role="button"');
+  expect(dom).toContain('aria-roledescription="sortable"');
+});
+
+// ─── feature 017 — US2: reduceDom: false is the exact pre-017 verbatim DOM ─
+
+test("US2: reduceDom: false returns the DOM byte-for-byte unreduced", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const verbatim = await callHandle<{ dom?: string }>(app, "read", [
+    tabId,
+    true,
+    undefined,
+    false,
+  ]);
+  const dom = verbatim.dom ?? "";
+
+  expect(dom).toContain("<script");
+  expect(dom).toContain("<style");
+  expect(dom).toContain("<!--");
+  expect(dom).toContain('class="');
+});
+
+test("US2: a read without includeDom is unaffected by reduceDom", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const withReduce = await callHandle<{ text: string; dom?: string; domReduced?: boolean }>(
+    app,
+    "read",
+    [tabId],
+  );
+  const withoutReduce = await callHandle<{ text: string; dom?: string; domReduced?: boolean }>(
+    app,
+    "read",
+    [tabId, false, undefined, false],
+  );
+
+  expect(withReduce.dom).toBeUndefined();
+  expect(withoutReduce.dom).toBeUndefined();
+  expect("domReduced" in withReduce).toBe(false);
+  expect("domReduced" in withoutReduce).toBe(false);
+  expect(withReduce.text).toBe(withoutReduce.text);
+});
+
+// ─── feature 017 — US3: domReduced self-describes whether reduction applied ─
+
+test("US3: domReduced is true iff reduction was applied, absent otherwise", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+
+  const reduced = await callHandle<{ domReduced?: boolean }>(app, "read", [
+    tabId,
+    true,
+    "#job-list",
+  ]);
+  expect(reduced.domReduced).toBe(true);
+
+  const verbatim = await callHandle<{ domReduced?: boolean }>(app, "read", [
+    tabId,
+    true,
+    "#job-list",
+    false,
+  ]);
+  expect("domReduced" in verbatim).toBe(false);
+
+  const noDom = await callHandle<{ domReduced?: boolean }>(app, "read", [tabId]);
+  expect("domReduced" in noDom).toBe(false);
+});
+
+// ─── feature 017 — Polish: SC-001 byte-size proof, edge cases, composability ─
+
+test("SC-001: reduced DOM is at least 50% smaller by byte size than the unreduced DOM", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true]);
+  const verbatim = await callHandle<{ dom?: string }>(app, "read", [tabId, true, undefined, false]);
+
+  const reducedBytes = Buffer.byteLength(reduced.dom ?? "", "utf8");
+  const verbatimBytes = Buffer.byteLength(verbatim.dom ?? "", "utf8");
+  expect(reducedBytes).toBeLessThanOrEqual(verbatimBytes * 0.5);
+});
+
+test("Edge case: a subtree with no noise reduces to content identical to the verbatim read", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/static.html`]);
+  const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#para"]);
+  const verbatim = await callHandle<{ dom?: string }>(app, "read", [
+    tabId,
+    true,
+    "#para",
+    false,
+  ]);
+
+  // #para has no <script>/<style>/comment/class/style noise to strip.
+  expect(reduced.dom).toBe(verbatim.dom);
+});
+
+test("Edge case: an element emptied by attribute stripping is still present in reduced output", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#job-list"]);
+  const dom = reduced.dom ?? "";
+
+  // The icon-wrapper <div> carries only a class attribute in the fixture; after
+  // stripping it has none, but the element itself (and its <svg> child) remain.
+  expect(dom).toContain("<svg");
+  expect(dom.match(/<div>/g)?.length ?? 0).toBeGreaterThan(0);
+});
+
+test("Composability: selector (016) + reduceDom (017) reduce only the scoped subtree", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#job-list"]);
+  const dom = reduced.dom ?? "";
+
+  expect(dom).toContain('id="job-list"');
+  expect(dom).not.toContain("<style"); // the <head> <style> is outside #job-list's subtree
+  expect(dom).not.toContain("class=");
+});

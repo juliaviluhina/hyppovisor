@@ -527,10 +527,12 @@ async function main(): Promise<void> {
             .run(() => tabs.navigate(tabId, url))
             .then((r) => ({ ...r.value, queueDepth: r.queueDepth })),
         ),
-      read: (tabId: string, includeDom = false, selector?: string) =>
+      read: (tabId: string, includeDom = false, selector?: string, reduceDom = true) =>
         withCode(() =>
           queue
-            .run((d) => readPage(tabs.webContentsFor(tabId), tabId, includeDom, d, selector))
+            .run((d) =>
+              readPage(tabs.webContentsFor(tabId), tabId, includeDom, d, selector, reduceDom),
+            )
             .then((r) => r.value),
         ),
       interact: (
