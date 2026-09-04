@@ -8,6 +8,13 @@
 
 **Input**: User description: "look at tests/fixtures/chat-shell-repro.html and specs/issues/007-read-page-selector-scoping.md - let's work on specification"
 
+## Clarifications
+
+### Session 2026-09-04
+
+- Q: When a caller asks for a scoped text read (with a selector) and also requests the page's DOM content, should the DOM content be narrowed to that same element's subtree, or should it still return the full page's DOM? → A: DOM output is scoped to the same element's subtree when a selector is supplied — narrowing is consistent across all optional read outputs.
+- Q: Should deterministic DOM noise-reduction (stripping non-meaningful markup/attributes before returning DOM content) be part of this feature, or captured as a follow-on idea and kept out of this spec's scope? → A: Keep this spec to selector scoping only; record noise-reduction as an out-of-scope follow-on idea for a future issue/spec.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Scope a read to one part of the page (Priority: P1)
@@ -40,6 +47,9 @@ contains only the detail pane's text ("Turn N") regardless of how long the chat 
 4. **Given** a syntactically invalid CSS selector, **When** the caller reads the page with that
    selector, **Then** the read fails with an invalid-selector error, consistent with how the
    sibling form-fields tool already reports the same failure.
+5. **Given** a selector targeting `#detail-pane` and a request for the page's optional DOM
+   content, **When** the caller reads the page, **Then** the returned DOM content is limited to
+   `#detail-pane`'s own subtree, not the full page's DOM.
 
 ---
 
@@ -100,9 +110,9 @@ what part of the page it covers; perform an unscoped read and confirm no such ma
 - What happens when the page navigates or the targeted element is removed between the caller
   choosing a selector and the read executing? This is the same "content changed during read"
   situation full-page reads already tolerate; no new failure mode is introduced.
-- What happens when a caller supplies both a selector and any other existing read option (e.g.
-  requesting DOM inclusion)? Both apply together — the selector narrows the text source; other
-  options behave as they do today, applied relative to the scoped element where applicable.
+- What happens when a caller supplies both a selector and requests the page's DOM content?
+  Scoping is consistent across the whole read: the DOM content returned is narrowed to the
+  same element's subtree as the text, not the full page's DOM (see Clarifications).
 
 ## Requirements *(mandatory)*
 
@@ -129,8 +139,12 @@ what part of the page it covers; perform an unscoped read and confirm no such ma
 - **FR-008**: The existing size-limit and truncation behavior applied to page-read text MUST
   continue to apply to the narrowed text of a scoped read, with truncation indicated the same
   way it is for an unscoped read.
-- **FR-009**: All other fields currently returned by a page read (page title, URL, timestamp,
-  optional DOM content) MUST remain present and unaffected by whether the read is scoped.
+- **FR-009**: All other fields currently returned by a page read (page title, URL, timestamp)
+  MUST remain present and unaffected by whether the read is scoped.
+- **FR-010**: When a selector is supplied together with a request for the page's optional DOM
+  content, the returned DOM content MUST be narrowed to the selected element's subtree, the
+  same way the text is narrowed — scoping applies consistently across every optional output of
+  the read, not to text alone.
 
 ### Key Entities
 
@@ -167,3 +181,8 @@ what part of the page it covers; perform an unscoped read and confirm no such ma
 - This capability is opt-in only — a caller must explicitly supply a selector to narrow a
   read — consistent with the constitution's requirement that unscoped reads keep their full,
   verbatim, self-sufficient guarantee unchanged.
+- Deterministic DOM noise-reduction (stripping non-meaningful markup before returning DOM
+  content, independent of selector scoping) is explicitly out of scope for this feature. It is
+  a materially bigger design question — what counts as "noise," a default-on/off toggle,
+  attribute/whitespace/script handling — and is recorded as a follow-on idea in
+  `specs/issues/008-read-page-dom-noise-reduction.md` rather than folded in here.
