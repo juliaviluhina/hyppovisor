@@ -7,44 +7,88 @@ import type { WebContents } from "electron";
 import { config } from "../config.js";
 import { truncateToBytes } from "./truncate.js";
 import type { PageReadResult } from "../../shared/types.js";
+import { SELECTOR_SYNTAX_HELPER, assertSelectorValid } from "./selector-syntax.js";
+import { HyppoError } from "../errors.js";
 
-// Runs in an isolated world. innerText approximates "what the person sees":
-// it respects visibility and layout, unlike textContent.
-const READ_SCRIPT = `(() => ({
+/**
+ * Builds the in-page read script (isolated world). innerText approximates
+ * "what the person sees": it respects visibility and layout, unlike
+ * textContent. With no `selector` this is byte-for-byte the pre-feature-016
+ * script (Principle V — unscoped reads stay unchanged, FR-002). With a
+ * `selector`, the read starts from that element instead of `document.body` /
+ * `document.documentElement` (feature 016) — resolved via the same
+ * `selector-syntax.ts` helper `read_form_fields`'s `containerSelector` uses,
+ * so invalid CSS and "no match" are detected identically (research.md R1/R2).
+ */
+export function readPageScript(selector: string | undefined): string {
+  if (selector === undefined) {
+    return `(() => ({
   url: location.href,
   title: document.title,
   text: document.body ? document.body.innerText : "",
   dom: document.documentElement ? document.documentElement.outerHTML : "",
 }))()`;
-
-interface RawRead {
-  url: string;
-  title: string;
-  text: string;
-  dom: string;
+  }
+  return `(() => {
+  ${SELECTOR_SYNTAX_HELPER}
+  try {
+    const el = __querySafe(document, ${JSON.stringify(selector)});
+    if (!el) return { notFound: true };
+    return {
+      url: location.href,
+      title: document.title,
+      text: el.innerText || "",
+      dom: el.outerHTML || "",
+    };
+  } catch (e) {
+    if (e && e.__invalidSelector) return { __invalidSelector: true };
+    throw e;
+  }
+})()`;
 }
+
+type RawRead =
+  | { url: string; title: string; text: string; dom: string }
+  | { notFound: true }
+  | { __invalidSelector: true };
 
 export async function readPage(
   wc: WebContents,
   tabId: string,
   includeDom: boolean,
   queueDepth: number,
+  selector?: string,
 ): Promise<PageReadResult> {
-  const raw = (await wc.executeJavaScript(READ_SCRIPT, true)) as RawRead;
+  const raw = (await wc.executeJavaScript(readPageScript(selector), true)) as RawRead;
 
-  const text = truncateToBytes(raw.text ?? "", config.maxTextBytes);
+  // A non-CSS `selector` → INVALID_SELECTOR (before "not found" is considered,
+  // same ordering `read_form_fields` uses).
+  assertSelectorValid(raw);
+  if ("notFound" in raw) {
+    throw new HyppoError(
+      "TARGET_NOT_FOUND",
+      `No element matches selector ${JSON.stringify(selector)}.`,
+    );
+  }
+  const found = raw as Extract<RawRead, { url: string }>;
+
+  const text = truncateToBytes(found.text ?? "", config.maxTextBytes);
   const result: PageReadResult = {
     tabId,
-    url: raw.url,
-    title: raw.title,
+    url: found.url,
+    title: found.title,
     text: text.value,
     observedAt: new Date().toISOString(),
     truncated: { text: text.truncated, dom: false },
     queueDepth,
   };
 
+  if (selector !== undefined) {
+    result.scopedTo = selector;
+  }
+
   if (includeDom) {
-    const dom = truncateToBytes(raw.dom ?? "", config.maxDomBytes);
+    const dom = truncateToBytes(found.dom ?? "", config.maxDomBytes);
     result.dom = dom.value;
     result.truncated.dom = dom.truncated;
   }

@@ -37,6 +37,9 @@ export interface PageReadResult {
   observedAt: string;
   truncated: { text: boolean; dom: boolean };
   queueDepth: number;
+  /** The selector that scoped this read (feature 016). Present only when the
+   *  caller supplied one; absent for an unscoped, full-page read. */
+  scopedTo?: string;
 }
 
 export type InteractOperation =
