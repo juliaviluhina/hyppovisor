@@ -111,17 +111,22 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   server.tool(
     "read_page",
     "Return one tab's current content: verbatim visible text, and the DOM only when asked. " +
-      "Nothing is stored — this payload is the only copy.",
+      "Nothing is stored — this payload is the only copy. Optionally scope the read to one " +
+      "element's subtree with `selector`, e.g. to skip a persistent chat log or nav panel.",
     {
       tabId: z.string(),
       includeDom: z.boolean().optional().default(false).describe("Include document HTML"),
+      selector: z
+        .string()
+        .optional()
+        .describe("CSS selector to scope the read to one element's subtree"),
     },
-    async ({ tabId, includeDom }) => {
+    async ({ tabId, includeDom, selector }) => {
       seen("read_page");
       try {
         const { value } = await queue.run((depth) => {
           const wc = tabs.webContentsFor(tabId);
-          return readPage(wc, tabId, includeDom, depth);
+          return readPage(wc, tabId, includeDom, depth, selector);
         });
         return ok(value);
       } catch (e) {

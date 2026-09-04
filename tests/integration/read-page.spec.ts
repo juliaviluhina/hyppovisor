@@ -65,3 +65,90 @@ test("oversized visible text truncates and sets the flag (T032 e2e)", async () =
   expect(r.truncated.text).toBe(true);
   expect(Buffer.byteLength(r.text, "utf8")).toBeLessThanOrEqual(100 * 1024);
 });
+
+// ─── feature 016 — US1: selector scoping ────────────────────────────────────
+
+test("US1: a selector scopes text to one element's subtree, unaffected by chat-log growth", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/chat-shell-repro.html`,
+  ]);
+  for (let i = 0; i < 3; i++) {
+    await callHandle(app, "interact", [tabId, "click", "#advance"]);
+  }
+
+  const scoped = await callHandle<{ text: string }>(app, "read", [tabId, false, "#detail-pane"]);
+  expect(scoped.text.trim()).toBe("Turn 4");
+  expect(scoped.text).not.toContain("Chat line");
+});
+
+test("US1: a selector matching more than one element uses the first, document order", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/chat-shell-repro.html`,
+  ]);
+  // Both #chat-log and #detail-pane contain a <p> — "p" matches both, first wins.
+  const scoped = await callHandle<{ text: string }>(app, "read", [tabId, false, "p"]);
+  expect(scoped.text.trim()).toBe("Chat line 1");
+});
+
+test("US1: an invalid CSS selector rejects INVALID_SELECTOR", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/chat-shell-repro.html`,
+  ]);
+  const err = await callHandle(app, "read", [tabId, false, ":has-text(x)"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(err)).toContain("INVALID_SELECTOR");
+});
+
+test("US1: a valid selector matching nothing rejects TARGET_NOT_FOUND", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/chat-shell-repro.html`,
+  ]);
+  const err = await callHandle(app, "read", [tabId, false, "#does-not-exist"]).catch(
+    (e: Error) => e.message,
+  );
+  expect(String(err)).toContain("TARGET_NOT_FOUND");
+});
+
+test("US1: a selector also scopes the optional DOM output (FR-010)", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/chat-shell-repro.html`,
+  ]);
+  const scoped = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#detail-pane"]);
+  expect(scoped.dom).toContain('id="detail-pane"');
+  expect(scoped.dom).not.toContain('id="chat-log"');
+});
+
+// ─── feature 016 — US2: unscoped reads are byte-for-byte unchanged ─────────
+
+test("US2: an unscoped read on the chat-shell fixture returns the full, un-narrowed shell", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/chat-shell-repro.html`,
+  ]);
+  await callHandle(app, "interact", [tabId, "click", "#advance"]);
+  await callHandle(app, "interact", [tabId, "click", "#advance"]);
+
+  const full = await callHandle<{ text: string; scopedTo?: string }>(app, "read", [tabId]);
+  expect(full.text).toContain("Chat line 1");
+  expect(full.text).toContain("Chat line 3");
+  expect(full.text).toContain("Turn 3");
+  expect("scopedTo" in full).toBe(false);
+});
+
+// ─── feature 016 — US3: scoped results self-describe via scopedTo ─────────
+
+test("US3: a scoped read reports scopedTo; an unscoped read has no such field", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/chat-shell-repro.html`,
+  ]);
+
+  const scoped = await callHandle<{ scopedTo?: string }>(app, "read", [
+    tabId,
+    false,
+    "#detail-pane",
+  ]);
+  expect(scoped.scopedTo).toBe("#detail-pane");
+
+  const unscoped = await callHandle<{ scopedTo?: string }>(app, "read", [tabId]);
+  expect("scopedTo" in unscoped).toBe(false);
+});

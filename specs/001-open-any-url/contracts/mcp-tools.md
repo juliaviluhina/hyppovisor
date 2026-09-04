@@ -62,16 +62,25 @@ is enumerable via `listShimRules()`.
 
 Returns the current content of one tab. Nothing is persisted — this payload is the only copy.
 
-**Input**: `{ tabId: string, includeDom?: boolean }` — `includeDom` defaults to `false`.
+**Input**: `{ tabId: string, includeDom?: boolean, selector?: string }` — `includeDom` defaults
+to `false`; `selector` (feature 016) is omitted by default.
 
-**Returns**: `{ tabId, url, title, text, dom?, observedAt, truncated: { text, dom }, queueDepth }`
+**Returns**: `{ tabId, url, title, text, dom?, observedAt, truncated: { text, dom }, queueDepth, scopedTo? }`
 
 - `text` is verbatim visible text, never summarized or reformatted (FR-010b).
 - `dom` present only when `includeDom: true` (FR-010a).
 - Limits: `text` 100 KB default, `dom` its own separate limit; exceeding either truncates that
   part and sets its flag (FR-021).
+- `selector` (feature 016) — omit for the whole page (unchanged, byte-for-byte, default
+  behavior); give it to scope both `text` and (if requested) `dom` to the first element
+  matching that selector's subtree instead of the whole page. Mirrors `read_form_fields`'s
+  `containerSelector`: first match wins on multiple matches; a non-CSS selector →
+  `INVALID_SELECTOR`; a valid selector matching nothing → `TARGET_NOT_FOUND`.
+- `scopedTo` — present only when `selector` was supplied, echoing it back so a scoped result
+  is self-describing and never mistaken for a full-page capture.
 
-**Errors**: `TAB_NOT_FOUND`.
+**Errors**: `TAB_NOT_FOUND`, `INVALID_SELECTOR`, `TARGET_NOT_FOUND` (the latter two only when
+`selector` is supplied).
 
 **Guarantee**: the payload is self-sufficient — a caller that stores it can reconstruct the page's
 visible text offline (SC-010).

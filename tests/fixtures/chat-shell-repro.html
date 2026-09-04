@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Chat-Shell Repro Fixture (issue 007)</title>
+  </head>
+  <body>
+    <!--
+      Reproduces the shape that drove specs/issues/007-read-page-selector-scoping.md:
+      an SPA that keeps a persistent, ever-growing panel (a chat log, an activity feed)
+      in the DOM alongside a "current" detail pane that is the only thing actually new
+      on a given read.
+
+      Each click on #advance appends one line to #chat-log (never removed — same as a
+      real chat transcript that only grows) and REPLACES the text in #detail-pane (the
+      one thing a caller actually wants on that turn).
+
+      Manual repro of the issue:
+        1. open_url this file, read_page → text includes 1 chat line + detail "Turn 1".
+        2. interact click #advance (permitted: reveals more content, not a submit control).
+        3. read_page again → text now includes 2 chat lines (line 1 unchanged from
+           before, entirely re-sent) + detail "Turn 2". The caller already had line 1;
+           it cost context again anyway.
+        4. Repeat a few times: the chat-log prefix common to every read grows without
+           bound while the only new information per turn is one detail line.
+
+      What issue 007 proposes: read_page({ tabId, selector: "#detail-pane" }) should
+      return only "Turn N" each time, independent of how long #chat-log has grown —
+      exercise this fixture once `selector` scoping exists to confirm the byte savings
+      and that the unscoped call (selector omitted) still returns the full shell,
+      chat log included, unchanged from today's behavior.
+    -->
+    <h1>Chat-shell repro</h1>
+
+    <div id="chat-log">
+      <p>Chat line 1</p>
+    </div>
+
+    <div id="detail-pane">
+      <p>Turn 1</p>
+    </div>
+
+    <button type="button" id="advance">Advance turn</button>
+
+    <script>
+      let turn = 1;
+      document.getElementById("advance").addEventListener("click", () => {
+        turn += 1;
+        const line = document.createElement("p");
+        line.textContent = `Chat line ${turn}`;
+        document.getElementById("chat-log").appendChild(line);
+        document.getElementById("detail-pane").innerHTML = `<p>Turn ${turn}</p>`;
+      });
+    </script>
+  </body>
+</html>
