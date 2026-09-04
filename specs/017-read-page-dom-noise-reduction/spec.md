@@ -24,6 +24,14 @@
   scoped DOM bytes), with near-zero risk of discarding attributes an orchestrator needs to find
   or re-target elements (identifiers, ARIA labels, and data attributes like `data-testid` all
   survive).
+- Q: Should noise reduction also remove decorative icon graphics, which real-world evidence
+  showed as the second-largest source of noise (~22% of scoped DOM bytes)? → A: Yes, but scoped
+  narrowly and safely: remove an `<svg>` element only when it carries `aria-hidden="true"` — the
+  web platform's own, pre-existing signal that the element has no accessible content. This is a
+  fixed, content-blind rule (Principle II) with no risk to visible text or meaningful attributes:
+  an `<svg>` an author marked accessible (e.g. `role="img"` with `aria-label`) is left untouched.
+  Validated against a live production capture: pushed byte reduction on the source issue's
+  reference page from ~56% to ~76% smaller than verbatim.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -64,6 +72,13 @@ company) is still present and intact in the returned markup.
    **Then** every element that carried visible text before reduction still carries that same
    text after reduction — reduction never removes or alters content a person or orchestrator
    would read as the page's information.
+6. **Given** a page whose DOM subtree contains a decorative icon graphic explicitly marked as
+   having no accessible content, **When** the caller reads that subtree's DOM content with noise
+   reduction requested, **Then** that icon graphic is absent from the returned markup.
+7. **Given** a page whose DOM subtree contains an icon graphic explicitly marked as carrying
+   meaningful, accessible content, **When** the caller reads that subtree's DOM content with
+   noise reduction requested, **Then** that icon graphic is preserved unchanged in the returned
+   markup.
 
 ---
 
@@ -143,6 +158,10 @@ indicator is present.
   comments MUST be removed from the returned DOM content.
 - **FR-004**: When noise reduction is applied, `class` and `style` attributes MUST be removed
   from the returned DOM content's elements. No other attributes are removed by this feature.
+- **FR-011**: When noise reduction is applied, an icon graphic element explicitly marked as
+  having no accessible content (i.e. carrying the web platform's own "no accessible content"
+  signal) MUST be removed from the returned DOM content. An icon graphic explicitly marked as
+  carrying meaningful, accessible content (e.g. via an accessible name) MUST be preserved.
 - **FR-005**: Noise reduction MUST NOT remove or alter any element's visible text content, nor
   remove any element whose presence or attributes are needed to preserve that text's structure
   (e.g. its containing element).
@@ -174,7 +193,8 @@ indicator is present.
 - **SC-001**: For a DOM subtree matching the shape measured in the source issue's real-world
   evidence (dominated by inline icon markup and utility-class attributes), a caller requesting
   noise reduction receives DOM content at least 50% smaller by byte size than the unreduced
-  equivalent, with all visible text intact.
+  equivalent, with all visible text intact. (Validated against a live capture of the reference
+  page: ~76% smaller once decorative-icon removal, FR-011, is included.)
 - **SC-002**: DOM reads with reduction explicitly opted out produce identical output to this
   feature's pre-existing behavior in 100% of cases — no observable change in content, size, or
   fields for any caller that opts out.
