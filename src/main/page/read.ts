@@ -17,6 +17,7 @@ import { HyppoError } from "../errors.js";
 // `reduceDom: false` script stays byte-for-byte the pre-017 script (FR-002).
 const DOM_REDUCTION_HELPER = `function __reduceDom(root) {
     if (!root) return "";
+    if (root.nodeType === Node.ELEMENT_NODE && root.matches("script, style, svg[aria-hidden=\\\"true\\\"]")) return "";
     const clone = root.cloneNode(true);
     clone.querySelectorAll("script, style").forEach((el) => el.remove());
     clone.querySelectorAll('svg[aria-hidden="true"]').forEach((el) => el.remove());
@@ -46,7 +47,35 @@ const DOM_REDUCTION_HELPER = `function __reduceDom(root) {
  * unreduced element. `reduceDom: false` reproduces the pre-017 script
  * verbatim (FR-002).
  */
-export function readPageScript(selector: string | undefined, reduceDom: boolean): string {
+export function readPageScript(
+  selector: string | undefined,
+  reduceDom: boolean,
+  includeDom = true,
+): string {
+  if (!includeDom) {
+    if (selector === undefined) {
+      return `(() => ({
+  url: location.href,
+  title: document.title,
+  text: document.body ? document.body.innerText : "",
+}))()`;
+    }
+    return `(() => {
+  ${SELECTOR_SYNTAX_HELPER}
+  try {
+    const el = __querySafe(document, ${JSON.stringify(selector)});
+    if (!el) return { notFound: true };
+    return {
+      url: location.href,
+      title: document.title,
+      text: el.innerText || "",
+    };
+  } catch (e) {
+    if (e && e.__invalidSelector) return { __invalidSelector: true };
+    throw e;
+  }
+})()`;
+  }
   if (selector === undefined) {
     if (!reduceDom) {
       return `(() => ({
@@ -117,7 +146,7 @@ export async function readPage(
   reduceDom = true,
 ): Promise<PageReadResult> {
   const raw = (await wc.executeJavaScript(
-    readPageScript(selector, reduceDom),
+    readPageScript(selector, reduceDom, includeDom),
     true,
   )) as RawRead;
 
