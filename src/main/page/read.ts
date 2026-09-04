@@ -10,6 +10,27 @@ import type { PageReadResult } from "../../shared/types.js";
 import { SELECTOR_SYNTAX_HELPER, assertSelectorValid } from "./selector-syntax.js";
 import { HyppoError } from "../errors.js";
 
+// Reduction pass (feature 017, research.md R1-R3, R7): removes <script>/<style>
+// elements, decorative (aria-hidden) icon <svg> elements, comment nodes, and
+// class/style attributes from a *clone* of the resolved subtree, never the
+// live page. Only emitted into the script when reduction is requested, so a
+// `reduceDom: false` script stays byte-for-byte the pre-017 script (FR-002).
+const DOM_REDUCTION_HELPER = `function __reduceDom(root) {
+    if (!root) return "";
+    const clone = root.cloneNode(true);
+    clone.querySelectorAll("script, style").forEach((el) => el.remove());
+    clone.querySelectorAll('svg[aria-hidden="true"]').forEach((el) => el.remove());
+    const walker = document.createTreeWalker(clone, NodeFilter.SHOW_COMMENT);
+    const comments = [];
+    while (walker.nextNode()) comments.push(walker.currentNode);
+    comments.forEach((c) => c.remove());
+    [clone, ...clone.querySelectorAll("*")].forEach((el) => {
+      el.removeAttribute("class");
+      el.removeAttribute("style");
+    });
+    return clone.outerHTML;
+  }`;
+
 /**
  * Builds the in-page read script (isolated world). innerText approximates
  * "what the person sees": it respects visibility and layout, unlike
@@ -19,17 +40,34 @@ import { HyppoError } from "../errors.js";
  * `document.documentElement` (feature 016) — resolved via the same
  * `selector-syntax.ts` helper `read_form_fields`'s `containerSelector` uses,
  * so invalid CSS and "no match" are detected identically (research.md R1/R2).
+ * `reduceDom` (feature 017) additionally strips script/style/comment nodes
+ * and `class`/`style` attributes from the returned `dom` via a detached
+ * clone (research.md R1/R2); `text` is always computed from the original,
+ * unreduced element. `reduceDom: false` reproduces the pre-017 script
+ * verbatim (FR-002).
  */
-export function readPageScript(selector: string | undefined): string {
+export function readPageScript(selector: string | undefined, reduceDom: boolean): string {
   if (selector === undefined) {
-    return `(() => ({
+    if (!reduceDom) {
+      return `(() => ({
   url: location.href,
   title: document.title,
   text: document.body ? document.body.innerText : "",
   dom: document.documentElement ? document.documentElement.outerHTML : "",
 }))()`;
+    }
+    return `(() => {
+  ${DOM_REDUCTION_HELPER}
+  return {
+    url: location.href,
+    title: document.title,
+    text: document.body ? document.body.innerText : "",
+    dom: __reduceDom(document.documentElement),
+  };
+})()`;
   }
-  return `(() => {
+  if (!reduceDom) {
+    return `(() => {
   ${SELECTOR_SYNTAX_HELPER}
   try {
     const el = __querySafe(document, ${JSON.stringify(selector)});
@@ -39,6 +77,24 @@ export function readPageScript(selector: string | undefined): string {
       title: document.title,
       text: el.innerText || "",
       dom: el.outerHTML || "",
+    };
+  } catch (e) {
+    if (e && e.__invalidSelector) return { __invalidSelector: true };
+    throw e;
+  }
+})()`;
+  }
+  return `(() => {
+  ${SELECTOR_SYNTAX_HELPER}
+  ${DOM_REDUCTION_HELPER}
+  try {
+    const el = __querySafe(document, ${JSON.stringify(selector)});
+    if (!el) return { notFound: true };
+    return {
+      url: location.href,
+      title: document.title,
+      text: el.innerText || "",
+      dom: __reduceDom(el),
     };
   } catch (e) {
     if (e && e.__invalidSelector) return { __invalidSelector: true };
@@ -58,8 +114,12 @@ export async function readPage(
   includeDom: boolean,
   queueDepth: number,
   selector?: string,
+  reduceDom = true,
 ): Promise<PageReadResult> {
-  const raw = (await wc.executeJavaScript(readPageScript(selector), true)) as RawRead;
+  const raw = (await wc.executeJavaScript(
+    readPageScript(selector, reduceDom),
+    true,
+  )) as RawRead;
 
   // A non-CSS `selector` → INVALID_SELECTOR (before "not found" is considered,
   // same ordering `read_form_fields` uses).
@@ -91,6 +151,9 @@ export async function readPage(
     const dom = truncateToBytes(found.dom ?? "", config.maxDomBytes);
     result.dom = dom.value;
     result.truncated.dom = dom.truncated;
+    if (reduceDom) {
+      result.domReduced = true;
+    }
   }
 
   return result;

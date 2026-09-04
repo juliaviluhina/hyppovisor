@@ -40,6 +40,9 @@ export interface PageReadResult {
   /** The selector that scoped this read (feature 016). Present only when the
    *  caller supplied one; absent for an unscoped, full-page read. */
   scopedTo?: string;
+  /** `true` when `dom` is present and had noise reduction applied (feature 017).
+   *  Absent when `dom` is absent or reduction was opted out — never `false`. */
+  domReduced?: boolean;
 }
 
 export type InteractOperation =
