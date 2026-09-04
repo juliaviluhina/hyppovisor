@@ -27,10 +27,13 @@ Existing fields unchanged (including 016's `selector`); one new optional field a
    a. The subtree that would have been serialized (the whole page, or a 016 `selector` match)
       is cloned (`cloneNode(true)`) before any mutation — the live page is never altered.
    b. `<script>`, `<style>` elements and comment nodes are removed from the clone.
-   c. `class` and `style` attributes are removed from every element in the clone.
-   d. No text node, no non-`class`/`style` attribute, and no element is removed for being
-      emptied by the above steps.
-   e. The clone's `outerHTML` becomes `dom`; the result includes `domReduced: true`.
+   c. Every `<svg>` element matching `[aria-hidden="true"]` — a decorative icon the page itself
+      marked as carrying no accessible content — is removed from the clone. An `<svg>` without
+      `aria-hidden="true"` is left untouched (FR-011).
+   d. `class` and `style` attributes are removed from every element in the clone.
+   e. No text node, no non-`class`/`style` attribute, no non-decorative `<svg>`, and no element
+      is removed for being emptied by the above steps.
+   f. The clone's `outerHTML` becomes `dom`; the result includes `domReduced: true`.
 4. `includeDom: true`, `reduceDom: false`:
    a. `dom` is exactly the subtree's `outerHTML`, with no reduction — byte-for-byte identical
       to this feature's pre-existing behavior.

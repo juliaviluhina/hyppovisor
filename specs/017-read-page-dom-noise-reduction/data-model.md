@@ -38,14 +38,19 @@ logic:
 1. Clone the resolved subtree (`cloneNode(true)`) — the live page is never mutated
    (research.md R2).
 2. Remove every `<script>` and `<style>` element found within the clone.
-3. Remove every comment node found within the clone (`TreeWalker` + `SHOW_COMMENT`,
+3. Remove every `<svg>` element matching `[aria-hidden="true"]` found within the clone —
+   decorative icon graphics the page itself already marked as carrying no accessible content
+   (research.md R7, FR-011). An `<svg>` without `aria-hidden="true"` (e.g. one carrying
+   `role="img"` + `aria-label`) is left untouched.
+4. Remove every comment node found within the clone (`TreeWalker` + `SHOW_COMMENT`,
    research.md R3).
-4. Remove the `class` and `style` attributes from every element in the clone, including the
+5. Remove the `class` and `style` attributes from every element in the clone, including the
    clone's own root element if present.
-5. Serialize the clone's `outerHTML` (or, for the plain-text path, the *original*, unreduced
+6. Serialize the clone's `outerHTML` (or, for the plain-text path, the *original*, unreduced
    element's `innerText` — the plain-text output is never passed through this pass; it is
    already noise-free via native `innerText` behavior).
 
-This pass never removes text nodes, never removes non-`class`/`style` attributes, and never
-removes an element solely because it became attribute-less or content-empty after stripping
-(FR-005/FR-006 — an emptied element still describes structure and stays in the output).
+This pass never removes text nodes, never removes non-`class`/`style` attributes, never removes
+an `<svg>` unless it is itself marked `aria-hidden="true"`, and never removes an element solely
+because it became attribute-less or content-empty after stripping (FR-005/FR-006 — an emptied
+element still describes structure and stays in the output).

@@ -110,3 +110,31 @@ resolution and DOM reduction are genuinely orthogonal steps in the same script, 
 
 **Alternatives considered**: None — this is a direct consequence of R1/R2's design, not an
 independent choice.
+
+## R7: Decorative icon removal
+
+**Decision**: On the clone, remove every `<svg>` element matching `[aria-hidden="true"]`
+(`clone.querySelectorAll('svg[aria-hidden="true"]').forEach(el => el.remove())`), run in the
+same pass as the script/style removal (before comment removal and attribute stripping).
+
+**Rationale**: Real-world evidence (a live capture of the source issue's reference page) showed
+inline `<svg>` icon markup as the second-largest noise category after `class` attributes (~22%
+of scoped DOM bytes) — larger, in fact, than what `class`/`style` stripping alone removes on a
+page with a moderate icon count. `aria-hidden="true"` is the web platform's own, pre-existing,
+author-asserted signal that an element has no accessible content — assistive technology already
+skips it. Keying removal off this attribute is a fixed, content-blind rule (Principle II): it
+requires no interpretation of what the icon depicts, only whether the page's own author already
+declared it decorative. An icon marked accessible another way (`role="img"` with `aria-label`,
+or no `aria-hidden` at all) is left untouched, preserving FR-005/FR-006's guarantee that
+noise reduction never discards meaningful content. Validated end-to-end against a live app
+instance: pushes the reference page's reduction from ~56% to ~76% smaller than verbatim.
+
+**Alternatives considered**:
+- Remove every `<svg>` unconditionally — rejected: would drop meaningful icons (charts, QR
+  codes, accessible diagrams) that carry real information, violating FR-005.
+- Remove `<svg>` elements below a size/complexity heuristic (e.g. path count) — rejected: not a
+  fixed, content-blind rule; different pages would strip different things unpredictably,
+  contradicting Principle II's "same fixed rule for every page" requirement.
+- Remove `<svg>` elements matching a `class`-name heuristic (e.g. `icon-*`) — rejected: brittle
+  and page/framework-specific, unlike `aria-hidden`, which is a standard HTML/ARIA attribute
+  with one universal meaning regardless of framework.

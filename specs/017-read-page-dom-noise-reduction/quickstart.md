@@ -21,8 +21,10 @@ Expected: all pass, covering (see contracts/read-page-noise-reduction.md and spe
 scenarios):
 
 - `read_page({ tabId, selector: "#job-list", includeDom: true })` (reduction on by default)
-  returns `dom` with no `<script>`, no `<style>`, no HTML comment, and no `class`/`style`
-  attribute — while every card's title and company text is still present in the markup (US1).
+  returns `dom` with no `<script>`, no `<style>`, no HTML comment, no `class`/`style`
+  attribute, and no decorative (`aria-hidden="true"`) icon `<svg>` — while every card's title
+  and company text, and the one accessible badge icon (`role="img"` + `aria-label`), are still
+  present in the markup (US1, FR-011).
 - The same call's result includes `domReduced: true` (US3).
 - `read_page({ tabId, selector: "#job-list", includeDom: true })`'s reduced `dom` is at least
   50% smaller by byte size than the same call with `reduceDom: false` (SC-001), matching the
