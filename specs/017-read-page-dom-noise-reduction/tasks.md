@@ -46,10 +46,10 @@ would mean re-touching the same three functions three times for no benefit.
 
 **⚠️ CRITICAL**: No user-story task can be verified until this phase is complete.
 
-- [ ] T001 Add `domReduced?: boolean` to `PageReadResult` in `src/shared/types.ts`, alongside
+- [X] T001 Add `domReduced?: boolean` to `PageReadResult` in `src/shared/types.ts`, alongside
   the existing `scopedTo?: string` field (data-model.md: present only when `dom` is present
   and reduction was applied; mirrors `scopedTo`'s absent-when-inapplicable convention).
-- [ ] T002 In `src/main/page/read.ts`, add a `stripDom(html: string): string` — no, add the
+- [X] T002 In `src/main/page/read.ts`, add a `stripDom(html: string): string` — no, add the
   reduction logic **inside** `readPageScript(selector, reduceDom)`'s returned in-page script
   string (not as a separate main-process function — research.md R1 requires the strip to run
   in the isolated-world script, on the live DOM, before `outerHTML` is read). Change
@@ -67,18 +67,18 @@ would mean re-touching the same three functions three times for no benefit.
   existing `el.outerHTML` / `document.documentElement.outerHTML` expression — byte-for-byte
   unchanged from today (FR-002). `text` (`innerText`) is computed from the **original**,
   unreduced element in both cases (data-model.md: reduction never touches the plain-text path).
-- [ ] T003 In `src/main/page/read.ts`, update `readPage()`'s signature to
+- [X] T003 In `src/main/page/read.ts`, update `readPage()`'s signature to
   `readPage(wc, tabId, includeDom, queueDepth, selector?, reduceDom = true)`, pass `reduceDom`
   through to `readPageScript(selector, reduceDom)` (only meaningful when `includeDom` is true —
   contracts/read-page-noise-reduction.md Behaviour step 2), and after the existing
   `if (includeDom) { ... }` block, set `result.domReduced = true` iff `includeDom && reduceDom`
   (never set it, not even to `false`, otherwise — FR-008, research.md R4).
-- [ ] T004 In `src/main/mcp/tools.ts`, add `reduceDom: z.boolean().optional().default(true).describe(...)`
+- [X] T004 In `src/main/mcp/tools.ts`, add `reduceDom: z.boolean().optional().default(true).describe(...)`
   to the `read_page` tool's input schema (near the existing `includeDom`/`selector` fields,
   line ~118-122) and thread it through the handler
   (`async ({ tabId, includeDom, selector, reduceDom }) => ... readPage(wc, tabId, includeDom, depth, selector, reduceDom)`,
   around line 124-129).
-- [ ] T005 In `src/main/index.ts`, extend the `__hyppo.read` e2e test handle (~line 530) to
+- [X] T005 In `src/main/index.ts`, extend the `__hyppo.read` e2e test handle (~line 530) to
   `read: (tabId: string, includeDom = false, selector?: string, reduceDom = true) => ...`,
   forwarding `reduceDom` into `readPage(...)` (contracts/read-page-noise-reduction.md Test
   hooks section).
@@ -100,17 +100,17 @@ the result while every card's title and company text is present.
 
 ### Tests for User Story 1
 
-- [ ] T006 [P] [US1] In `tests/unit/read-page-noise-reduction.test.ts` (new file, mirroring
+- [X] T006 [P] [US1] In `tests/unit/read-page-noise-reduction.test.ts` (new file, mirroring
   `tests/unit/read-page-selector.test.ts`'s structure), unit-test `readPageScript(selector, true)`
   textually: contains the script/style removal, `TreeWalker`/`SHOW_COMMENT` comment removal,
   and `class`/`style` attribute removal logic; `readPageScript(selector, false)` is textually
   equivalent to the pre-017 script (no clone/strip logic present).
-- [ ] T007 [P] [US1] In `tests/integration/read-page.spec.ts`, add a scenario against
+- [X] T007 [P] [US1] In `tests/integration/read-page.spec.ts`, add a scenario against
   `tests/fixtures/dom-noise-repro.html`: `read(tabId, true, "#job-list")` (reduction on by
   default) returns `dom` containing no `<script>`, `<style>`, HTML comment, or `class="..."`/`style="..."`
   attribute, while `"Example Role One"`, `"Example Co"`, and the other cards' text are present
   (acceptance scenarios 1-3 and 5).
-- [ ] T008 [P] [US1] In the same spec file, add a scenario asserting a meaningful,
+- [X] T008 [P] [US1] In the same spec file, add a scenario asserting a meaningful,
   non-presentational attribute in the fixture (e.g. an `id`, `data-*`, or `aria-*` attribute
   present on a card element) survives reduction unchanged (acceptance scenario 4, FR-004,
   SC-004).
@@ -120,7 +120,7 @@ the result while every card's title and company text is present.
 Implementation is already complete from the Foundational phase (T002) — this phase is
 verification-only. No additional implementation tasks.
 
-- [ ] T009 [US1] Run `npx vitest run tests/unit/read-page-noise-reduction.test.ts` and
+- [X] T009 [US1] Run `npx vitest run tests/unit/read-page-noise-reduction.test.ts` and
   `npx playwright test tests/integration/read-page.spec.ts`; confirm T006-T008 pass.
 
 **Checkpoint**: User Story 1 is independently verified — reduced DOM reads strip noise while
@@ -138,12 +138,12 @@ result is byte-for-byte identical to this feature's pre-existing unreduced outpu
 
 ### Tests for User Story 2
 
-- [ ] T010 [P] [US2] In `tests/integration/read-page.spec.ts`, add a scenario:
+- [X] T010 [P] [US2] In `tests/integration/read-page.spec.ts`, add a scenario:
   `read(tabId, true, "#job-list", false)` returns `dom` containing `<script>`, `<style>`, the
   HTML comment, and `class="..."` attributes (i.e. unreduced) — byte-for-byte equal to the raw
   `outerHTML` of `#job-list` as captured directly from the fixture (acceptance scenario 1,
   FR-002, SC-002).
-- [ ] T011 [P] [US2] In the same spec file, add a scenario: `read(tabId)` (no `includeDom`)
+- [X] T011 [P] [US2] In the same spec file, add a scenario: `read(tabId)` (no `includeDom`)
   produces no `dom` and no `domReduced` field regardless of `reduceDom`'s value, and `text` is
   identical with `reduceDom` true or false (acceptance scenario 2 sibling case in Edge Cases;
   contracts/read-page-noise-reduction.md Behaviour step 2).
@@ -153,7 +153,7 @@ result is byte-for-byte identical to this feature's pre-existing unreduced outpu
 Implementation is already complete from the Foundational phase (T002-T003) — this phase is
 verification-only. No additional implementation tasks.
 
-- [ ] T012 [US2] Run `npx playwright test tests/integration/read-page.spec.ts`; confirm T010-T011
+- [X] T012 [US2] Run `npx playwright test tests/integration/read-page.spec.ts`; confirm T010-T011
   pass and that no existing (pre-017) `read-page.spec.ts` scenario regressed (SC-002's "100% of
   cases" compatibility guarantee).
 
@@ -172,7 +172,7 @@ DOM-less read's result carries no `domReduced` field.
 
 ### Tests for User Story 3
 
-- [ ] T013 [P] [US3] In `tests/integration/read-page.spec.ts`, add a scenario:
+- [X] T013 [P] [US3] In `tests/integration/read-page.spec.ts`, add a scenario:
   `read(tabId, true, "#job-list")` (default reduction) → result includes `domReduced: true`;
   `read(tabId, true, "#job-list", false)` → result has no `domReduced` key at all (not
   `false`); `read(tabId)` (no DOM) → result has no `domReduced` key (acceptance scenarios 1-2,
@@ -183,7 +183,7 @@ DOM-less read's result carries no `domReduced` field.
 Implementation is already complete from the Foundational phase (T003) — this phase is
 verification-only. No additional implementation tasks.
 
-- [ ] T014 [US3] Run `npx playwright test tests/integration/read-page.spec.ts`; confirm T013
+- [X] T014 [US3] Run `npx playwright test tests/integration/read-page.spec.ts`; confirm T013
   passes.
 
 **Checkpoint**: All three user stories independently verified.
@@ -192,24 +192,52 @@ verification-only. No additional implementation tasks.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T015 [P] Byte-size assertion in `tests/integration/read-page.spec.ts`: the reduced
+- [X] T015 [P] Byte-size assertion in `tests/integration/read-page.spec.ts`: the reduced
   `dom` from T007 is at least 50% smaller than the unreduced `dom` from T010, matching SC-001's
   measured real-world proportion.
-- [ ] T016 [P] Edge-case test in `tests/integration/read-page.spec.ts` or
+- [X] T016 [P] Edge-case test in `tests/integration/read-page.spec.ts` or
   `tests/unit/read-page-noise-reduction.test.ts`: a subtree with no script/style/comment nodes
   or presentation-only attributes at all reduces to content identical to the verbatim read
   (modulo `domReduced`) — Edge Cases bullet 3.
-- [ ] T017 [P] Edge-case test: an element emptied by attribute stripping (no remaining
+- [X] T017 [P] Edge-case test: an element emptied by attribute stripping (no remaining
   attributes) is still present in reduced output, not removed — Edge Cases bullet 1, FR-005.
-- [ ] T018 Composability test in `tests/integration/read-page.spec.ts`: `selector` (016) +
+- [X] T018 Composability test in `tests/integration/read-page.spec.ts`: `selector` (016) +
   `reduceDom` (017) together reduce only the selector-scoped subtree, matching Edge Cases
   bullet 2 / FR-009 / research.md R6.
-- [ ] T019 Run `npm run build` (or equivalent typecheck) and the full test suite
+- [X] T019 Run `npm run build` (or equivalent typecheck) and the full test suite
   (`npx vitest run` + `npx playwright test`) to confirm no regression outside this feature's
   files.
-- [ ] T020 Execute `quickstart.md`'s manual validation steps 1-5 end to end against
+- [X] T020 Execute `quickstart.md`'s manual validation steps 1-5 end to end against
   `tests/fixtures/dom-noise-repro.html` and confirm the observed byte-size reduction and content
   match its expectations.
+
+---
+
+## Phase 7: Extension — Decorative Icon Removal (FR-011, research.md R7)
+
+**Purpose**: Real-world evidence (a live capture of the source issue's reference page) showed
+inline `<svg>` icon markup as the second-largest noise category (~22% of scoped DOM bytes) —
+larger than what `class`/`style` stripping alone removes. Prototyped and measured against a
+live app instance before being folded into this spec: pushed the reference page's reduction
+from ~56% to ~76% smaller than verbatim. Extends the same Foundational reduction pass
+(`__reduceDom` in `readPageScript`) — no new parameter, no new result field, no new code path.
+
+- [X] T021 In `src/main/page/read.ts`'s `DOM_REDUCTION_HELPER`, remove every `<svg>` element
+  matching `[aria-hidden="true"]` from the clone
+  (`clone.querySelectorAll('svg[aria-hidden="true"]').forEach(el => el.remove())`), in the same
+  pass as script/style removal, before comment removal and attribute stripping. An `<svg>`
+  without `aria-hidden="true"` (e.g. `role="img"` + `aria-label`) is left untouched.
+- [X] T022 [P] Unit test in `tests/unit/read-page-noise-reduction.test.ts`: `readPageScript`
+  with `reduceDom: true` embeds the `svg[aria-hidden="true"]` removal logic.
+- [X] T023 [P] Update `tests/fixtures/dom-noise-repro.html` to match the real-world evidence:
+  mark each card's decorative icon `aria-hidden="true"`, and add one accessible icon
+  (`role="img"` + `aria-label`) to prove reduction distinguishes decorative from meaningful
+  `<svg>` rather than stripping every icon unconditionally.
+- [X] T024 [P] Integration test in `tests/integration/read-page.spec.ts`: a reduced read of
+  `#job-list` removes every `aria-hidden` icon (one per card) while preserving the accessible
+  badge icon's `aria-label` and its own `<svg>` tag (acceptance scenarios 6-7, FR-011).
+- [X] T025 Run `npm run build`, `npx vitest run`, and `npx playwright test` to confirm no
+  regression — including SC-001's byte-size assertion, now passing with a larger margin.
 
 ---
 
