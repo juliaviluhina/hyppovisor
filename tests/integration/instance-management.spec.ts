@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { mcpPost } from "./helpers.js";
 
 const mainEntry = fileURLToPath(new URL("../../dist/main/index.js", import.meta.url));
+const AUTH = { Authorization: "Bearer instance-management-test-token" };
 
 /** An OS-assigned free loopback port, released before it is returned. */
 function freePort(): Promise<number> {
@@ -73,7 +74,7 @@ async function launchTrio() {
         String(port),
         ...(background ? ["--background"] : []),
       ],
-      env: { ...process.env },
+      env: { ...process.env, HYPPO_MCP_TOKEN: "instance-management-test-token" },
     });
   // acme is the "viewer" (foreground); the other two are background (SC-005:
   // background instances are the ones that are otherwise hard to see / stop).
@@ -157,7 +158,7 @@ test("US1: closing a non-current instance frees its MCP port and drops it from e
 
     await expect.poll(async () => (await listFrom(acmePage)).length, { timeout: 3000 }).toBe(3);
     // initech is serving MCP before the shutdown.
-    expect((await mcpPost(trio.ports.initech, init(1))).status).toBe(200);
+    expect((await mcpPost(trio.ports.initech, init(1), AUTH)).status).toBe(200);
 
     // Shut it down from acme's panel path (no confirmation prompt in the IPC —
     // that is the renderer's job; here we exercise the mechanism).
@@ -165,7 +166,7 @@ test("US1: closing a non-current instance frees its MCP port and drops it from e
 
     // SC-003 — its MCP port stops answering within 10 s.
     await expect
-      .poll(() => mcpPost(trio.ports.initech, init(2)).then((r) => r.status), { timeout: 10_000 })
+      .poll(() => mcpPost(trio.ports.initech, init(2), AUTH).then((r) => r.status), { timeout: 10_000 })
       .toBe(0);
 
     // SC-005 — its row is gone from acme's list and from contoso's within 5 s.
@@ -177,8 +178,8 @@ test("US1: closing a non-current instance frees its MCP port and drops it from e
       .toBe(false);
 
     // acme + contoso are untouched — still listed, still serving.
-    expect((await mcpPost(trio.ports.acme, init(3))).status).toBe(200);
-    expect((await mcpPost(trio.ports.contoso, init(4))).status).toBe(200);
+    expect((await mcpPost(trio.ports.acme, init(3), AUTH)).status).toBe(200);
+    expect((await mcpPost(trio.ports.contoso, init(4), AUTH)).status).toBe(200);
   } finally {
     await trio.close();
   }

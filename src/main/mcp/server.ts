@@ -1,10 +1,9 @@
 // MCP server. Two transports:
 //
 //  - HTTP (default for `npm start`): HyppoVisor runs as a long-lived app and
-//    listens on loopback; Claude Code connects to the URL. Convenient, but a
-//    local port that can drive a logged-in browser — see the security notes in
-//    research.md R2 (revised). Bound to 127.0.0.1 only; a bearer token can be
-//    required. The HTTP handle supports a runtime port rebind and a mutable
+//    listens on loopback; Claude Code connects to the URL. Bound to 127.0.0.1
+//    only and protected by a generated bearer token by default. The HTTP handle
+//    supports a runtime port rebind and a mutable
 //    token so the connection panel (feature 007) can change both without an app
 //    restart.
 //
@@ -78,7 +77,9 @@ export async function startHttpMcpServer(
 ): Promise<HttpMcpHandle> {
   const host = opts.host ?? mcpHost;
   let currentPort = opts.port ?? defaultMcpPort;
-  let authToken: string | null = opts.token?.trim() || null;
+  // `undefined` means a caller omitted configuration: secure by default. An
+  // explicit null remains the documented opt-out for existing profiles/tests.
+  let authToken: string | null = opts.token === undefined ? generateToken() : opts.token?.trim() || null;
   let last: LastRequestInfo | null = null;
 
   // Record every served tool call for the connection panel's last-request line,

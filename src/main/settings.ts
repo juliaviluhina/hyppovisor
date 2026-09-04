@@ -11,6 +11,7 @@
 // rewritten on read (research.md R3).
 
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { defaultMcpPort, mcpHost } from "./config.js";
 import type {
@@ -18,13 +19,15 @@ import type {
   ConnectionSource,
   EffectiveConnection,
 } from "../shared/types.js";
+import { restrictFilePermissions } from "./security/file-permissions.js";
 
 export const SETTINGS_FILENAME = "settings.json";
 
 export const DEFAULTS: ConnectionSettings = {
   port: defaultMcpPort,
-  tokenRequired: false,
-  token: null,
+  tokenRequired: true,
+  token: randomBytes(16).toString("hex"),
+  authConfigured: true,
 };
 
 const isPort = (n: unknown): n is number =>
@@ -44,7 +47,20 @@ function validate(raw: unknown): ConnectionSettings | null {
   } else if (o.token !== null) {
     return null;
   }
-  return { port: o.port, tokenRequired: o.tokenRequired, token: o.tokenRequired ? (o.token as string) : null };
+  return {
+    port: o.port,
+    tokenRequired: o.tokenRequired,
+    token: o.tokenRequired ? (o.token as string) : null,
+    ...(typeof o.authConfigured === "boolean" ? { authConfigured: o.authConfigured } : {}),
+  };
+}
+
+/** Upgrade profiles created before bearer authentication became the default. */
+export function secureLegacySettings(settings: ConnectionSettings, existed: boolean): ConnectionSettings {
+  if (existed && !settings.authConfigured && !settings.tokenRequired) {
+    return { ...settings, tokenRequired: true, token: randomBytes(16).toString("hex"), authConfigured: true };
+  }
+  return settings;
 }
 
 /**
@@ -78,7 +94,9 @@ export function saveSettings(userDataDir: string, settings: ConnectionSettings):
   const target = join(userDataDir, SETTINGS_FILENAME);
   const tmp = `${target}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(settings, null, 2) + "\n");
+  restrictFilePermissions(tmp);
   renameSync(tmp, target);
+  restrictFilePermissions(target);
 }
 
 export interface EnvOverrides {

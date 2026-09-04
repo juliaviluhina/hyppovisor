@@ -307,6 +307,8 @@ export interface ConnectionSettings {
   tokenRequired: boolean;
   /** 32 lowercase hex chars when `tokenRequired`; `null` otherwise. */
   token: string | null;
+  /** Present after the user or secure-default migration has chosen auth. */
+  authConfigured?: boolean;
 }
 
 /** In-memory record of the most recent inbound MCP request — metadata only, never persisted. */

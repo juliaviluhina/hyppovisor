@@ -12,6 +12,7 @@ import {
   saveSettings,
   readEnvOverrides,
   resolveEffective,
+  secureLegacySettings,
   type EnvOverrides,
 } from "../../src/main/settings.js";
 import type { ConnectionSettings } from "../../src/shared/types.js";
@@ -153,5 +154,19 @@ describe("resolveEffective", () => {
     const e = resolveEffective(DEFAULTS, noEnv, false);
     expect(e.instanceLabel).toBe("");
     expect(e.serverName).toBe("hyppovisor");
+  });
+});
+
+describe("secureLegacySettings", () => {
+  it("migrates an old implicit no-token default", () => {
+    const migrated = secureLegacySettings({ port: 7357, tokenRequired: false, token: null }, true);
+    expect(migrated.tokenRequired).toBe(true);
+    expect(migrated.token).toMatch(/^[0-9a-f]{32}$/);
+    expect(migrated.authConfigured).toBe(true);
+  });
+
+  it("keeps an explicitly configured no-token profile unchanged", () => {
+    const settings = { port: 7357, tokenRequired: false, token: null, authConfigured: true };
+    expect(secureLegacySettings(settings, true)).toEqual(settings);
   });
 });

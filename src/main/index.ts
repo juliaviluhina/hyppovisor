@@ -26,6 +26,7 @@ import {
   saveSettings,
   readEnvOverrides,
   resolveEffective,
+  secureLegacySettings,
 } from "./settings.js";
 import {
   loadRecentUrls,
@@ -45,6 +46,7 @@ import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { readFormFields } from "./page/form-fields.js";
 import { takeScreenshot } from "./page/screenshot.js";
 import { listBlocklistRules } from "./safety/blocklist.js";
+import { restrictDirectoryPermissions } from "./security/file-permissions.js";
 import type {
   InteractOperation,
   BatchFillField,
@@ -106,6 +108,7 @@ async function main(): Promise<void> {
   if (resolved.userDataDir) {
     // setPath does not reliably create the directory on every platform; do it first.
     mkdirSync(resolved.userDataDir, { recursive: true });
+    restrictDirectoryPermissions(resolved.userDataDir);
     app.setPath("userData", resolved.userDataDir);
   }
 
@@ -136,6 +139,9 @@ async function main(): Promise<void> {
   const instanceMode = resolved.background ? "background" : "foreground";
 
   await app.whenReady();
+  // Apply the same owner-only request to Electron's default profile path as to
+  // explicitly selected instance directories.
+  restrictDirectoryPermissions(app.getPath("userData"));
 
   const win = new BrowserWindow({
     width: 1280,
@@ -151,9 +157,9 @@ async function main(): Promise<void> {
     webPreferences: {
       preload: join(here, "../preload/chrome.cjs"),
       contextIsolation: true,
-      // Our own chrome UI, not untrusted web content. Tab views (which host the
-      // web) keep sandbox: true — see tab-manager.ts.
-      sandbox: false,
+      // Keep the app-owned renderer isolated just like browsed tab views.
+      sandbox: true,
+      nodeIntegration: false,
     },
   });
 
@@ -233,9 +239,17 @@ async function main(): Promise<void> {
   // MCP connection state (feature 007): persisted settings + the environment,
   // folded into one effective view the panel and status line render.
   const loaded = loadSettings(app.getPath("userData"));
-  let curSettings: ConnectionSettings = loaded.settings;
-  let existed = loaded.existed;
   const env = readEnvOverrides();
+  let curSettings: ConnectionSettings = secureLegacySettings(loaded.settings, loaded.existed);
+  let existed = loaded.existed;
+  if (!env.stdio && !env.token && curSettings !== loaded.settings && curSettings.token) {
+    saveSettings(app.getPath("userData"), curSettings);
+  } else if (!env.stdio && !existed && curSettings.tokenRequired && curSettings.token) {
+    // Materialize the generated default so the panel and subsequent launches
+    // use the same secret. Corrupt files are left untouched until a user action.
+    saveSettings(app.getPath("userData"), curSettings);
+    existed = true;
+  }
   let httpHandle: HttpMcpHandle | undefined;
   // HTTP bind outcome (feature 012): flips to "port-unavailable" / "error" if the
   // listener throws at startup, and back to "listening" once the panel rebinds.
@@ -395,7 +409,7 @@ async function main(): Promise<void> {
     if (blocked) return blocked;
     const token = required ? generateToken() : null;
     httpHandle!.setToken(token);
-    curSettings = { ...curSettings, tokenRequired: !!required, token };
+    curSettings = { ...curSettings, tokenRequired: !!required, token, authConfigured: true };
     saveSettings(app.getPath("userData"), curSettings);
     existed = true;
     pushConnection();

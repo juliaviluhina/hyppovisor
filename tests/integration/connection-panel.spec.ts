@@ -37,6 +37,7 @@ test("US1: panel shows the endpoint, a claude mcp add command, and a JSON block;
     await expect(page.locator("#panel")).toBeVisible();
 
     const bodyText = () => page.locator("#panel-body").innerText();
+    const token = (await getConn(page)).token as string;
     expect(await bodyText()).toContain("http://127.0.0.1:7357/mcp");
     expect(await bodyText()).toContain(
       `claude mcp add --transport http --scope user ${E2E_SERVER_NAME} http://127.0.0.1:7357/mcp`,
@@ -46,7 +47,9 @@ test("US1: panel shows the endpoint, a claude mcp add command, and a JSON block;
     const parsed = JSON.parse(jsonText);
     expect(Object.keys(parsed.mcpServers)).toEqual([E2E_SERVER_NAME]);
     expect(parsed.mcpServers[E2E_SERVER_NAME].url).toBe("http://127.0.0.1:7357/mcp");
-    expect(parsed.mcpServers[E2E_SERVER_NAME].headers).toBeUndefined();
+    expect(parsed.mcpServers[E2E_SERVER_NAME].headers).toMatchObject({
+      Authorization: expect.stringMatching(/^Bearer •+$/),
+    });
 
     // Windows normalises clipboard line endings to CRLF on read-back; the
     // snippets are authored with LF, so compare on LF.
@@ -54,7 +57,7 @@ test("US1: panel shows the endpoint, a claude mcp add command, and a JSON block;
       app.evaluate(({ clipboard }) => clipboard.readText()).then((s) => s.replace(/\r\n/g, "\n"));
     for (const [kind, expected] of [
       ["endpoint", "http://127.0.0.1:7357/mcp"],
-      ["command", `claude mcp add --transport http --scope user ${E2E_SERVER_NAME} http://127.0.0.1:7357/mcp`],
+      ["command", `claude mcp add --transport http --scope user ${E2E_SERVER_NAME} http://127.0.0.1:7357/mcp --header "Authorization: Bearer ${token}"`],
     ] as const) {
       await page.locator(`[data-copy="${kind}"]`).click();
       await expect(page.locator(`[data-copy="${kind}"]`)).toHaveClass(/\bok\b/);
@@ -62,7 +65,8 @@ test("US1: panel shows the endpoint, a claude mcp add command, and a JSON block;
       expect(await readClip()).toBe(expected);
     }
     await page.locator('[data-copy="json"]').click();
-    expect(await readClip()).toBe(jsonText);
+    const copiedJson = JSON.parse(await readClip());
+    expect(copiedJson.mcpServers[E2E_SERVER_NAME].headers.Authorization).toBe(`Bearer ${token}`);
 
     await page.keyboard.press("Escape");
     await expect(page.locator("#panel")).toBeHidden();
@@ -89,13 +93,15 @@ test("US2: Apply rebinds live, persists, refuses a bad or in-use port without di
   try {
     const page = await app.firstWindow();
     await page.locator("#hyppo").click();
-    expect((await mcpPost(7357, INIT)).status).toBe(200);
+    const token = (await getConn(page)).token as string;
+    const auth = { Authorization: `Bearer ${token}` };
+    expect((await mcpPost(7357, INIT, auth)).status).toBe(200);
 
     // Apply 8080 → reachable there, not on 7357; snippets + notice update.
     await page.locator("#port-input").fill("8080");
     await page.locator("#port-apply").click();
     await expect(page.locator("#port-notice")).toContainText("8080");
-    expect((await mcpPost(8080, INIT)).status).toBe(200);
+    expect((await mcpPost(8080, INIT, auth)).status).toBe(200);
     expect((await mcpPost(7357, INIT)).status).toBe(0); // old port no longer served
     await expect(page.locator("#panel-body")).toContainText("http://127.0.0.1:8080/mcp");
 
@@ -103,7 +109,7 @@ test("US2: Apply rebinds live, persists, refuses a bad or in-use port without di
     await page.locator("#port-input").fill("99999");
     await page.locator("#port-apply").click();
     await expect(page.locator("#port-notice")).toContainText("between 1 and 65535");
-    expect((await mcpPost(8080, INIT)).status).toBe(200);
+    expect((await mcpPost(8080, INIT, auth)).status).toBe(200);
 
     // In-use port → refused, still on 8080.
     sacrificial = createServer((_q, r) => r.end("x"));
@@ -113,7 +119,7 @@ test("US2: Apply rebinds live, persists, refuses a bad or in-use port without di
     await page.locator("#port-input").fill(String(p));
     await page.locator("#port-apply").click();
     await expect(page.locator("#port-notice")).toContainText("in use");
-    expect((await mcpPost(8080, INIT)).status).toBe(200);
+    expect((await mcpPost(8080, INIT, auth)).status).toBe(200);
   } finally {
     sacrificial?.close();
     await close();
@@ -123,7 +129,9 @@ test("US2: Apply rebinds live, persists, refuses a bad or in-use port without di
     // Relaunch, same user-data dir, no env → still on 8080 and settings.json holds it.
     const again = await launchAppFull({}, userDataDir);
     try {
-      expect((await mcpPost(8080, INIT)).status).toBe(200);
+      const againPage = await again.app.firstWindow();
+      const againToken = (await getConn(againPage)).token as string;
+      expect((await mcpPost(8080, INIT, { Authorization: `Bearer ${againToken}` })).status).toBe(200);
       const saved = JSON.parse(readFileSync(join(userDataDir, "settings.json"), "utf8"));
       expect(saved.port).toBe(8080);
     } finally {
@@ -257,16 +265,19 @@ test("US5: the last-request line starts empty, names a served request, and marks
   try {
     const page = await app.firstWindow();
     await page.locator("#hyppo").click();
-    await expect(page.locator("#last-request")).toHaveText("No requests yet.");
+    await expect(page.locator("#last-request")).toContainText("rejected");
+
+    const token = (await getConn(page)).token as string;
+    const auth = { Authorization: `Bearer ${token}` };
 
     // A tool call registers an "ok" entry.
-    await mcpPost(7357, INIT);
+    await mcpPost(7357, INIT, auth);
     await mcpPost(7357, {
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
       params: { name: "list_open_tabs", arguments: {} },
-    });
+    }, auth);
     await expect(page.locator("#last-request")).toContainText("list_open_tabs", { timeout: 4000 });
     expect(await page.locator("#last-request").innerText()).not.toMatch(/tab-\d|queueDepth/);
 
@@ -317,4 +328,3 @@ test("§7: port + token changes reflow the panel and stay board-free; stdio mode
     await stdio.close();
   }
 });
-
