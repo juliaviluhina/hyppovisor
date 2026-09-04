@@ -176,6 +176,90 @@ test("US1: a reduced DOM read strips script/style/comment/class/style, keeps car
   expect(dom).toContain("Third Co");
 });
 
+test("US1: reduction removes a selector-matched root, while the opt-out preserves it", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  for (const selector of ["#root-script-case", "#root-style-case", "#root-svg-case"]) {
+    const reduced = await callHandle<{ dom?: string; domReduced?: boolean }>(app, "read", [
+      tabId,
+      true,
+      selector,
+    ]);
+    expect(reduced.dom).toBe("");
+    expect(reduced.domReduced).toBe(true);
+
+    const verbatim = await callHandle<{ dom?: string }>(app, "read", [
+      tabId,
+      true,
+      selector,
+      false,
+    ]);
+    expect(verbatim.dom).toContain(`id="${selector.slice(1)}"`);
+  }
+});
+
+test("US2: an unscoped reduced read strips noise from the whole document", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true]);
+  const dom = reduced.dom ?? "";
+  expect(dom).not.toContain("<script");
+  expect(dom).not.toContain("<style");
+  expect(dom).not.toContain("<!--");
+  expect(dom).toContain("Example Role One");
+});
+
+test("US2: reduction preserves every non-presentational card attribute", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const verbatim = await callHandle<{ dom?: string }>(app, "read", [
+    tabId,
+    true,
+    "#job-list",
+    false,
+  ]);
+  const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#job-list"]);
+  const source = verbatim.dom?.match(/<div[^>]*role="button"[^>]*>/)?.[0] ?? "";
+  const result = reduced.dom?.match(/<div[^>]*role="button"[^>]*>/)?.[0] ?? "";
+  for (const attribute of ['role="button"', 'tabindex="0"', 'aria-roledescription="sortable"']) {
+    expect(source).toContain(attribute);
+    expect(result).toContain(attribute);
+  }
+  expect(result).not.toContain("class=");
+  expect(result).not.toContain("style=");
+});
+
+test("US2: a reduced read does not mutate the live DOM", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  await callHandle(app, "read", [tabId, true, "#job-list"]);
+  const marker = await callHandle<{ dom?: string }>(app, "read", [
+    tabId,
+    true,
+    "#live-marker",
+    false,
+  ]);
+  expect(marker.dom).toContain('class="marker-class"');
+  expect(marker.dom).toContain('style="color: red"');
+  expect(marker.dom).toContain('data-counter="7"');
+});
+
+test("US2: reduced DOM output still truncates at the DOM byte limit", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html?large-dom`,
+  ]);
+  const result = await callHandle<{ dom?: string; truncated: { dom: boolean } }>(app, "read", [
+    tabId,
+    true,
+  ]);
+  expect(result.truncated.dom).toBe(true);
+  expect(Buffer.byteLength(result.dom ?? "", "utf8")).toBeLessThanOrEqual(2 * 1024 * 1024);
+});
+
 test("US1 (FR-011): a decorative (aria-hidden) icon svg is removed; an accessible one is kept", async () => {
   const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
     `${base}/dom-noise-repro.html`,
@@ -218,12 +302,7 @@ test("US2: reduceDom: false returns the DOM byte-for-byte unreduced", async () =
   const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
     `${base}/dom-noise-repro.html`,
   ]);
-  const verbatim = await callHandle<{ dom?: string }>(app, "read", [
-    tabId,
-    true,
-    undefined,
-    false,
-  ]);
+  const verbatim = await callHandle<{ dom?: string }>(app, "read", [tabId, true, undefined, false]);
   const dom = verbatim.dom ?? "";
 
   expect(dom).toContain("<script");
@@ -252,6 +331,54 @@ test("US2: a read without includeDom is unaffected by reduceDom", async () => {
   expect("domReduced" in withReduce).toBe(false);
   expect("domReduced" in withoutReduce).toBe(false);
   expect(withReduce.text).toBe(withoutReduce.text);
+});
+
+test("US3: text-only reads return the same payload with either reduction setting", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html`,
+  ]);
+  const reduced = await callHandle<Record<string, unknown>>(app, "read", [tabId]);
+  const unreduced = await callHandle<Record<string, unknown>>(app, "read", [
+    tabId,
+    false,
+    undefined,
+    false,
+  ]);
+  expect(reduced.tabId).toBe(unreduced.tabId);
+  expect(reduced.url).toBe(unreduced.url);
+  expect(reduced.title).toBe(unreduced.title);
+  expect(reduced.text).toBe(unreduced.text);
+  expect(reduced.truncated).toEqual(unreduced.truncated);
+  expect(reduced.queueDepth).toBe(unreduced.queueDepth);
+});
+
+test("US3: text-only reads on a large DOM have no reduction-cost dependency", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/dom-noise-repro.html?large-dom`,
+  ]);
+
+  // Warm both paths once so navigation and the first IPC call do not dominate
+  // the comparison. This is intentionally a broad guard, not a latency SLA:
+  // it catches accidentally doing multi-megabyte clone/reduction work again
+  // while tolerating normal CI scheduling noise.
+  await callHandle(app, "read", [tabId, false, undefined, true]);
+  await callHandle(app, "read", [tabId, false, undefined, false]);
+
+  const samples = async (reduceDom: boolean) => {
+    const values: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const started = performance.now();
+      await callHandle(app, "read", [tabId, false, undefined, reduceDom]);
+      values.push(performance.now() - started);
+    }
+    return values.sort((a, b) => a - b);
+  };
+
+  const reduced = await samples(true);
+  const unreduced = await samples(false);
+  const slower = Math.max(reduced[1], unreduced[1]);
+  const faster = Math.min(reduced[1], unreduced[1]);
+  expect(slower).toBeLessThanOrEqual(faster * 4 + 100);
 });
 
 // ─── feature 017 — US3: domReduced self-describes whether reduction applied ─
@@ -297,12 +424,7 @@ test("SC-001: reduced DOM is at least 50% smaller by byte size than the unreduce
 test("Edge case: a subtree with no noise reduces to content identical to the verbatim read", async () => {
   const { tabId } = await callHandle<{ tabId: string }>(app, "open", [`${base}/static.html`]);
   const reduced = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#para"]);
-  const verbatim = await callHandle<{ dom?: string }>(app, "read", [
-    tabId,
-    true,
-    "#para",
-    false,
-  ]);
+  const verbatim = await callHandle<{ dom?: string }>(app, "read", [tabId, true, "#para", false]);
 
   // #para has no <script>/<style>/comment/class/style noise to strip.
   expect(reduced.dom).toBe(verbatim.dom);

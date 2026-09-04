@@ -37,17 +37,42 @@
     <style>
       /* Presentation-only — a noise-reduction pass should be able to drop this node
          entirely; it contributes no information to a caller reading page structure. */
-      .card { border: 1px solid #eee; }
+      .card {
+        border: 1px solid #eee;
+      }
     </style>
   </head>
   <body>
     <h1>DOM noise repro</h1>
+
+    <!-- Directly-addressable removable roots for issue 010. -->
+    <script id="root-script-case">
+      window.__rootScriptCase = true;
+    </script>
+    <style id="root-style-case">
+      #root-style-case {
+        color: red;
+      }
+    </style>
+    <svg id="root-svg-case" aria-hidden="true" width="8" height="8"><circle r="4" /></svg>
 
     <!-- A structural comment a noise-reduction pass should be free to drop. -->
     <div
       id="job-list"
       class="flex min-h-[400px] flex-col gap-2 p-ds-2 rounded-medium border-thin bg-ds-page overflow-hidden transition-[border-color,box-shadow,transform] duration-150"
     >
+      <!-- This noise is inside the selected subtree and must be removed. -->
+      <style>
+        .job-card-noise {
+          display: block;
+        }
+      </style>
+      <script>
+        window.__jobListReductionProbe = true;
+      </script>
+      <div id="live-marker" class="marker-class" style="color: red" data-counter="7">
+        Live marker
+      </div>
       <div
         role="button"
         tabindex="0"
@@ -56,17 +81,39 @@
       >
         <div class="flex gap-3 overflow-hidden items-center">
           <div class="shrink-0 overflow-hidden bg-white size-10 rounded-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path d="M14.2611 1.29711C14.5548 1.40637 14.7496 1.68669 14.7496 2.00004V10.2502H19.5004C19.7938 10.2502 20.0603 10.4213 20.1824 10.6881C20.3045 10.9549 20.2598 11.2684 20.068 11.4904L10.568 22.4902C10.3632 22.7274 10.0326 22.8122 9.73888 22.7029C9.4452 22.5937 9.2504 22.3134 9.2504 22V13.7499H4.4996C4.20619 13.7499 3.93973 13.5788 3.81763 13.312" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              aria-hidden="true"
+            >
+              <path
+                d="M14.2611 1.29711C14.5548 1.40637 14.7496 1.68669 14.7496 2.00004V10.2502H19.5004C19.7938 10.2502 20.0603 10.4213 20.1824 10.6881C20.3045 10.9549 20.2598 11.2684 20.068 11.4904L10.568 22.4902C10.3632 22.7274 10.0326 22.8122 9.73888 22.7029C9.4452 22.5937 9.2504 22.3134 9.2504 22V13.7499H4.4996C4.20619 13.7499 3.93973 13.5788 3.81763 13.312"
+              />
               <circle cx="12" cy="12" r="10" />
             </svg>
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" role="img" aria-label="Verified employer">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              role="img"
+              aria-label="Verified employer"
+            >
               <path d="M9 12l2 2 4-4" />
             </svg>
           </div>
           <div class="min-w-0 overflow-hidden flex-1">
-            <span class="mb-1 line-clamp-2 text-sm leading-tight font-medium break-words">Example Role One</span>
-            <div class="text-muted-foreground flex items-center gap-1 text-xs"><span class="truncate">Example Co</span></div>
+            <span class="mb-1 line-clamp-2 text-sm leading-tight font-medium break-words"
+              >Example Role One</span
+            >
+            <div class="text-muted-foreground flex items-center gap-1 text-xs">
+              <span class="truncate">Example Co</span>
+            </div>
           </div>
         </div>
       </div>
@@ -79,14 +126,29 @@
       >
         <div class="flex gap-3 overflow-hidden items-center">
           <div class="shrink-0 overflow-hidden bg-white size-10 rounded-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path d="M11.109 3.74829C11.48 3.02037 12.52 3.02037 12.891 3.74829L15.0785 8.0407C15.2237 8.32561 15.4964 8.5239 15.8122 8.5742L20.5671 9.33147C21.373 9.45983 21.6941 10.4474 21.1178 11.0252L17.7138 14.4383" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              aria-hidden="true"
+            >
+              <path
+                d="M11.109 3.74829C11.48 3.02037 12.52 3.02037 12.891 3.74829L15.0785 8.0407C15.2237 8.32561 15.4964 8.5239 15.8122 8.5742L20.5671 9.33147C21.373 9.45983 21.6941 10.4474 21.1178 11.0252L17.7138 14.4383"
+              />
               <path d="M12.125 8.25H12M12.25 8.25C12.25 8.11193 12.1381 8 12 8" />
             </svg>
           </div>
           <div class="min-w-0 overflow-hidden flex-1">
-            <span class="mb-1 line-clamp-2 text-sm leading-tight font-medium break-words">Example Role Two</span>
-            <div class="text-muted-foreground flex items-center gap-1 text-xs"><span class="truncate">Another Co</span></div>
+            <span class="mb-1 line-clamp-2 text-sm leading-tight font-medium break-words"
+              >Example Role Two</span
+            >
+            <div class="text-muted-foreground flex items-center gap-1 text-xs">
+              <span class="truncate">Another Co</span>
+            </div>
           </div>
         </div>
       </div>
@@ -99,14 +161,29 @@
       >
         <div class="flex gap-3 overflow-hidden items-center">
           <div class="shrink-0 overflow-hidden bg-white size-10 rounded-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              aria-hidden="true"
+            >
               <path d="M17 17L21 21" />
-              <path d="M19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19C15.4183 19 19 15.4183 19 11Z" />
+              <path
+                d="M19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19C15.4183 19 19 15.4183 19 11Z"
+              />
             </svg>
           </div>
           <div class="min-w-0 overflow-hidden flex-1">
-            <span class="mb-1 line-clamp-2 text-sm leading-tight font-medium break-words">Example Role Three</span>
-            <div class="text-muted-foreground flex items-center gap-1 text-xs"><span class="truncate">Third Co</span></div>
+            <span class="mb-1 line-clamp-2 text-sm leading-tight font-medium break-words"
+              >Example Role Three</span
+            >
+            <div class="text-muted-foreground flex items-center gap-1 text-xs">
+              <span class="truncate">Third Co</span>
+            </div>
           </div>
         </div>
       </div>
@@ -116,6 +193,14 @@
       // Presentation-only bootstrapping — a noise-reduction pass should be able to
       // drop this node entirely; it carries no information about page structure.
       document.body.dataset.ready = "true";
+    </script>
+    <script>
+      if (location.search.includes("large-dom")) {
+        const payload = document.createElement("div");
+        payload.id = "large-dom-payload";
+        payload.textContent = "x".repeat(2_100_000);
+        document.body.append(payload);
+      }
     </script>
   </body>
 </html>
