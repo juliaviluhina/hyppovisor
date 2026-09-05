@@ -6,6 +6,7 @@ import { config } from "../config.js";
 import { HyppoError } from "../errors.js";
 import type { LoadState, OpenedBy, TabDetail, TabSummary } from "../../shared/types.js";
 import { validateUrl } from "./url-policy.js";
+import { blockedNavigationDetail, decideNavigation } from "./navigation-policy.js";
 import { unwrapUrl } from "./unwrap-url.js";
 import { isAuthPopupUrl, authPopupLabel } from "./auth-popups.js";
 import type { InteractionLog } from "../safety/interaction-log.js";
@@ -22,7 +23,7 @@ export interface TabEvents {
   /** Fired when a tab list / active tab changes, so the renderer can redraw. */
   onChange: () => void;
   /** Fired when a page tried to open a popup or start a download (FR-017). */
-  onBlockedAction: (kind: "popup" | "download", detail: string) => void;
+  onBlockedAction: (kind: "popup" | "download" | "navigation", detail: string) => void;
   /** Fired when the orchestrator drives a tab, so the renderer can show activity (FR-024). */
   onActivity: (tabId: string, description: string) => void;
   /**
@@ -256,6 +257,25 @@ export class TabManager {
 
   private wireView(tab: Tab): void {
     const wc = tab.view.webContents;
+    const guardTopLevelNavigation = (
+      event: { preventDefault: () => void },
+      url: string,
+    ): void => {
+      const decision = decideNavigation(url);
+      if (!decision.allowed) {
+        event.preventDefault();
+        this.events.onBlockedAction("navigation", blockedNavigationDetail(url, decision.reason));
+      }
+    };
+    // Re-check navigation that happens after an explicit open/navigate call.
+    // The entry points above already validate loadURL destinations; these
+    // cancellable events cover page/script navigation and server redirects.
+    wc.on("will-navigate", (details) => {
+      guardTopLevelNavigation(details, details.url);
+    });
+    wc.on("will-redirect", (details) => {
+      guardTopLevelNavigation(details, details.url);
+    });
     // A page may not spawn windows on its own (FR-006, FR-017). The one
     // exception: a sign-in popup to a known identity provider, which the human
     // summoned and needs to establish their own session (Principle IV). It must

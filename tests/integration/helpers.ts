@@ -30,6 +30,10 @@ export async function startFixtureServer(): Promise<{ server: Server; base: stri
       res.writeHead(302, { location: "/static.html" }).end();
       return;
     }
+    if (pathname === "/navigation-policy-redirect") {
+      res.writeHead(302, { location: "file:///etc/hosts" }).end();
+      return;
+    }
     try {
       const name = pathname.replace(/^\/+/, "") || "static.html";
       const body = await readFile(join(fixturesDir, name));

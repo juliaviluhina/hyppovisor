@@ -47,6 +47,9 @@ const closeAllTabsBtn = $("close-all-tabs") as HTMLButtonElement;
 const noticeEl = $("notice");
 const noticeText = $("notice-text");
 let activeId: string | null = null;
+/** True after the person clicks + with an empty address field, so the next Go
+ * opens the entered URL in a new tab instead of navigating the current tab. */
+let newTabPending = false;
 /** The tabs from the most recent tabs:changed — read by syncAddress() (feature 015). */
 let latestTabs: TabSummary[] = [];
 let noticeTimer: number | undefined;
@@ -153,6 +156,11 @@ async function doOpen(url: string): Promise<void> {
 async function submit(): Promise<void> {
   const url = address.value.trim();
   if (!url) return;
+  if (newTabPending) {
+    newTabPending = false;
+    await doOpen(url);
+    return;
+  }
   if (!activeId) {
     await doOpen(url);
     return;
@@ -174,7 +182,12 @@ async function submit(): Promise<void> {
  *  untouched (FR-006); with no tab active it is just an open (US3 scenario 2). */
 async function openNewTab(): Promise<void> {
   const url = address.value.trim();
-  if (!url) return;
+  if (!url) {
+    newTabPending = true;
+    address.focus();
+    return;
+  }
+  newTabPending = false;
   await doOpen(url);
 }
 
