@@ -319,6 +319,30 @@ export interface LastRequestInfo {
   outcome: "ok" | "rejected";
 }
 
+export type LifecycleState = "healthy" | "degraded" | "stopping" | "stopped";
+export type FailureKind = "operational" | "invariant";
+export type FailureSubsystem =
+  | "process"
+  | "http-bind"
+  | "http-transport"
+  | "queue"
+  | "tab-action";
+
+export interface FailureClassification {
+  kind: FailureKind;
+  subsystem: FailureSubsystem;
+  message: string;
+  at: string;
+  recoverable: boolean;
+  guidance: string;
+}
+
+export interface LifecycleStatus {
+  state: LifecycleState;
+  failure: FailureClassification | null;
+  updatedAt: string;
+}
+
 /** How to launch HyppoVisor as a stdio MCP subprocess — computed in main, rendered by the panel. */
 export interface StdioLaunch {
   command: string;
@@ -349,6 +373,7 @@ export interface EffectiveConnection {
   instanceLabel: string;
   /** MCP server name (feature 012): `"hyppovisor"` or `"hyppovisor-<label>"`. */
   serverName: string;
+  lifecycle: LifecycleStatus;
 }
 
 // ─── feature 014: local instance-management panel ───────────────────────────

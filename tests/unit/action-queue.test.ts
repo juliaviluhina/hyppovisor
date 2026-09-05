@@ -50,4 +50,10 @@ describe("ActionQueue (FR-013, FR-013a)", () => {
     const after = await q.run(async () => 42);
     expect(after.value).toBe(42);
   });
+
+  it("rejects new work while its health gate is closed", async () => {
+    const q = new ActionQueue();
+    q.setHealthGate(() => false);
+    await expect(q.run(async () => 42)).rejects.toThrow("degraded");
+  });
 });

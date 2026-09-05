@@ -172,5 +172,10 @@ export function resolveEffective(
     serverStatus: env.stdio ? "stdio" : "listening",
     instanceLabel: "",
     serverName: "hyppovisor",
+    lifecycle: {
+      state: "healthy",
+      failure: null,
+      updatedAt: new Date().toISOString(),
+    },
   };
 }
