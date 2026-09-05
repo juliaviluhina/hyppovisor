@@ -32,6 +32,13 @@ Releases are cut by pushing a `v*` tag. `.github/workflows/release.yml` then run
 lint + unit tests, builds the unsigned macOS `.dmg` + `.zip` for `arm64` and
 `x64` on native runners, and attaches all four to a GitHub Release.
 
+Maintain release history manually in [CHANGELOG.md](../CHANGELOG.md). Put user-visible work
+under `## [Unreleased]` while developing. Before creating a version tag, move reviewed notes
+into exactly one dated heading matching the package version, such as
+`## [0.4.0] - 2026-09-04`, and ensure that entry has content. The release workflow fails before
+building if the current-version entry is missing, duplicated, or empty, then publishes the
+checked-in entry alongside GitHub's generated supplemental notes.
+
 ```bash
 git checkout main && git pull
 

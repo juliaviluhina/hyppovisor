@@ -35,6 +35,10 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+      - name: Verify checked-in changelog entry
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node scripts/check-release-changelog.js "$(node -p "require('./package.json').version")"
+
       - name: Tag matches package.json version
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -133,13 +137,17 @@ jobs:
 
       - run: ls -lhR dist-artifacts
 
+      - name: Extract checked-in changelog entry
+        run: |
+          node scripts/check-release-changelog.js "$(node -p "require('./package.json').version")" --output /tmp/changelog-entry.md
+          cat /tmp/changelog-entry.md >> .github/RELEASE_NOTES_HEADER.md
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist-artifacts/*
           fail_on_unmatched_files: true
-          # Header (unsigned-build Gatekeeper steps) followed by the
-          # auto-generated commit/PR notes for this tag.
+          # Gatekeeper header plus the checked-in entry; generated notes remain supplemental.
           body_path: .github/RELEASE_NOTES_HEADER.md
           generate_release_notes: true
           # Flip to true to stage releases for manual review before they go live.
