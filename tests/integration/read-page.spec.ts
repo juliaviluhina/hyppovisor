@@ -170,6 +170,15 @@ test("ancestor escalation widens the read and exclusion removes a sibling subtre
   expect(result.scope?.exclusions).toEqual([".chat-panel"]);
 });
 
+test("ancestor escalation text omits hidden (display:none) descendants, like an unscoped read", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/read-page-ancestor-escalation.html`,
+  ]);
+  const result = await callHandle<{ text: string }>(app, "read", [tabId, false, "#target", true, 2]);
+  expect(result.text).toContain("Target content");
+  expect(result.text).not.toContain("Secret internal note");
+});
+
 // ─── feature 017 — US1: reduced-by-default DOM strips noise, keeps content ─
 
 test("US1: a reduced DOM read strips script/style/comment/class/style, keeps card text", async () => {

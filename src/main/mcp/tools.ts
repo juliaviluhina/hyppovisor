@@ -162,7 +162,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ tabId, includeDom, selector, reduceDom, ancestorLevels, exclude }) => {
       seen("read_page");
       try {
-        if (ancestorLevels !== undefined && ancestorLevels > 0 && selector === undefined) {
+        if (ancestorLevels !== undefined && selector === undefined) {
           throw new HyppoError("TARGET_NOT_FOUND", "ancestorLevels requires selector.");
         }
         const { value } = await runTabAction((depth) => {

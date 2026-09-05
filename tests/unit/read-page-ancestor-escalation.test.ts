@@ -15,8 +15,8 @@ describe("readPageScript ancestor escalation and exclusion", () => {
     expect(script).toContain("cloneNode(true)");
     expect(script).toContain("__queryAllSafe(clone, exclusion)");
     expect(script).toContain("el.remove()");
-    expect(script).toContain("text: clone.innerText");
-    expect(script).toContain("__reduceDom(clone)");
+    expect(script).toContain("text: __visibleText(root, exclusions)");
+    expect(script).toContain("__reduceDomInPlace(clone)");
   });
 
   it("keeps the existing script path unchanged when new inputs are omitted", () => {
