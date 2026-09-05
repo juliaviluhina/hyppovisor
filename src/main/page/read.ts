@@ -15,10 +15,9 @@ import { HyppoError } from "../errors.js";
 // class/style attributes from a *clone* of the resolved subtree, never the
 // live page. Only emitted into the script when reduction is requested, so a
 // `reduceDom: false` script stays byte-for-byte the pre-017 script (FR-002).
-const DOM_REDUCTION_HELPER = `function __reduceDom(root) {
-    if (!root) return "";
-    if (root.nodeType === Node.ELEMENT_NODE && root.matches("script, style, svg[aria-hidden=\\\"true\\\"]")) return "";
-    const clone = root.cloneNode(true);
+const DOM_REDUCTION_HELPER = `function __reduceDomInPlace(clone) {
+    if (!clone) return "";
+    if (clone.nodeType === Node.ELEMENT_NODE && clone.matches("script, style, svg[aria-hidden=\\\"true\\\"]")) return "";
     clone.querySelectorAll("script, style").forEach((el) => el.remove());
     clone.querySelectorAll('svg[aria-hidden="true"]').forEach((el) => el.remove());
     const walker = document.createTreeWalker(clone, NodeFilter.SHOW_COMMENT);
@@ -30,6 +29,9 @@ const DOM_REDUCTION_HELPER = `function __reduceDom(root) {
       el.removeAttribute("style");
     });
     return clone.outerHTML;
+  }
+  function __reduceDom(root) {
+    return __reduceDomInPlace(root ? root.cloneNode(true) : root);
   }`;
 
 /**
@@ -45,13 +47,72 @@ const DOM_REDUCTION_HELPER = `function __reduceDom(root) {
  * and `class`/`style` attributes from the returned `dom` via a detached
  * clone (research.md R1/R2); `text` is always computed from the original,
  * unreduced element. `reduceDom: false` reproduces the pre-017 script
- * verbatim (FR-002).
+ * verbatim (FR-002). With `ancestorLevels` or `exclude` (feature 023), `text`
+ * is computed by walking the *live* (still-attached) subtree so visibility —
+ * `display`/`visibility` — is judged accurately; a detached clone would
+ * report every node as visible regardless of its original styling.
  */
 export function readPageScript(
   selector: string | undefined,
   reduceDom: boolean,
   includeDom = true,
+  ancestorLevels?: number,
+  exclude: string[] = [],
 ): string {
+  const levels = ancestorLevels ?? 0;
+  const escalated = selector !== undefined && ancestorLevels !== undefined;
+  const excluded = exclude.length > 0;
+  if (escalated || excluded) {
+    return `(() => {
+  ${SELECTOR_SYNTAX_HELPER}
+  ${includeDom && reduceDom ? DOM_REDUCTION_HELPER : ""}
+  function __visibleText(node, exclusions) {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+    for (const exclusion of exclusions) {
+      if (node.matches(exclusion)) return "";
+    }
+    const style = getComputedStyle(node);
+    if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") return "";
+    let text = "";
+    for (const child of node.childNodes) text += __visibleText(child, exclusions);
+    return style.display === "inline" || style.display === "inline-block" ? text : text + "\\n";
+  }
+  try {
+    const matched = ${selector === undefined ? "document.documentElement" : `__querySafe(document, ${JSON.stringify(selector)})`};
+    if (!matched) return { notFound: true };
+    let root = matched;
+    let effectiveAncestorLevels = 0;
+    for (let i = 0; i < ${levels}; i++) {
+      if (!root.parentElement) break;
+      root = root.parentElement;
+      effectiveAncestorLevels++;
+    }
+    const clone = root.cloneNode(true);
+    const exclusions = ${JSON.stringify(exclude)};
+    for (const exclusion of exclusions) {
+      const matches = __queryAllSafe(clone, exclusion);
+      if (root.matches(exclusion)) return { rootExcluded: true };
+      matches.forEach((el) => el.remove());
+    }
+    return {
+      url: location.href,
+      title: document.title,
+      text: __visibleText(root, exclusions) || "",
+      ${includeDom ? `dom: ${reduceDom ? "__reduceDomInPlace(clone)" : "clone.outerHTML || \"\""},` : ""}
+      scope: {
+        selector: ${selector === undefined ? "undefined" : JSON.stringify(selector)},
+        requestedAncestorLevels: ${levels},
+        effectiveAncestorLevels,
+        exclusions,
+      },
+    };
+  } catch (e) {
+    if (e && e.__invalidSelector) return { __invalidSelector: true };
+    throw e;
+  }
+})()`;
+  }
   if (!includeDom) {
     if (selector === undefined) {
       return `(() => ({
@@ -133,8 +194,15 @@ export function readPageScript(
 }
 
 type RawRead =
-  | { url: string; title: string; text: string; dom: string }
+  | {
+      url: string;
+      title: string;
+      text: string;
+      dom?: string;
+      scope?: PageReadResult["scope"];
+    }
   | { notFound: true }
+  | { rootExcluded: true }
   | { __invalidSelector: true };
 
 export async function readPage(
@@ -144,9 +212,18 @@ export async function readPage(
   queueDepth: number,
   selector?: string,
   reduceDom = true,
+  ancestorLevels?: number,
+  exclude: string[] = [],
 ): Promise<PageReadResult> {
+  const levels = ancestorLevels ?? 0;
+  if (!Number.isInteger(levels) || levels < 0) {
+    throw new HyppoError("TARGET_NOT_FOUND", "ancestorLevels must be a non-negative integer.");
+  }
+  if (ancestorLevels !== undefined && selector === undefined) {
+    throw new HyppoError("TARGET_NOT_FOUND", "ancestorLevels requires selector.");
+  }
   const raw = (await wc.executeJavaScript(
-    readPageScript(selector, reduceDom, includeDom),
+    readPageScript(selector, reduceDom, includeDom, ancestorLevels, exclude),
     true,
   )) as RawRead;
 
@@ -158,6 +235,9 @@ export async function readPage(
       "TARGET_NOT_FOUND",
       `No element matches selector ${JSON.stringify(selector)}.`,
     );
+  }
+  if ("rootExcluded" in raw) {
+    throw new HyppoError("TARGET_NOT_FOUND", "An exclusion selector cannot match the read root.");
   }
   const found = raw as Extract<RawRead, { url: string }>;
 
@@ -174,6 +254,9 @@ export async function readPage(
 
   if (selector !== undefined) {
     result.scopedTo = selector;
+  }
+  if (found.scope) {
+    result.scope = found.scope;
   }
 
   if (includeDom) {

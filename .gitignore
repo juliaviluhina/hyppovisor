@@ -2,6 +2,9 @@
 # machine-specific permission overrides; skills/ and other shared config stay tracked.
 .claude/settings.local.json
 
+# Local MCP connection config may contain bearer tokens
+.codex/config.toml
+
 # Node / Electron
 node_modules/
 dist/

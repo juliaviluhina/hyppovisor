@@ -575,11 +575,27 @@ async function main(): Promise<void> {
             .run(() => tabs.navigate(tabId, url))
             .then((r) => ({ ...r.value, queueDepth: r.queueDepth })),
         ),
-      read: (tabId: string, includeDom = false, selector?: string, reduceDom = true) =>
+      read: (
+        tabId: string,
+        includeDom = false,
+        selector?: string,
+        reduceDom = true,
+        ancestorLevels?: number,
+        exclude?: string[],
+      ) =>
         withCode(() =>
           queue
             .run((d) =>
-              readPage(tabs.webContentsFor(tabId), tabId, includeDom, d, selector, reduceDom),
+              readPage(
+                tabs.webContentsFor(tabId),
+                tabId,
+                includeDom,
+                d,
+                selector,
+                reduceDom,
+                ancestorLevels,
+                exclude ?? [],
+              ),
             )
             .then((r) => r.value),
         ),

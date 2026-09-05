@@ -153,6 +153,32 @@ test("US3: a scoped read reports scopedTo; an unscoped read has no such field", 
   expect("scopedTo" in unscoped).toBe(false);
 });
 
+test("ancestor escalation widens the read and exclusion removes a sibling subtree", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/read-page-ancestor-escalation.html`,
+  ]);
+  const result = await callHandle<{
+    text: string;
+    dom?: string;
+    scope?: { effectiveAncestorLevels?: number; exclusions?: string[] };
+  }>(app, "read", [tabId, true, "#target", true, 2, [".chat-panel"]]);
+  expect(result.text).toContain("Target content");
+  expect(result.text).not.toContain("Excluded chat");
+  expect(result.dom).toContain('id="context"');
+  expect(result.dom).not.toContain("chat-panel");
+  expect(result.scope?.effectiveAncestorLevels).toBe(2);
+  expect(result.scope?.exclusions).toEqual([".chat-panel"]);
+});
+
+test("ancestor escalation text omits hidden (display:none) descendants, like an unscoped read", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/read-page-ancestor-escalation.html`,
+  ]);
+  const result = await callHandle<{ text: string }>(app, "read", [tabId, false, "#target", true, 2]);
+  expect(result.text).toContain("Target content");
+  expect(result.text).not.toContain("Secret internal note");
+});
+
 // ─── feature 017 — US1: reduced-by-default DOM strips noise, keeps content ─
 
 test("US1: a reduced DOM read strips script/style/comment/class/style, keeps card text", async () => {
