@@ -98,6 +98,28 @@ test("US1: #address shows the active tab's URL on activation (strip + dropdown)"
   });
 });
 
+test("US1: switching tabs cancels pending new-tab mode", async () => {
+  await withApp(async (page) => {
+    await openNewTab(page, `${base}/static.html`);
+    await openNewTab(page, `${base}/tall.html`, "#newtab");
+
+    // Arm + with an empty field, then change the active tab through the dropdown.
+    await page.locator("#address").fill("");
+    await page.locator("#newtab").click();
+    const otherId = await page.evaluate(async () => {
+      const tabs = await (window as unknown as { hyppo: { listTabs: () => Promise<{ tabId: string }[]> } }).hyppo.listTabs();
+      const activeId = (document.querySelector("#tabselect") as HTMLSelectElement).value;
+      return tabs.find((tab) => tab.tabId !== activeId)!.tabId;
+    });
+    await page.locator("#tabselect").selectOption(otherId);
+    await page.locator("#address").fill(`${base}/form.html`);
+    await page.locator("#address").press("Enter");
+    await expect(page.locator("#address")).toHaveValue(`${base}/form.html`);
+    await expect.poll(() => listUrls(page)).toHaveLength(2);
+    expect(await listUrls(page)).toContain(`${base}/form.html`);
+  });
+});
+
 test("US1: the bar tracks a redirect (post-redirect URL) and clears when the last tab closes", async () => {
   await withApp(async (page) => {
     await openNewTab(page, `${base}/static.html`);

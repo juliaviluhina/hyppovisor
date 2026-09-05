@@ -74,6 +74,12 @@ function labelFor(t: TabSummary): string {
   return t.title || t.url || "(loading)";
 }
 
+function activateTab(id: string): void {
+  newTabPending = false;
+  activeId = id;
+  void hyppo.activateTab(id);
+}
+
 function render(tabs: TabSummary[]): void {
   // feature 014 — top-bar tab actions are live only while a tab is open.
   const noTabs = tabs.length === 0;
@@ -97,12 +103,12 @@ function render(tabs: TabSummary[]): void {
     const el = document.createElement("div");
     el.className = "tab" + (t.tabId === activeId ? " active" : "");
     el.title = t.url;
+    el.onmousedown = () => {
+      newTabPending = false;
+    };
+    el.onclick = () => activateTab(t.tabId);
     const label = document.createElement("span");
     label.textContent = `${labelFor(t)} · ${t.loadState}`;
-    label.onclick = () => {
-      activeId = t.tabId;
-      hyppo.activateTab(t.tabId);
-    };
     const x = document.createElement("span");
     x.className = "x";
     x.textContent = "✕";
@@ -115,9 +121,11 @@ function render(tabs: TabSummary[]): void {
   }
 }
 
+tabselect.addEventListener("mousedown", () => {
+  newTabPending = false;
+});
 tabselect.addEventListener("change", () => {
-  activeId = tabselect.value;
-  hyppo.activateTab(activeId);
+  activateTab(tabselect.value);
 });
 
 // ── address bar ─────────────────────────────────────────────────────────────
@@ -202,7 +210,10 @@ for (const id of ["go", "newtab"]) {
 address.addEventListener("keydown", (e) => {
   if (e.key === "Enter") submit();
 });
-address.addEventListener("blur", () => syncAddress());
+address.addEventListener("blur", () => {
+  newTabPending = false;
+  syncAddress();
+});
 
 // ── top-bar tab actions (feature 014) ───────────────────────────────────────
 refreshTabBtn.addEventListener("click", () => void hyppo.reloadTab());
@@ -226,6 +237,7 @@ hyppo.onRecentUrlsChanged(fillDatalist);
 
 // ── live updates ────────────────────────────────────────────────────────────
 hyppo.onTabsChanged(({ tabs, activeTabId }) => {
+  if (activeId !== activeTabId) newTabPending = false;
   latestTabs = tabs;
   activeId = activeTabId;
   render(tabs);
