@@ -64,8 +64,11 @@ async function deadPort(): Promise<number> {
   return port;
 }
 
-async function withApp(fn: (page: Page, app: ElectronApplication) => Promise<void>): Promise<void> {
-  const app = await launchApp({}, { background: false });
+async function withApp(
+  fn: (page: Page, app: ElectronApplication) => Promise<void>,
+  env: Record<string, string> = {},
+): Promise<void> {
+  const app = await launchApp(env, { background: false });
   try {
     await fn(await app.firstWindow(), app);
   } finally {
@@ -92,6 +95,28 @@ test("US1: #address shows the active tab's URL on activation (strip + dropdown)"
     );
     await page.locator("#tabselect").selectOption(secondId);
     await expect(page.locator("#address")).toHaveValue(`${base}/tall.html`);
+  });
+});
+
+test("US1: switching tabs cancels pending new-tab mode", async () => {
+  await withApp(async (page) => {
+    await openNewTab(page, `${base}/static.html`);
+    await openNewTab(page, `${base}/tall.html`, "#newtab");
+
+    // Arm + with an empty field, then change the active tab through the dropdown.
+    await page.locator("#address").fill("");
+    await page.locator("#newtab").click();
+    const otherId = await page.evaluate(async () => {
+      const tabs = await (window as unknown as { hyppo: { listTabs: () => Promise<{ tabId: string }[]> } }).hyppo.listTabs();
+      const activeId = (document.querySelector("#tabselect") as HTMLSelectElement).value;
+      return tabs.find((tab) => tab.tabId !== activeId)!.tabId;
+    });
+    await page.locator("#tabselect").selectOption(otherId);
+    await page.locator("#address").fill(`${base}/form.html`);
+    await page.locator("#address").press("Enter");
+    await expect(page.locator("#address")).toHaveValue(`${base}/form.html`);
+    await expect.poll(() => listUrls(page)).toHaveLength(2);
+    expect(await listUrls(page)).toContain(`${base}/form.html`);
   });
 });
 
@@ -296,11 +321,96 @@ test("US3: #newtab opens a new tab and leaves the previously-active tab untouche
   });
 });
 
+test("US3: #newtab does not duplicate an untouched synced URL", async () => {
+  await withApp(async (page) => {
+    await openNewTab(page, `${base}/static.html`);
+    await page.locator("#address").blur();
+    await expect(page.locator("#address")).toHaveValue(`${base}/static.html`);
+
+    await page.locator("#newtab").click();
+    await expect(page.locator(".tab")).toHaveCount(1);
+    await expect(page.locator("#address")).toBeFocused();
+
+    await page.locator("#address").fill(`${base}/tall.html`);
+    await page.locator("#go").click();
+    await expect(page.locator("#address")).toHaveValue("", { timeout: 20000 });
+    expect(await listUrls(page)).toEqual([`${base}/static.html`, `${base}/tall.html`]);
+  });
+});
+
 test("US3: with no tab open, #newtab just opens a tab", async () => {
   await withApp(async (page) => {
     await page.locator("#address").fill(`${base}/static.html`);
     await page.locator("#newtab").click();
     await expect(page.locator("#address")).toHaveValue("", { timeout: 20000 });
     expect(await listUrls(page)).toEqual([`${base}/static.html`]);
+  });
+});
+
+test("recent history keeps every human-opened tab URL and exposes matching datalist options", async () => {
+  await withApp(async (page) => {
+    await openNewTab(page, `${base}/static.html`);
+    await openNewTab(page, `${base}/tall.html`, "#newtab");
+    await openNewTab(page, `${base}/form.html`, "#newtab");
+
+    // History is most-recent-first even though the tab strip keeps creation order.
+    await expect(page.locator("#recent-urls option")).toHaveCount(3);
+    expect(await recent(page)).toEqual([
+      `${base}/form.html`,
+      `${base}/tall.html`,
+      `${base}/static.html`,
+    ]);
+
+    // A native datalist is filtered by the input value; its options are still
+    // present in the DOM and the matching URL is available to the control.
+    await page.locator("#address").fill("static");
+    await expect(page.locator('#recent-urls option[value$="/static.html"]')).toHaveCount(1);
+  });
+});
+
+test("recent history moves duplicates to the front and respects a smaller test cap", async () => {
+  await withApp(
+    async (page) => {
+      await openNewTab(page, `${base}/static.html`);
+      await openNewTab(page, `${base}/tall.html`, "#newtab");
+      await openNewTab(page, `${base}/form.html`, "#newtab");
+      await openNewTab(page, `${base}/redirect`, "#newtab");
+
+      // The redirect is stored as the entered URL, per the existing history contract.
+      expect(await recent(page)).toEqual([
+        `${base}/redirect`,
+        `${base}/form.html`,
+        `${base}/tall.html`,
+      ]);
+
+      // Reopening an existing URL does not duplicate it; it moves to the front.
+      await page.locator("#address").fill(`${base}/tall.html`);
+      await page.locator("#newtab").click();
+      await expect(page.locator("#address")).toHaveValue("", { timeout: 20000 });
+      expect(await recent(page)).toEqual([
+        `${base}/tall.html`,
+        `${base}/redirect`,
+        `${base}/form.html`,
+      ]);
+      await expect(page.locator("#recent-urls option")).toHaveCount(3);
+    },
+    { HYPPO_RECENT_URLS_CAP: "3" },
+  );
+});
+
+test("clicking + first arms a new tab, then Go opens the typed URL and records both URLs", async () => {
+  await withApp(async (page) => {
+    await openNewTab(page, `${base}/static.html`);
+
+    // Human flow: click + while the address field is empty, type a URL, then
+    // click Go. The existing tab must remain untouched.
+    await page.locator("#newtab").click();
+    await page.locator("#address").fill(`${base}/tall.html`);
+    await page.locator("#go").click();
+    await expect(page.locator("#address")).toHaveValue("", { timeout: 20000 });
+
+    expect(await listUrls(page)).toEqual([`${base}/static.html`, `${base}/tall.html`]);
+    expect(await recent(page)).toEqual([`${base}/tall.html`, `${base}/static.html`]);
+    await expect(page.locator("#recent-urls option")).toHaveCount(2);
   });
 });
