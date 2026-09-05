@@ -4,6 +4,7 @@
 
 # Local MCP connection config may contain bearer tokens
 .codex/config.toml
+.mcp.json
 
 # Node / Electron
 node_modules/
