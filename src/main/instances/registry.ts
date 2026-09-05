@@ -11,6 +11,7 @@ import { connect } from "node:net";
 import { readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { InstanceMode, InstanceRuntime, InstanceSummary } from "../../shared/types.js";
+import { restrictFilePermissions } from "../security/file-permissions.js";
 
 export const RUNTIME_FILENAME = "runtime.json";
 
@@ -39,6 +40,7 @@ export function writeRuntimeFile(
   const target = join(profileDir, RUNTIME_FILENAME);
   const tmp = `${target}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(doc, null, 2) + "\n");
+  restrictFilePermissions(tmp);
   renameSync(tmp, target);
 }
 

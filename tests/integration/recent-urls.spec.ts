@@ -162,7 +162,7 @@ test("US2: the connection panel's Clear recent URLs empties the datalist and the
     await expect(page.locator("#clear-recent-urls")).toBeDisabled();
 
     // No other setting touched — the clear never writes settings.json.
-    expect(existsSync(join(userDataDir, "settings.json"))).toBe(false);
+    expect(existsSync(join(userDataDir, "settings.json"))).toBe(true);
   } finally {
     await close();
   }

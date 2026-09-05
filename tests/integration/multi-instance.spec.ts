@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { E2E_INSTANCE, launchAppFull, mcpPost } from "./helpers.js";
 
 const mainEntry = fileURLToPath(new URL("../../dist/main/index.js", import.meta.url));
+const AUTH = { Authorization: "Bearer multi-instance-test-token" };
 
 const init = (id: number) => ({
   jsonrpc: "2.0",
@@ -47,15 +48,15 @@ const windowTitle = (app: ElectronApplication) =>
 // ── US1 + US4 — two named instances, parallel and tellable apart ─────────────
 test("US1/US4: two named instances bind their own ports, keep their own identity, serve in parallel", async () => {
   const [pA, pB] = [await freePort(), await freePort()];
-  const A = await launchAppFull({}, undefined, ["--instance", "work", "--port", String(pA)]);
-  const B = await launchAppFull({}, undefined, ["--instance", "personal", "--port", String(pB)]);
+  const A = await launchAppFull({ HYPPO_MCP_TOKEN: "multi-instance-test-token" }, undefined, ["--instance", "work", "--port", String(pA)]);
+  const B = await launchAppFull({ HYPPO_MCP_TOKEN: "multi-instance-test-token" }, undefined, ["--instance", "personal", "--port", String(pB)]);
   try {
     // Distinct profile directories (isolation — FR-024 / SC-002).
     expect(A.userDataDir).not.toBe(B.userDataDir);
 
     // Each MCP handshake carries its own server name (FR-018).
-    const initA = await mcpPost(pA, init(1));
-    const initB = await mcpPost(pB, init(1));
+    const initA = await mcpPost(pA, init(1), AUTH);
+    const initB = await mcpPost(pB, init(1), AUTH);
     expect(initA.status).toBe(200);
     expect(initB.status).toBe(200);
     const nameOf = (r: { json: unknown }) =>
@@ -80,8 +81,8 @@ test("US1/US4: two named instances bind their own ports, keep their own identity
     // Interleaved calls to both — every one is served (non-interfering, SC-001).
     const calls: Promise<{ status: number }>[] = [];
     for (let i = 0; i < 4; i++) {
-      calls.push(mcpPost(pA, init(100 + i)));
-      calls.push(mcpPost(pB, init(200 + i)));
+      calls.push(mcpPost(pA, init(100 + i), AUTH));
+      calls.push(mcpPost(pB, init(200 + i), AUTH));
     }
     for (const r of await Promise.all(calls)) expect(r.status).toBe(200);
   } finally {
@@ -103,14 +104,14 @@ test("US4: no --instance and an unusable env-dir basename → bare title and ser
       // --background (feature 013): this spec only reads label / server name /
       // title / handshake — no window needs to be visible (SC-005).
       args: [mainEntry, "--background"],
-      env: { ...process.env, HYPPO_USER_DATA_DIR: dir },
+      env: { ...process.env, HYPPO_USER_DATA_DIR: dir, HYPPO_MCP_TOKEN: "multi-instance-test-token" },
     });
     const page = await app.firstWindow();
     const c = await getConn(page);
     expect(c.instanceLabel).toBe("");
     expect(c.serverName).toBe("hyppovisor");
     expect(await windowTitle(app)).toBe("HyppoVisor");
-    const handshake = await mcpPost(c.port as number, init(1));
+    const handshake = await mcpPost(c.port as number, init(1), AUTH);
     expect(
       (handshake.json as { result?: { serverInfo?: { name?: string } } }).result?.serverInfo?.name,
     ).toBe("hyppovisor");
@@ -122,7 +123,7 @@ test("US4: no --instance and an unusable env-dir basename → bare title and ser
 
 // ── US2 — a second launch into the same profile is the summon gesture ───────
 test("US2: a second launch into the same profile opens no window and exits quietly; the first stays live", async () => {
-  const D = await launchAppFull();
+  const D = await launchAppFull({ HYPPO_MCP_TOKEN: "multi-instance-test-token" });
   try {
     let openedWindow = false;
     let second: ElectronApplication | undefined;
@@ -132,7 +133,7 @@ test("US2: a second launch into the same profile opens no window and exits quiet
         // window. No HYPPO_E2E: feature 013 removed the blocking collision dialog
         // here (it is the summon gesture now), so this process just exits 0.
         args: [mainEntry, "--instance", E2E_INSTANCE],
-        env: { ...process.env, HYPPO_USER_DATA_DIR: D.userDataDir },
+        env: { ...process.env, HYPPO_USER_DATA_DIR: D.userDataDir, HYPPO_MCP_TOKEN: "multi-instance-test-token" },
       });
       const win = await second.firstWindow({ timeout: 4000 }).catch(() => null);
       openedWindow = win !== null;
@@ -146,7 +147,7 @@ test("US2: a second launch into the same profile opens no window and exits quiet
     // The original instance is untouched and still serving (its window was
     // raised by the second-instance handler — the summon).
     const c = await getConn(await D.app.firstWindow());
-    expect((await mcpPost(c.port as number, init(1))).status).toBe(200);
+    expect((await mcpPost(c.port as number, init(1), AUTH)).status).toBe(200);
   } finally {
     await D.close();
   }
@@ -162,7 +163,7 @@ test("US3: an in-use port surfaces as port-unavailable; browser still works; pan
   try {
     app = await electron.launch({
       args: [mainEntry, "--port", String(busy), "--background"],
-      env: { ...process.env, HYPPO_USER_DATA_DIR: dir },
+      env: { ...process.env, HYPPO_USER_DATA_DIR: dir, HYPPO_MCP_TOKEN: "multi-instance-test-token" },
     });
     const page = await app.firstWindow();
 
@@ -190,7 +191,7 @@ test("US3: an in-use port surfaces as port-unavailable; browser still works; pan
     await expect
       .poll(async () => (await getConn(page)).serverStatus, { timeout: 5000 })
       .toBe("listening");
-    expect((await mcpPost(fresh, init(1))).status).toBe(200);
+    expect((await mcpPost(fresh, init(1), AUTH)).status).toBe(200);
   } finally {
     await app?.close();
     blocker.close();

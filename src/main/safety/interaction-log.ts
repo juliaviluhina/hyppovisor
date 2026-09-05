@@ -8,6 +8,7 @@
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import type { InteractionLogEntry } from "../../shared/types.js";
+import { restrictFilePermissions } from "../security/file-permissions.js";
 
 export class InteractionLog {
   private readonly path: string;
@@ -23,6 +24,7 @@ export class InteractionLog {
   record(entry: Omit<InteractionLogEntry, "at"> & { at?: string }): InteractionLogEntry {
     const full: InteractionLogEntry = { at: entry.at ?? new Date().toISOString(), ...entry };
     appendFileSync(this.path, JSON.stringify(full) + "\n", "utf8");
+    restrictFilePermissions(this.path);
     return full;
   }
 }

@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { E2E_INSTANCE, launchApp, callHandle, mcpPost, startFixtureServer } from "./helpers.js";
 
 const mainEntry = fileURLToPath(new URL("../../dist/main/index.js", import.meta.url));
+const AUTH = { Authorization: "Bearer background-test-token" };
 
 const init = (id: number) => ({
   jsonrpc: "2.0",
@@ -60,8 +61,8 @@ const dockVisible = (app: ElectronApplication) =>
 test("US1: two --background instances open no window yet serve MCP and drive their tabs", async () => {
   const { server, base } = await startFixtureServer();
   const [pA, pB] = [await freePort(), await freePort()];
-  const A = await launchApp({ HYPPO_MCP_PORT: String(pA) });
-  const B = await launchApp({ HYPPO_MCP_PORT: String(pB) });
+  const A = await launchApp({ HYPPO_MCP_PORT: String(pA), HYPPO_MCP_TOKEN: "background-test-token" });
+  const B = await launchApp({ HYPPO_MCP_PORT: String(pB), HYPPO_MCP_TOKEN: "background-test-token" });
   try {
     // No window on screen for either (SC-001 / FR-001).
     expect(await isVisible(A)).toBe(false);
@@ -73,8 +74,8 @@ test("US1: two --background instances open no window yet serve MCP and drive the
     if (dockA !== null) expect(dockA).toBe(false);
 
     // Each MCP server answers on its own port (FR-002 / SC-002).
-    expect((await mcpPost(pA, init(1))).status).toBe(200);
-    expect((await mcpPost(pB, init(1))).status).toBe(200);
+    expect((await mcpPost(pA, init(1), AUTH)).status).toBe(200);
+    expect((await mcpPost(pB, init(1), AUTH)).status).toBe(200);
 
     // open / read / fill / list_tabs all work against a window that is never
     // shown (SC-002). `screenshot` is NOT asserted here: a never-shown window has
@@ -108,8 +109,8 @@ test("US2: relaunch reveals a --background instance; closing the window returns 
   const dir = await mkdtemp(join(tmpdir(), "hyppo-e2e-"));
   const pA = await freePort();
   const pSib = await freePort();
-  const A = await launchApp({ HYPPO_USER_DATA_DIR: dir, HYPPO_MCP_PORT: String(pA) });
-  const sib = await launchApp({ HYPPO_MCP_PORT: String(pSib) });
+  const A = await launchApp({ HYPPO_USER_DATA_DIR: dir, HYPPO_MCP_PORT: String(pA), HYPPO_MCP_TOKEN: "background-test-token" });
+  const sib = await launchApp({ HYPPO_MCP_PORT: String(pSib), HYPPO_MCP_TOKEN: "background-test-token" });
   try {
     expect(await isVisible(A)).toBe(false);
 
@@ -132,12 +133,12 @@ test("US2: relaunch reveals a --background instance; closing the window returns 
     await expect.poll(() => isVisible(A), { timeout: 5000 }).toBe(true);
     // The sibling was untouched by the summon (FR-010).
     expect(await isVisible(sib)).toBe(false);
-    expect((await mcpPost(pSib, init(1))).status).toBe(200);
+    expect((await mcpPost(pSib, init(1), AUTH)).status).toBe(200);
 
     // Close the summoned window → back to the background, NOT quit (FR-009).
     await A.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
     await expect.poll(() => isVisible(A), { timeout: 5000 }).toBe(false);
-    expect((await mcpPost(pA, init(2))).status).toBe(200); // still serving
+    expect((await mcpPost(pA, init(2), AUTH)).status).toBe(200); // still serving
   } finally {
     await A.close();
     await sib.close();
@@ -153,7 +154,7 @@ test("US3: a named instance without --background is visible but does not take fo
   const name = "bgspec013";
   const app = await electron.launch({
     args: [mainEntry, "--instance", name, "--port", String(p)],
-    env: { ...process.env }, // deliberately no HYPPO_USER_DATA_DIR → source "instance"
+    env: { ...process.env, HYPPO_MCP_TOKEN: "background-test-token" }, // deliberately no HYPPO_USER_DATA_DIR → source "instance"
   });
   const userData = await app.evaluate(({ app }) => app.getPath("userData"));
   try {
@@ -171,7 +172,7 @@ test("US3: a named instance without --background is visible but does not take fo
       return !!w && !w.isDestroyed() && !w.isMinimized();
     });
     expect(alive).toBe(true);
-    expect((await mcpPost(p, init(1))).status).toBe(200);
+    expect((await mcpPost(p, init(1), AUTH)).status).toBe(200);
     // SC-007 (plain `npx electron .` shows AND focuses) is verified by hand —
     // quickstart.md step 3 — a true source "default" launch touches the real
     // default profile, so it is not exercised here.
@@ -184,16 +185,16 @@ test("US3: a named instance without --background is visible but does not take fo
 // ── US5 — quitting one background instance leaves the others running ─────────
 test("US5: quitting one --background instance does not stop its siblings", async () => {
   const [pA, pB] = [await freePort(), await freePort()];
-  const A = await launchApp({ HYPPO_MCP_PORT: String(pA) });
-  const B = await launchApp({ HYPPO_MCP_PORT: String(pB) });
+  const A = await launchApp({ HYPPO_MCP_PORT: String(pA), HYPPO_MCP_TOKEN: "background-test-token" });
+  const B = await launchApp({ HYPPO_MCP_PORT: String(pB), HYPPO_MCP_TOKEN: "background-test-token" });
   try {
-    expect((await mcpPost(pA, init(1))).status).toBe(200);
-    expect((await mcpPost(pB, init(1))).status).toBe(200);
+    expect((await mcpPost(pA, init(1), AUTH)).status).toBe(200);
+    expect((await mcpPost(pB, init(1), AUTH)).status).toBe(200);
 
     await A.close(); // a real quit (app.quit path)
 
     await expect.poll(() => mcpPost(pA, init(2)).then((r) => r.status), { timeout: 5000 }).toBe(0);
-    expect((await mcpPost(pB, init(3))).status).toBe(200);
+    expect((await mcpPost(pB, init(3), AUTH)).status).toBe(200);
   } finally {
     await A.close().catch(() => {});
     await B.close();

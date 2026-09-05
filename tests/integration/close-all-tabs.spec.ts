@@ -52,6 +52,12 @@ test("US2: 'Close all tabs' clears every tab, leaves the instance running and se
         ).hyppo.getConnection(),
       )) as { port: number }
     ).port;
+    const token = (
+      (await page.evaluate(() =>
+        (window as unknown as { hyppo: { getConnection: () => Promise<{ token: string }> } }).hyppo.getConnection(),
+      )) as { token: string }
+    ).token;
+    const auth = { Authorization: `Bearer ${token}` };
 
     const before = await settingsSnapshot(userDataDir);
 
@@ -75,13 +81,13 @@ test("US2: 'Close all tabs' clears every tab, leaves the instance running and se
     ).toEqual([]);
 
     // The same instance is still up: MCP handshake works and list_open_tabs is [].
-    expect((await mcpPost(port, INIT)).status).toBe(200);
+    expect((await mcpPost(port, INIT, auth)).status).toBe(200);
     const listed = await mcpPost(port, {
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
       params: { name: "list_open_tabs", arguments: {} },
-    });
+    }, auth);
     const text = (listed.json as { result?: { content?: Array<{ text?: string }> } }).result?.content?.[0]?.text ?? "";
     expect(JSON.parse(text).tabs).toEqual([]);
 

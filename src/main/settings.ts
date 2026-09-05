@@ -13,18 +13,31 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { defaultMcpPort, mcpHost } from "./config.js";
+import { generateToken } from "./mcp/server.js";
 import type {
   ConnectionSettings,
   ConnectionSource,
   EffectiveConnection,
 } from "../shared/types.js";
+import { restrictFilePermissions } from "./security/file-permissions.js";
 
 export const SETTINGS_FILENAME = "settings.json";
 
+function createDefaults(): ConnectionSettings {
+  return {
+    port: defaultMcpPort,
+    tokenRequired: true,
+    token: generateToken(),
+    authConfigured: true,
+  };
+}
+
+/** A representative default value for callers that need a settings object. */
 export const DEFAULTS: ConnectionSettings = {
   port: defaultMcpPort,
-  tokenRequired: false,
-  token: null,
+  tokenRequired: true,
+  token: generateToken(),
+  authConfigured: true,
 };
 
 const isPort = (n: unknown): n is number =>
@@ -44,13 +57,26 @@ function validate(raw: unknown): ConnectionSettings | null {
   } else if (o.token !== null) {
     return null;
   }
-  return { port: o.port, tokenRequired: o.tokenRequired, token: o.tokenRequired ? (o.token as string) : null };
+  return {
+    port: o.port,
+    tokenRequired: o.tokenRequired,
+    token: o.tokenRequired ? (o.token as string) : null,
+    ...(typeof o.authConfigured === "boolean" ? { authConfigured: o.authConfigured } : {}),
+  };
+}
+
+/** Upgrade profiles created before bearer authentication became the default. */
+export function secureLegacySettings(settings: ConnectionSettings, existed: boolean): ConnectionSettings {
+  if (existed && !settings.authConfigured && !settings.tokenRequired) {
+    return { ...settings, tokenRequired: true, token: generateToken(), authConfigured: true };
+  }
+  return settings;
 }
 
 /**
- * Read `<userDataDir>/settings.json`. Returns `DEFAULTS` with `existed: false`
- * when the file is absent, unreadable, not JSON, or fails the schema — and
- * never rewrites it in that case.
+ * Read `<userDataDir>/settings.json`. Returns freshly generated defaults with
+ * `existed: false` when the file is absent, unreadable, not JSON, or fails the
+ * schema — and never rewrites it in that case.
  */
 export function loadSettings(userDataDir: string): {
   settings: ConnectionSettings;
@@ -60,16 +86,16 @@ export function loadSettings(userDataDir: string): {
   try {
     text = readFileSync(join(userDataDir, SETTINGS_FILENAME), "utf8");
   } catch {
-    return { settings: { ...DEFAULTS }, existed: false };
+    return { settings: createDefaults(), existed: false };
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    return { settings: { ...DEFAULTS }, existed: false };
+    return { settings: createDefaults(), existed: false };
   }
   const valid = validate(parsed);
-  if (!valid) return { settings: { ...DEFAULTS }, existed: false };
+  if (!valid) return { settings: createDefaults(), existed: false };
   return { settings: valid, existed: true };
 }
 
@@ -78,6 +104,7 @@ export function saveSettings(userDataDir: string, settings: ConnectionSettings):
   const target = join(userDataDir, SETTINGS_FILENAME);
   const tmp = `${target}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(settings, null, 2) + "\n");
+  restrictFilePermissions(tmp);
   renameSync(tmp, target);
 }
 
