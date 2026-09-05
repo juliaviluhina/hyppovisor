@@ -43,6 +43,13 @@ export interface PageReadResult {
   /** `true` when `dom` is present and had noise reduction applied (feature 017).
    *  Absent when `dom` is absent or reduction was opted out — never `false`. */
   domReduced?: boolean;
+  /** Effective scope metadata when ancestor escalation or exclusions were requested. */
+  scope?: {
+    selector?: string;
+    requestedAncestorLevels?: number;
+    effectiveAncestorLevels?: number;
+    exclusions?: string[];
+  };
 }
 
 export type InteractOperation =

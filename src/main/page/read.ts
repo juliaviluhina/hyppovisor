@@ -51,7 +51,51 @@ export function readPageScript(
   selector: string | undefined,
   reduceDom: boolean,
   includeDom = true,
+  ancestorLevels?: number,
+  exclude: string[] = [],
 ): string {
+  const levels = ancestorLevels ?? 0;
+  const escalated = selector !== undefined && ancestorLevels !== undefined;
+  const excluded = exclude.length > 0;
+  if (escalated || excluded) {
+    return `(() => {
+  ${SELECTOR_SYNTAX_HELPER}
+  ${includeDom && reduceDom ? DOM_REDUCTION_HELPER : ""}
+  try {
+    const matched = ${selector === undefined ? "document.documentElement" : `__querySafe(document, ${JSON.stringify(selector)})`};
+    if (!matched) return { notFound: true };
+    let root = matched;
+    let effectiveAncestorLevels = 0;
+    for (let i = 0; i < ${levels}; i++) {
+      if (!root.parentElement) break;
+      root = root.parentElement;
+      effectiveAncestorLevels++;
+    }
+    const clone = root.cloneNode(true);
+    const exclusions = ${JSON.stringify(exclude)};
+    for (const exclusion of exclusions) {
+      const matches = __queryAllSafe(clone, exclusion);
+      if (root.matches(exclusion)) return { rootExcluded: true };
+      matches.forEach((el) => el.remove());
+    }
+    return {
+      url: location.href,
+      title: document.title,
+      text: clone.innerText || clone.textContent || "",
+      ${includeDom ? `dom: ${reduceDom ? "__reduceDom(clone)" : "clone.outerHTML || \"\""},` : ""}
+      scope: {
+        selector: ${selector === undefined ? "undefined" : JSON.stringify(selector)},
+        requestedAncestorLevels: ${levels},
+        effectiveAncestorLevels,
+        exclusions,
+      },
+    };
+  } catch (e) {
+    if (e && e.__invalidSelector) return { __invalidSelector: true };
+    throw e;
+  }
+})()`;
+  }
   if (!includeDom) {
     if (selector === undefined) {
       return `(() => ({
@@ -133,8 +177,15 @@ export function readPageScript(
 }
 
 type RawRead =
-  | { url: string; title: string; text: string; dom: string }
+  | {
+      url: string;
+      title: string;
+      text: string;
+      dom?: string;
+      scope?: PageReadResult["scope"];
+    }
   | { notFound: true }
+  | { rootExcluded: true }
   | { __invalidSelector: true };
 
 export async function readPage(
@@ -144,9 +195,18 @@ export async function readPage(
   queueDepth: number,
   selector?: string,
   reduceDom = true,
+  ancestorLevels?: number,
+  exclude: string[] = [],
 ): Promise<PageReadResult> {
+  const levels = ancestorLevels ?? 0;
+  if (!Number.isInteger(levels) || levels < 0) {
+    throw new HyppoError("TARGET_NOT_FOUND", "ancestorLevels must be a non-negative integer.");
+  }
+  if (levels > 0 && selector === undefined) {
+    throw new HyppoError("TARGET_NOT_FOUND", "ancestorLevels requires selector.");
+  }
   const raw = (await wc.executeJavaScript(
-    readPageScript(selector, reduceDom, includeDom),
+    readPageScript(selector, reduceDom, includeDom, ancestorLevels, exclude),
     true,
   )) as RawRead;
 
@@ -158,6 +218,9 @@ export async function readPage(
       "TARGET_NOT_FOUND",
       `No element matches selector ${JSON.stringify(selector)}.`,
     );
+  }
+  if ("rootExcluded" in raw) {
+    throw new HyppoError("TARGET_NOT_FOUND", "An exclusion selector cannot match the read root.");
   }
   const found = raw as Extract<RawRead, { url: string }>;
 
@@ -174,6 +237,9 @@ export async function readPage(
 
   if (selector !== undefined) {
     result.scopedTo = selector;
+  }
+  if (found.scope) {
+    result.scope = found.scope;
   }
 
   if (includeDom) {

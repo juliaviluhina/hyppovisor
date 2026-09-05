@@ -148,13 +148,26 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           "When includeDom is true, strip <script>/<style>/comment nodes and class/style " +
             "attributes from the returned DOM. Set false for the verbatim, unreduced DOM.",
         ),
+      ancestorLevels: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe("Number of element ancestors to include above selector (requires selector)"),
+      exclude: z
+        .array(z.string())
+        .optional()
+        .describe("CSS selectors for descendant subtrees to omit from this read"),
     },
-    async ({ tabId, includeDom, selector, reduceDom }) => {
+    async ({ tabId, includeDom, selector, reduceDom, ancestorLevels, exclude }) => {
       seen("read_page");
       try {
+        if (ancestorLevels !== undefined && ancestorLevels > 0 && selector === undefined) {
+          throw new HyppoError("TARGET_NOT_FOUND", "ancestorLevels requires selector.");
+        }
         const { value } = await runTabAction((depth) => {
           const wc = tabs.webContentsFor(tabId);
-          return readPage(wc, tabId, includeDom, depth, selector, reduceDom);
+          return readPage(wc, tabId, includeDom, depth, selector, reduceDom, ancestorLevels, exclude);
         });
         return ok(value);
       } catch (e) {
