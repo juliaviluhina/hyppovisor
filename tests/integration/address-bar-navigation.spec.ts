@@ -321,6 +321,23 @@ test("US3: #newtab opens a new tab and leaves the previously-active tab untouche
   });
 });
 
+test("US3: #newtab does not duplicate an untouched synced URL", async () => {
+  await withApp(async (page) => {
+    await openNewTab(page, `${base}/static.html`);
+    await page.locator("#address").blur();
+    await expect(page.locator("#address")).toHaveValue(`${base}/static.html`);
+
+    await page.locator("#newtab").click();
+    await expect(page.locator(".tab")).toHaveCount(1);
+    await expect(page.locator("#address")).toBeFocused();
+
+    await page.locator("#address").fill(`${base}/tall.html`);
+    await page.locator("#go").click();
+    await expect(page.locator("#address")).toHaveValue("", { timeout: 20000 });
+    expect(await listUrls(page)).toEqual([`${base}/static.html`, `${base}/tall.html`]);
+  });
+});
+
 test("US3: with no tab open, #newtab just opens a tab", async () => {
   await withApp(async (page) => {
     await page.locator("#address").fill(`${base}/static.html`);

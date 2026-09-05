@@ -50,6 +50,9 @@ let activeId: string | null = null;
 /** True after the person clicks + with an empty address field, so the next Go
  * opens the entered URL in a new tab instead of navigating the current tab. */
 let newTabPending = false;
+/** The last URL written by syncAddress(), used to distinguish an untouched
+ * synced value from a URL the person entered for a new tab. */
+let lastSyncedUrl = "";
 /** The tabs from the most recent tabs:changed — read by syncAddress() (feature 015). */
 let latestTabs: TabSummary[] = [];
 let noticeTimer: number | undefined;
@@ -142,6 +145,7 @@ function syncAddress(): void {
   const active = activeId ? latestTabs.find((t) => t.tabId === activeId) : undefined;
   const next = active ? active.url : "";
   if (address.value !== next) address.value = next;
+  lastSyncedUrl = next;
 }
 
 /** Open `url` in a new tab (the pre-015 address-bar behaviour). */
@@ -151,6 +155,7 @@ async function doOpen(url: string): Promise<void> {
     await hyppo.openUrl(url);
     hideNotice();
     address.value = "";
+    lastSyncedUrl = "";
   } catch (e) {
     showNotice(`error: ${(e as Error).message}`, "error");
   }
@@ -190,7 +195,7 @@ async function submit(): Promise<void> {
  *  untouched (FR-006); with no tab active it is just an open (US3 scenario 2). */
 async function openNewTab(): Promise<void> {
   const url = address.value.trim();
-  if (!url) {
+  if (!url || url === lastSyncedUrl) {
     newTabPending = true;
     address.focus();
     return;
