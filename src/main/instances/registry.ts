@@ -42,7 +42,6 @@ export function writeRuntimeFile(
   writeFileSync(tmp, JSON.stringify(doc, null, 2) + "\n");
   restrictFilePermissions(tmp);
   renameSync(tmp, target);
-  restrictFilePermissions(target);
 }
 
 /** Re-write the file with a new `port`, preserving `startedAt` and the rest.

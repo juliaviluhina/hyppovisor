@@ -29,7 +29,23 @@ afterEach(() => {
 
 describe("loadSettings / saveSettings", () => {
   it("empty dir → DEFAULTS, existed:false", () => {
-    expect(loadSettings(dir)).toEqual({ settings: DEFAULTS, existed: false });
+    const loaded = loadSettings(dir);
+    expect(loaded.existed).toBe(false);
+    expect(loaded.settings).toMatchObject({
+      port: DEFAULTS.port,
+      tokenRequired: true,
+      authConfigured: true,
+    });
+    expect(loaded.settings.token).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it("generates a fresh default token for each missing profile", () => {
+    const otherDir = mkdtempSync(join(tmpdir(), "hyppo-settings-"));
+    try {
+      expect(loadSettings(dir).settings.token).not.toBe(loadSettings(otherDir).settings.token);
+    } finally {
+      rmSync(otherDir, { recursive: true, force: true });
+    }
   });
 
   it("round-trips a saved document and reports existed:true", () => {
@@ -48,7 +64,7 @@ describe("loadSettings / saveSettings", () => {
 
   it("corrupt file → DEFAULTS, existed:false, file left byte-identical", () => {
     writeFileSync(file(), "{ not json");
-    expect(loadSettings(dir)).toEqual({ settings: DEFAULTS, existed: false });
+    expect(loadSettings(dir)).toMatchObject({ settings: { port: DEFAULTS.port, tokenRequired: true }, existed: false });
     expect(readFileSync(file(), "utf8")).toBe("{ not json");
   });
 
@@ -62,7 +78,7 @@ describe("loadSettings / saveSettings", () => {
     ["required but token not hex", { port: 7357, tokenRequired: true, token: "not-hex" }],
   ])("schema violation (%s) → DEFAULTS", (_label, bad) => {
     writeFileSync(file(), JSON.stringify(bad));
-    expect(loadSettings(dir)).toEqual({ settings: DEFAULTS, existed: false });
+    expect(loadSettings(dir)).toMatchObject({ settings: { port: DEFAULTS.port, tokenRequired: true }, existed: false });
   });
 });
 

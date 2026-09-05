@@ -244,7 +244,7 @@ async function main(): Promise<void> {
   let existed = loaded.existed;
   if (!env.stdio && !env.token && curSettings !== loaded.settings && curSettings.token) {
     saveSettings(app.getPath("userData"), curSettings);
-  } else if (!env.stdio && !existed && curSettings.tokenRequired && curSettings.token) {
+  } else if (!env.stdio && !env.token && !existed && curSettings.tokenRequired && curSettings.token) {
     // Materialize the generated default so the panel and subsequent launches
     // use the same secret. Corrupt files are left untouched until a user action.
     saveSettings(app.getPath("userData"), curSettings);
