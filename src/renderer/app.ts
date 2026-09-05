@@ -25,6 +25,7 @@ interface HyppoApi {
   reloadTab: () => Promise<void>;
   onActivity: (cb: (a: { tabId: string; description: string }) => void) => void;
   onBlockedAction: (cb: (a: { kind: string; detail: string }) => void) => void;
+  onConnectionChanged: (cb: (c: { lifecycle: { state: string; failure: { message: string } | null } }) => void) => void;
   recentUrls: () => Promise<string[]>;
   clearRecentUrls: () => Promise<void>;
   onRecentUrlsChanged: (cb: (list: string[]) => void) => void;
@@ -253,6 +254,11 @@ hyppo.onActivity((a) => {
 });
 hyppo.onBlockedAction((a) => {
   showNotice(`blocked ${a.kind}: ${a.detail}`, "warn");
+});
+hyppo.onConnectionChanged((c) => {
+  if (c.lifecycle.state === "degraded") {
+    showNotice(`HyppoVisor degraded: ${c.lifecycle.failure?.message ?? "runtime failure"}`, "error");
+  }
 });
 
 mountConnectionPanel();

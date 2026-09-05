@@ -45,6 +45,18 @@ interface EffectiveConnection {
   instanceLabel: string;
   /** feature 012 — `"hyppovisor"` or `"hyppovisor-<label>"`. */
   serverName: string;
+  lifecycle: {
+    state: "healthy" | "degraded" | "stopping" | "stopped";
+    failure: {
+      kind: "operational" | "invariant";
+      subsystem: string;
+      message: string;
+      at: string;
+      recoverable: boolean;
+      guidance: string;
+    } | null;
+    updatedAt: string;
+  };
 }
 
 interface GetConnectionReply extends EffectiveConnection {
@@ -245,6 +257,7 @@ export function mountConnectionPanel(): void {
     if (instanceEl) instanceEl.textContent = c.instanceLabel || "";
 
     renderAbout(c);
+    renderLifecycle(c);
     renderHowItWorks();
     renderAgentText();
     if (c.transport === "stdio") {
@@ -256,6 +269,21 @@ export function mountConnectionPanel(): void {
     renderInstances();
     renderLastRequest(c);
     renderConfirmModal();
+  }
+
+  function renderLifecycle(c: EffectiveConnection): void {
+    if (c.lifecycle.state === "healthy") return;
+    const failure = c.lifecycle.failure;
+    const text = failure
+      ? `Subsystem: ${failure.subsystem}. ${failure.message} ${failure.guidance}`
+      : `HyppoVisor is ${c.lifecycle.state}. Stop relying on affected actions until it recovers.`;
+    body.append(
+      el("div", {
+        className: "panel-error",
+        role: "alert",
+        textContent: `DEGRADED — ${text}`,
+      }),
+    );
   }
 
   /** Feature 014 — the Instances section shell. The rows themselves live in a

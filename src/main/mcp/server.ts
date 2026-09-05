@@ -25,6 +25,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { defaultMcpPort, mcpHost } from "../config.js";
 import { registerTools, type ToolDeps } from "./tools.js";
 import type { LastRequestInfo } from "../../shared/types.js";
+import type { FailureSubsystem } from "../../shared/types.js";
 
 function makeServer(deps: ToolDeps, serverName = "hyppovisor"): McpServer {
   // `serverName` surfaces in the MCP `initialize` response as `serverInfo.name`
@@ -73,6 +74,11 @@ export async function startHttpMcpServer(
     /** Called after `lastRequest()` changes (a served tool call or a 401), so
      *  the connection panel can be nudged to refresh (feature 007). */
     onActivity?: () => void;
+    onFailure?: (error: unknown, subsystem: FailureSubsystem) => void;
+    onOperationalError?: (error: unknown, subsystem: FailureSubsystem) => void;
+    /** Called after a request is served without a transport exception, so a
+     *  prior http-transport invariant failure can be cleared. */
+    onSuccess?: (subsystem: FailureSubsystem) => void;
   } = {},
 ): Promise<HttpMcpHandle> {
   const host = opts.host ?? mcpHost;
@@ -124,8 +130,19 @@ export async function startHttpMcpServer(
         .catch(() => {});
     };
     res.on("close", teardown);
-    await server.connect(transport);
-    await transport.handleRequest(req, res);
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(req, res);
+      opts.onSuccess?.("http-transport");
+    } catch (error) {
+      if (res.destroyed || res.writableEnded) {
+        opts.onOperationalError?.(error, "http-transport");
+      } else {
+        opts.onFailure?.(error, "http-transport");
+        if (!res.headersSent) res.writeHead(503, { "content-type": "text/plain" });
+        res.end("MCP transport failure");
+      }
+    }
   }
 
   function listenOn(port: number): Promise<HttpServer> {
@@ -133,7 +150,7 @@ export async function startHttpMcpServer(
       const srv = createServer((req, res) => void handle(req, res));
       // A permanent no-op error listener so a late socket error on this server
       // can never become an uncaughtException that kills the process.
-      srv.on("error", () => {});
+      srv.on("error", (error) => opts.onOperationalError?.(error, "http-bind"));
       const onError = (err: unknown) => {
         srv.removeListener("listening", onListening);
         try {
@@ -178,7 +195,9 @@ export async function startHttpMcpServer(
       const old = server;
       server = next;
       currentPort = port;
-      old.close();
+      old.close((error) => {
+        if (error) opts.onOperationalError?.(error, "http-transport");
+      });
       console.error(`[hyppovisor] MCP HTTP server rebound to ${urlFor(port)}`);
     },
     setToken(token: string | null): void {
@@ -188,7 +207,10 @@ export async function startHttpMcpServer(
       return last;
     },
     close(): void {
-      server.close();
+      server.close((error) => {
+        if (error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING")
+          opts.onOperationalError?.(error, "http-transport");
+      });
     },
   };
 }

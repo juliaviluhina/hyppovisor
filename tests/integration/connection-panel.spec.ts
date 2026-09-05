@@ -153,6 +153,27 @@ test("US2: Apply rebinds live, persists, refuses a bad or in-use port without di
   }
 });
 
+test("lifecycle: a startup bind failure is visible as degraded in the connection panel", async () => {
+  const occupied = createServer((_req, res) => res.end("occupied"));
+  await new Promise<void>((resolve) => occupied.listen(0, "127.0.0.1", resolve));
+  const port = (occupied.address() as { port: number }).port;
+  const { app, close } = await launchAppFull({ HYPPO_MCP_PORT: String(port) });
+  try {
+    const page = await app.firstWindow();
+    const connection = await getConn(page);
+    expect(connection.lifecycle).toMatchObject({
+      state: "degraded",
+      failure: { subsystem: "http-bind", kind: "invariant" },
+    });
+    await page.locator("#hyppo").click();
+    await expect(page.locator("#panel-body")).toContainText("DEGRADED");
+    await expect(page.locator("#panel-body")).toContainText("restart HyppoVisor");
+  } finally {
+    await close();
+    await new Promise<void>((resolve) => occupied.close(() => resolve()));
+  }
+});
+
 // ── §4 — US3: require a token ───────────────────────────────────────────────
 test("US3: toggle a bearer token — masked, enforced, revealable, regenerable, discarded on toggle-off; env token is read-only", async () => {
   const { app, userDataDir, close } = await launchAppFull();

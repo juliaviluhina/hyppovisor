@@ -13,6 +13,12 @@ export interface QueueRunResult<T> {
 export class ActionQueue {
   private tail: Promise<unknown> = Promise.resolve();
   private waiting = 0;
+  private healthGate: (() => boolean) | undefined;
+
+  /** Prevent new work from compounding an invalidated subsystem. */
+  setHealthGate(gate: (() => boolean) | undefined): void {
+    this.healthGate = gate;
+  }
 
   /** Tasks currently queued behind the running one. */
   get depth(): number {
@@ -25,6 +31,9 @@ export class ActionQueue {
    * the result also carries it for callers that don't need it inside the task.
    */
   run<T>(task: (queueDepth: number) => Promise<T>): Promise<QueueRunResult<T>> {
+    if (this.healthGate && !this.healthGate()) {
+      return Promise.reject(new Error("action rejected: HyppoVisor is degraded; recover or restart it"));
+    }
     this.waiting += 1;
     const depthAtEnqueue = this.waiting - 1;
 

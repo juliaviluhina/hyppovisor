@@ -54,17 +54,19 @@ import type {
   EffectiveConnection,
   StdioLaunch,
 } from "../shared/types.js";
+import { LifecycleStateStore } from "./lifecycle.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const lifecycle = new LifecycleStateStore();
 
 // The embedded MCP server drives third-party transport code; a stray rejection
 // or throw from it must not take the window down — the app is useful standalone
 // (FR: "a transport failure must not take the window down").
 process.on("unhandledRejection", (reason) => {
-  console.error("[hyppovisor] unhandled rejection:", reason);
+  lifecycle.invariant(reason, "process");
 });
 process.on("uncaughtException", (err) => {
-  console.error("[hyppovisor] uncaught exception:", err);
+  lifecycle.invariant(err, "process");
 });
 
 /**
@@ -195,11 +197,18 @@ async function main(): Promise<void> {
   let quitting = false;
   app.on("before-quit", () => {
     quitting = true;
+    lifecycle.stopping();
     // feature 014: drop this instance's runtime.json and stop the MCP listener
     // accepting before teardown, so a panel-driven shutdown releases the port
     // cleanly (contracts/instance-shutdown.md).
     clearRuntimeFile(app.getPath("userData"));
     httpHandle?.close();
+  });
+  // Teardown above is synchronous/best-effort; "will-quit" fires once Electron
+  // has committed to exiting, so this is the point at which the app is
+  // actually stopped rather than merely stopping.
+  app.on("will-quit", () => {
+    lifecycle.stopped();
   });
   win.on("close", (e) => {
     if (quitting || !resolved.background) return;
@@ -218,6 +227,9 @@ async function main(): Promise<void> {
 
 
   const queue = new ActionQueue();
+  // Let the active operation settle, but reject new work after an invariant
+  // failure until the affected runtime has been recovered.
+  queue.setHealthGate(() => lifecycle.allows("tab-action"));
   const log = new InteractionLog(app.getPath("userData"));
 
   // Recent-URLs history for the address-bar dropdown (feature 009). Loaded once
@@ -261,6 +273,7 @@ async function main(): Promise<void> {
     serverStatus,
     instanceLabel,
     serverName,
+    lifecycle: lifecycle.current,
   });
   const computeStdioLaunch = (): StdioLaunch => ({
     command: process.execPath,
@@ -272,10 +285,18 @@ async function main(): Promise<void> {
     env: { HYPPO_MCP_STDIO: "1" },
   });
   const pushConnection = () => send("connection:changed", currentEffective());
+  lifecycle.subscribe(() => pushConnection());
 
   // Shared tool dependencies for both the startup MCP listener and a later
   // panel-driven (re)start of a server that never bound (feature 012, FR-015).
-  const mcpDeps = { queue, tabs, log, onToolInvoked: () => throttledPush() };
+  const mcpDeps = {
+    queue,
+    tabs,
+    log,
+    onToolInvoked: () => throttledPush(),
+    onTabActionFailure: (error: unknown) => lifecycle.invariant(error, "tab-action"),
+    onTabActionSuccess: () => lifecycle.healthy("tab-action"),
+  };
 
   // Person-initiated actions from the renderer chrome.
   ipcMain.handle("chrome:open-url", (_e, url: string) =>
@@ -373,13 +394,18 @@ async function main(): Promise<void> {
           token: currentEffective().token,
           serverName,
           onActivity: throttledPush,
+          onFailure: (error, subsystem) => lifecycle.invariant(error, subsystem),
+          onOperationalError: (error, subsystem) => lifecycle.operational(error, subsystem),
+          onSuccess: (subsystem) => lifecycle.healthy(subsystem),
         });
         serverStatus = "listening";
+        lifecycle.healthy("http-bind");
         persistPort();
         pushConnection();
         return { ok: true, port };
       } catch (e) {
         serverStatus = classifyListenError(e);
+        lifecycle.invariant(e, "http-bind", true);
         pushConnection();
         return bindError(e);
       }
@@ -389,9 +415,12 @@ async function main(): Promise<void> {
     try {
       await httpHandle.rebind(port);
       persistPort();
+      lifecycle.healthy("http-bind");
       pushConnection();
       return { ok: true, port };
     } catch (e) {
+      lifecycle.invariant(e, "http-bind", true);
+      pushConnection();
       return bindError(e);
     }
   });
@@ -462,12 +491,17 @@ async function main(): Promise<void> {
         token: eff.token,
         serverName,
         onActivity: throttledPush,
+        onFailure: (error, subsystem) => lifecycle.invariant(error, subsystem),
+        onOperationalError: (error, subsystem) => lifecycle.operational(error, subsystem),
+        onSuccess: (subsystem) => lifecycle.healthy(subsystem),
       });
+      lifecycle.healthy("http-bind");
     }
   } catch (err) {
     // A bind failure is a first-class connection state, not just a log line
     // (feature 012, FR-011): the panel renders it with the remedy.
     serverStatus = classifyListenError(err);
+    lifecycle.invariant(err, "http-bind", true);
     console.error("[hyppovisor] MCP server did not start:", err);
   }
 
@@ -686,6 +720,7 @@ async function main(): Promise<void> {
 app.on("window-all-closed", () => app.quit());
 
 main().catch((e) => {
+  lifecycle.invariant(e, "process");
   console.error("[hyppovisor] fatal:", e);
   app.exit(1);
 });

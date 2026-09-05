@@ -27,6 +27,13 @@ export interface ToolDeps {
   /** Feature 007: notified with the tool name at the start of every invocation,
    *  so the connection panel can show a last-request line. Metadata only. */
   onToolInvoked?: (name: string) => void;
+  /** Reports unexpected (non-HyppoError) failures from real tab operations to
+   *  the lifecycle owner — a routine, already-classified HyppoError (e.g.
+   *  TAB_NOT_FOUND, WAIT_TIMEOUT) is not an invariant violation. */
+  onTabActionFailure?: (error: unknown) => void;
+  /** Reports a completed tab operation so the lifecycle owner can clear a
+   *  previously recorded tab-action invariant failure. */
+  onTabActionSuccess?: () => void;
 }
 
 /**
@@ -73,6 +80,19 @@ function fail(e: unknown) {
 export function registerTools(server: McpServer, deps: ToolDeps): void {
   const { queue, tabs, log } = deps;
   const seen = (name: string) => deps.onToolInvoked?.(name);
+  const runTabAction = <T>(task: (queueDepth: number) => Promise<T>) =>
+    queue.run(async (queueDepth) => {
+      try {
+        const result = await task(queueDepth);
+        deps.onTabActionSuccess?.();
+        return result;
+      } catch (error) {
+        // A HyppoError is an expected, already-classified outcome (returned to
+        // the caller via fail(e)) — not an invariant violation of the app itself.
+        if (!isHyppoError(error)) deps.onTabActionFailure?.(error);
+        throw error;
+      }
+    });
 
   server.tool(
     "open_url",
@@ -85,7 +105,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ url }) => {
       seen("open_url");
       try {
-        const { value, queueDepth } = await queue.run(() => tabs.open(url, "orchestrator"));
+        const { value, queueDepth } = await runTabAction(() => tabs.open(url, "orchestrator"));
         return ok({ ...value, queueDepth });
       } catch (e) {
         return fail(e);
@@ -100,7 +120,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async () => {
       seen("list_open_tabs");
       try {
-        const { value, queueDepth } = await queue.run(async () => tabs.list());
+        const { value, queueDepth } = await runTabAction(async () => tabs.list());
         return ok({ tabs: value, queueDepth });
       } catch (e) {
         return fail(e);
@@ -132,7 +152,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ tabId, includeDom, selector, reduceDom }) => {
       seen("read_page");
       try {
-        const { value } = await queue.run((depth) => {
+        const { value } = await runTabAction((depth) => {
           const wc = tabs.webContentsFor(tabId);
           return readPage(wc, tabId, includeDom, depth, selector, reduceDom);
         });
@@ -151,7 +171,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ tabId, url }) => {
       seen("navigate");
       try {
-        const { value, queueDepth } = await queue.run(() => tabs.navigate(tabId, url));
+        const { value, queueDepth } = await runTabAction(() => tabs.navigate(tabId, url));
         return ok({ ...value, queueDepth });
       } catch (e) {
         return fail(e);
@@ -221,7 +241,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         }
 
         if (operation === "fill" && fields) {
-          const { value: result } = await queue.run((depth) => {
+          const { value: result } = await runTabAction((depth) => {
             const wc = tabs.webContentsFor(tabId);
             return fillBatch(wc, log, tabId, fields, depth);
           });
@@ -229,7 +249,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         }
 
         if (operation === "list_options") {
-          const { value: result, queueDepth } = await queue.run(() => {
+          const { value: result, queueDepth } = await runTabAction(() => {
             const wc = tabs.webContentsFor(tabId);
             return interact(wc, log, tabId, operation, selector, value, label);
           });
@@ -244,7 +264,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           });
         }
 
-        const { value: result, queueDepth } = await queue.run(() => {
+        const { value: result, queueDepth } = await runTabAction(() => {
           const wc = tabs.webContentsFor(tabId);
           return interact(wc, log, tabId, operation, selector, value, label);
         });
@@ -314,7 +334,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ tabId, containerSelector, fields, includeNonInteractive, only }) => {
       seen("read_form_fields");
       try {
-        const { value } = await queue.run((depth) => {
+        const { value } = await runTabAction((depth) => {
           const wc = tabs.webContentsFor(tabId);
           return readFormFields(wc, tabId, containerSelector, depth, {
             fields,
@@ -336,7 +356,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ tabId, selector, timeoutMs }) => {
       seen("wait_for_selector");
       try {
-        const { queueDepth } = await queue.run(async () => {
+        const { queueDepth } = await runTabAction(async () => {
           const wc = tabs.webContentsFor(tabId);
           await waitForSelector(wc, log, tabId, selector, timeoutMs);
         });
@@ -372,7 +392,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ tabId, selector, fullPage, format, maxBytes }) => {
       seen("screenshot");
       try {
-        const { value } = await queue.run(() => {
+        const { value } = await runTabAction(() => {
           const wc = tabs.webContentsFor(tabId);
           return takeScreenshot(wc, { tabId, selector, fullPage, format, maxBytes });
         });
