@@ -16,6 +16,8 @@ All notable changes to HyppoVisor are documented here. This file follows the
 - Connection-panel controls and the `HYPPO_BLOCKED_DOMAINS` environment
   override for the per-instance navigation policy.
 - Metadata-only audit records for blocked navigation attempts.
+- `read_page` can optionally wait for a positive selector to appear before
+  collecting scoped content, with a bounded timeout and explicit timeout error.
 
 ## [0.5.0] - 2026-09-05
 
