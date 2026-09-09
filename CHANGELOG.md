@@ -7,6 +7,13 @@ All notable changes to HyppoVisor are documented here. This file follows the
 
 <!-- Move reviewed Unreleased notes into a dated version heading when releasing. -->
 
+## [0.5.2] - 2026-09-09
+
+### Changed
+
+- Reissued the release with the complete post-`0.5.0` changelog, including
+  async selector readiness and the configurable blocked-domain policy.
+
 ## [0.5.1] - 2026-09-09
 
 ### Added
