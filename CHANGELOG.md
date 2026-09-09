@@ -7,6 +7,16 @@ All notable changes to HyppoVisor are documented here. This file follows the
 
 <!-- Move reviewed Unreleased notes into a dated version heading when releasing. -->
 
+## [0.5.1] - 2026-09-09
+
+### Added
+
+- User-configurable blocked domains, with subdomain-inclusive matching across
+  MCP navigation, redirects, and popups.
+- Connection-panel controls and the `HYPPO_BLOCKED_DOMAINS` environment
+  override for the per-instance navigation policy.
+- Metadata-only audit records for blocked navigation attempts.
+
 ## [0.5.0] - 2026-09-05
 
 ### Added
