@@ -582,6 +582,8 @@ async function main(): Promise<void> {
         reduceDom = true,
         ancestorLevels?: number,
         exclude?: string[],
+        waitForSelector = false,
+        timeoutMs?: number,
       ) =>
         withCode(() =>
           queue
@@ -595,6 +597,7 @@ async function main(): Promise<void> {
                 reduceDom,
                 ancestorLevels,
                 exclude ?? [],
+                { waitForSelector, timeoutMs, log },
               ),
             )
             .then((r) => r.value),

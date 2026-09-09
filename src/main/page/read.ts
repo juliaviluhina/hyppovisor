@@ -9,6 +9,8 @@ import { truncateToBytes } from "./truncate.js";
 import type { PageReadResult } from "../../shared/types.js";
 import { SELECTOR_SYNTAX_HELPER, assertSelectorValid } from "./selector-syntax.js";
 import { HyppoError } from "../errors.js";
+import { waitForSelector } from "./interact.js";
+import type { InteractionLog } from "../safety/interaction-log.js";
 
 // Reduction pass (feature 017, research.md R1-R3, R7): removes <script>/<style>
 // elements, decorative (aria-hidden) icon <svg> elements, comment nodes, and
@@ -214,6 +216,7 @@ export async function readPage(
   reduceDom = true,
   ancestorLevels?: number,
   exclude: string[] = [],
+  readiness?: { waitForSelector?: boolean; timeoutMs?: number; log: InteractionLog },
 ): Promise<PageReadResult> {
   const levels = ancestorLevels ?? 0;
   if (!Number.isInteger(levels) || levels < 0) {
@@ -221,6 +224,26 @@ export async function readPage(
   }
   if (ancestorLevels !== undefined && selector === undefined) {
     throw new HyppoError("TARGET_NOT_FOUND", "ancestorLevels requires selector.");
+  }
+  if (readiness?.waitForSelector) {
+    if (selector === undefined) {
+      throw new HyppoError("TARGET_NOT_FOUND", "waitForSelector requires selector.");
+    }
+    const timeoutMs = readiness.timeoutMs ?? config.defaultWaitMs;
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new HyppoError("TARGET_NOT_FOUND", "timeoutMs must be a positive integer.");
+    }
+    try {
+      await waitForSelector(wc, readiness.log, tabId, selector, timeoutMs);
+    } catch (error) {
+      if (error instanceof HyppoError && error.code === "WAIT_TIMEOUT") {
+        throw new HyppoError(
+          "READINESS_TIMEOUT",
+          `Selector ${JSON.stringify(selector)} did not become ready within ${timeoutMs}ms.`,
+        );
+      }
+      throw error;
+    }
   }
   const raw = (await wc.executeJavaScript(
     readPageScript(selector, reduceDom, includeDom, ancestorLevels, exclude),

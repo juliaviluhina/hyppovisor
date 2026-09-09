@@ -132,7 +132,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     "read_page",
     "Return one tab's current content: verbatim visible text, and the DOM only when asked. " +
       "Nothing is stored — this payload is the only copy. Optionally scope the read to one " +
-      "element's subtree with `selector`, e.g. to skip a persistent chat log or nav panel.",
+      "element's subtree with `selector`, e.g. to skip a persistent chat log or nav panel. " +
+      "`waitForSelector` is opt-in and waits for a positive selector before reading. " +
+      "Exclude-only reads are not a privacy guarantee for authenticated pages.",
     {
       tabId: z.string(),
       includeDom: z.boolean().optional().default(false).describe("Include document HTML"),
@@ -158,8 +160,19 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         .array(z.string())
         .optional()
         .describe("CSS selectors for descendant subtrees to omit from this read"),
+      waitForSelector: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Wait for selector presence before a scoped read; requires selector"),
+      timeoutMs: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Readiness timeout in milliseconds; defaults to the configured wait"),
     },
-    async ({ tabId, includeDom, selector, reduceDom, ancestorLevels, exclude }) => {
+    async ({ tabId, includeDom, selector, reduceDom, ancestorLevels, exclude, waitForSelector, timeoutMs }) => {
       seen("read_page");
       try {
         if (ancestorLevels !== undefined && selector === undefined) {
@@ -167,7 +180,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         }
         const { value } = await runTabAction((depth) => {
           const wc = tabs.webContentsFor(tabId);
-          return readPage(wc, tabId, includeDom, depth, selector, reduceDom, ancestorLevels, exclude);
+          return readPage(wc, tabId, includeDom, depth, selector, reduceDom, ancestorLevels, exclude, {
+            waitForSelector,
+            timeoutMs,
+            log,
+          });
         });
         return ok(value);
       } catch (e) {
