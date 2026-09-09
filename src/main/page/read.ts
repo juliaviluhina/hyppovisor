@@ -216,7 +216,7 @@ export async function readPage(
   reduceDom = true,
   ancestorLevels?: number,
   exclude: string[] = [],
-  readiness?: { waitForSelector?: boolean; timeoutMs?: number; log?: InteractionLog },
+  readiness?: { waitForSelector?: boolean; timeoutMs?: number; log: InteractionLog },
 ): Promise<PageReadResult> {
   const levels = ancestorLevels ?? 0;
   if (!Number.isInteger(levels) || levels < 0) {
@@ -234,7 +234,7 @@ export async function readPage(
       throw new HyppoError("TARGET_NOT_FOUND", "timeoutMs must be a positive integer.");
     }
     try {
-      await waitForSelector(wc, readiness.log!, tabId, selector, timeoutMs);
+      await waitForSelector(wc, readiness.log, tabId, selector, timeoutMs);
     } catch (error) {
       if (error instanceof HyppoError && error.code === "WAIT_TIMEOUT") {
         throw new HyppoError(

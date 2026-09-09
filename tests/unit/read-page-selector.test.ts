@@ -2,9 +2,14 @@
 // builder. Selector resolution end to end (invalid CSS, no match, first match,
 // DOM scoping) is exercised in tests/integration/read-page.spec.ts.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readPageScript } from "../../src/main/page/read.js";
 import { readPage } from "../../src/main/page/read.js";
+
+const waitForSelectorMock = vi.fn();
+vi.mock("../../src/main/page/interact.js", () => ({
+  waitForSelector: (...args: unknown[]) => waitForSelectorMock(...args),
+}));
 
 describe("readPageScript", () => {
   it("with no selector, is textually equivalent to the unscoped full-page read", () => {
@@ -43,5 +48,30 @@ describe("readPage readiness validation", () => {
       timeoutMs: 0,
       log: {} as never,
     })).rejects.toMatchObject({ code: "TARGET_NOT_FOUND" });
+  });
+
+  it("translates a wait timeout into READINESS_TIMEOUT naming the selector and window", async () => {
+    const { HyppoError } = await import("../../src/main/errors.js");
+    waitForSelectorMock.mockRejectedValueOnce(
+      new HyppoError("WAIT_TIMEOUT", "Selector \"#late\" did not appear within 5ms. Tab left unchanged."),
+    );
+    const err = await readPage({} as never, "tab", false, 0, "#late", true, undefined, [], {
+      waitForSelector: true,
+      timeoutMs: 5,
+      log: {} as never,
+    }).catch((e: Error) => e);
+    expect(err).toMatchObject({ code: "READINESS_TIMEOUT" });
+    expect((err as Error).message).toContain("#late");
+    expect((err as Error).message).toContain("5ms");
+  });
+
+  it("propagates a non-timeout readiness error unchanged", async () => {
+    const { HyppoError } = await import("../../src/main/errors.js");
+    waitForSelectorMock.mockRejectedValueOnce(new HyppoError("INVALID_SELECTOR", "bad selector"));
+    await expect(readPage({} as never, "tab", false, 0, ":::", true, undefined, [], {
+      waitForSelector: true,
+      timeoutMs: 5,
+      log: {} as never,
+    })).rejects.toMatchObject({ code: "INVALID_SELECTOR" });
   });
 });
