@@ -110,6 +110,44 @@ test("US1: a valid selector matching nothing rejects TARGET_NOT_FOUND", async ()
   expect(String(err)).toContain("TARGET_NOT_FOUND");
 });
 
+test("async selector readiness waits for delayed scoped content without broadening", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/async-selector-repro.html`,
+  ]);
+  const result = await callHandle<{ text: string }>(app, "read", [
+    tabId,
+    false,
+    "#delayed-target",
+    true,
+    undefined,
+    undefined,
+    true,
+    1000,
+  ]);
+  expect(result.text).toContain("Delayed target content");
+  expect(result.text).not.toContain("PRIVATE_PANEL_SENTINEL");
+});
+
+test("async selector readiness reports the selector and timeout without fallback content", async () => {
+  const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
+    `${base}/async-selector-repro.html`,
+  ]);
+  const err = await callHandle(app, "read", [
+    tabId,
+    false,
+    "#never-present",
+    true,
+    undefined,
+    undefined,
+    true,
+    20,
+  ]).catch((e: Error) => e.message);
+  expect(String(err)).toContain("READINESS_TIMEOUT");
+  expect(String(err)).toContain("#never-present");
+  expect(String(err)).toContain("20ms");
+  expect(String(err)).not.toContain("PRIVATE_PANEL_SENTINEL");
+});
+
 test("US1: a selector also scopes the optional DOM output (FR-010)", async () => {
   const { tabId } = await callHandle<{ tabId: string }>(app, "open", [
     `${base}/chat-shell-repro.html`,

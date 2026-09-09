@@ -1,0 +1,10 @@
+<!doctype html>
+<html><body>
+  <aside id="private-panel">PRIVATE_PANEL_SENTINEL</aside>
+  <main id="fixture-root"></main>
+  <script>
+    setTimeout(() => {
+      document.querySelector('#fixture-root').innerHTML = '<article id="delayed-target">Delayed target content</article>';
+    }, 150);
+  </script>
+</body></html>

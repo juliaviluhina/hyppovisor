@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { readPageScript } from "../../src/main/page/read.js";
+import { readPage } from "../../src/main/page/read.js";
 
 describe("readPageScript", () => {
   it("with no selector, is textually equivalent to the unscoped full-page read", () => {
@@ -25,5 +26,22 @@ describe("readPageScript", () => {
 
   it("produces different scripts for undefined vs. a selector", () => {
     expect(readPageScript(undefined, false)).not.toBe(readPageScript("#detail-pane", false));
+  });
+});
+
+describe("readPage readiness validation", () => {
+  it("requires a selector when readiness is enabled", async () => {
+    await expect(readPage({} as never, "tab", false, 0, undefined, true, undefined, [], {
+      waitForSelector: true,
+      log: {} as never,
+    })).rejects.toMatchObject({ code: "TARGET_NOT_FOUND" });
+  });
+
+  it("rejects non-positive readiness timeouts before browser work", async () => {
+    await expect(readPage({} as never, "tab", false, 0, "#target", true, undefined, [], {
+      waitForSelector: true,
+      timeoutMs: 0,
+      log: {} as never,
+    })).rejects.toMatchObject({ code: "TARGET_NOT_FOUND" });
   });
 });
