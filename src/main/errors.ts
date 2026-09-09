@@ -3,6 +3,7 @@
 export type ErrorCode =
   | "INVALID_URL"
   | "SCHEME_NOT_ALLOWED"
+  | "DOMAIN_BLOCKED"
   | "LOAD_FAILED"
   | "TAB_NOT_FOUND"
   | "NO_ACTIVE_TAB"

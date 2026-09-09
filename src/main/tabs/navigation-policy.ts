@@ -5,9 +5,9 @@ export type NavigationPolicyDecision =
   | { allowed: false; reason: string };
 
 /** Evaluate a browser-supplied top-level destination using the one URL policy. */
-export function decideNavigation(url: string): NavigationPolicyDecision {
+export function decideNavigation(url: string, blockedDomains: readonly string[] = []): NavigationPolicyDecision {
   try {
-    return { allowed: true, url: validateUrl(url) };
+    return { allowed: true, url: validateUrl(url, blockedDomains) };
   } catch (e) {
     return { allowed: false, reason: e instanceof Error ? e.message : String(e) };
   }

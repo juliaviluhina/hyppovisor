@@ -20,6 +20,7 @@ import type {
   EffectiveConnection,
 } from "../shared/types.js";
 import { restrictFilePermissions } from "./security/file-permissions.js";
+import { normalizeHost } from "./tabs/url-policy.js";
 
 export const SETTINGS_FILENAME = "settings.json";
 
@@ -29,6 +30,7 @@ function createDefaults(): ConnectionSettings {
     tokenRequired: true,
     token: generateToken(),
     authConfigured: true,
+    blockedDomains: [],
   };
 }
 
@@ -38,6 +40,7 @@ export const DEFAULTS: ConnectionSettings = {
   tokenRequired: true,
   token: generateToken(),
   authConfigured: true,
+  blockedDomains: [],
 };
 
 const isPort = (n: unknown): n is number =>
@@ -45,6 +48,9 @@ const isPort = (n: unknown): n is number =>
 
 const isHexToken = (s: unknown): s is string =>
   typeof s === "string" && /^[0-9a-f]{32}$/.test(s);
+
+const validDomain = (value: unknown): value is string => typeof value === "string" && normalizeHost(value) !== null;
+const normalizedDomain = (value: string): string => normalizeHost(value) as string;
 
 /** Validate a parsed object against the settings schema (contracts/settings-file.md). */
 function validate(raw: unknown): ConnectionSettings | null {
@@ -62,6 +68,9 @@ function validate(raw: unknown): ConnectionSettings | null {
     tokenRequired: o.tokenRequired,
     token: o.tokenRequired ? (o.token as string) : null,
     ...(typeof o.authConfigured === "boolean" ? { authConfigured: o.authConfigured } : {}),
+    ...(Array.isArray(o.blockedDomains)
+      ? { blockedDomains: o.blockedDomains.filter(validDomain).map(normalizedDomain) }
+      : {}),
   };
 }
 
@@ -113,6 +122,7 @@ export interface EnvOverrides {
   port?: number;
   /** `HYPPO_MCP_TOKEN` trimmed; `undefined` when unset or set-but-empty. */
   token?: string;
+  blockedDomains?: string[];
   /** `HYPPO_MCP_STDIO === "1"`. */
   stdio: boolean;
 }
@@ -122,7 +132,15 @@ export function readEnvOverrides(env: NodeJS.ProcessEnv = process.env): EnvOverr
   const rawPort = Number(env.HYPPO_MCP_PORT);
   const port = isPort(rawPort) ? rawPort : undefined;
   const token = env.HYPPO_MCP_TOKEN?.trim() || undefined;
-  return { port, token, stdio: env.HYPPO_MCP_STDIO === "1" };
+  const blockedDomains = env.HYPPO_BLOCKED_DOMAINS === undefined
+    ? undefined
+    : env.HYPPO_BLOCKED_DOMAINS.split(",").map((d) => d.trim()).filter(validDomain).map(normalizedDomain);
+  return {
+    port,
+    token,
+    ...(blockedDomains !== undefined ? { blockedDomains } : {}),
+    stdio: env.HYPPO_MCP_STDIO === "1",
+  };
 }
 
 function sourceFor(fromEnv: boolean, existed: boolean): ConnectionSource {
@@ -172,6 +190,8 @@ export function resolveEffective(
     serverStatus: env.stdio ? "stdio" : "listening",
     instanceLabel: "",
     serverName: "hyppovisor",
+    blockedDomains: env.blockedDomains ?? settings.blockedDomains ?? [],
+    blockedDomainsSource: env.blockedDomains !== undefined ? "env" : sourceFor(false, existed),
     lifecycle: {
       state: "healthy",
       failure: null,

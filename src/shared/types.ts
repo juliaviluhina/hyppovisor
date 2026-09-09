@@ -316,6 +316,7 @@ export interface ConnectionSettings {
   token: string | null;
   /** Present after the user or secure-default migration has chosen auth. */
   authConfigured?: boolean;
+  blockedDomains?: string[];
 }
 
 /** In-memory record of the most recent inbound MCP request — metadata only, never persisted. */
@@ -381,6 +382,8 @@ export interface EffectiveConnection {
   /** MCP server name (feature 012): `"hyppovisor"` or `"hyppovisor-<label>"`. */
   serverName: string;
   lifecycle: LifecycleStatus;
+  blockedDomains: string[];
+  blockedDomainsSource: ConnectionSource;
 }
 
 // ─── feature 014: local instance-management panel ───────────────────────────

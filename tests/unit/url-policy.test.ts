@@ -41,4 +41,15 @@ describe("url-policy (FR-004)", () => {
     expect(isValidUrl("file:///x")).toBe(false);
     expect(isValidUrl("garbage")).toBe(false);
   });
+
+  it("blocks exact hosts and their subdomains with DOMAIN_BLOCKED", () => {
+    expect(() => validateUrl("https://example.com", ["example.com"])).toThrowError(/example.com/);
+    expect(() => validateUrl("https://www.example.com", ["example.com"])).toThrowError(/blocked/);
+    expect(validateUrl("https://notexample.com", ["example.com"])).toBe("https://notexample.com/");
+  });
+
+  it("normalizes case, trailing dots, and IDN entries", () => {
+    expect(() => validateUrl("https://WWW.Example.COM.", ["EXAMPLE.com."])).toThrowError(/blocked/);
+    expect(() => validateUrl("https://xn--bcher-kva.example", ["bücher.example"])).toThrowError(/blocked/);
+  });
 });

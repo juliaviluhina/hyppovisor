@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld("hyppo", {
   getConnection: () => ipcRenderer.invoke("chrome:get-connection"),
   setPort: (p) => ipcRenderer.invoke("chrome:set-port", p),
   setTokenRequired: (b) => ipcRenderer.invoke("chrome:set-token-required", b),
+  setBlockedDomains: (domains) => ipcRenderer.invoke("chrome:set-blocked-domains", domains),
   regenerateToken: () => ipcRenderer.invoke("chrome:regenerate-token"),
   setPanelOpen: (o) => ipcRenderer.invoke("chrome:set-panel-open", o),
   onConnectionChanged: (cb) => ipcRenderer.on("connection:changed", (_e, c) => cb(c)),
