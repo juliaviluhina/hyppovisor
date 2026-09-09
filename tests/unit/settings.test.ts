@@ -56,6 +56,14 @@ describe("loadSettings / saveSettings", () => {
     expect(existed).toBe(true);
   });
 
+  it("filters invalid blocked-domain entries while preserving valid entries", () => {
+    writeFileSync(file(), JSON.stringify({
+      port: 8080, tokenRequired: true, token: "a".repeat(32),
+      blockedDomains: ["Example.COM", "https://bad.example", "sub.example.com"],
+    }));
+    expect(loadSettings(dir).settings.blockedDomains).toEqual(["example.com", "sub.example.com"]);
+  });
+
   it("writes pretty JSON with a trailing newline", () => {
     saveSettings(dir, DEFAULTS);
     const text = readFileSync(file(), "utf8");
@@ -99,6 +107,11 @@ describe("readEnvOverrides", () => {
       { port: undefined, token: undefined, stdio: false },
     );
   });
+
+  it("parses the blocked-domain environment override", () => {
+    expect(readEnvOverrides({ HYPPO_BLOCKED_DOMAINS: " Example.COM, www.example.org, https://bad" } as NodeJS.ProcessEnv)
+      .blockedDomains).toEqual(["example.com", "www.example.org"]);
+  });
 });
 
 describe("resolveEffective", () => {
@@ -129,6 +142,15 @@ describe("resolveEffective", () => {
     expect(e.tokenRequired).toBe(true);
     expect(e.token).toBe("tok");
     expect(e.tokenSource).toBe("env");
+  });
+
+  it("environment blocked domains replace persisted domains", () => {
+    const e = resolveEffective(
+      { port: 7357, tokenRequired: false, token: null, blockedDomains: ["file.example"] },
+      { blockedDomains: ["env.example"], stdio: false }, true,
+    );
+    expect(e.blockedDomains).toEqual(["env.example"]);
+    expect(e.blockedDomainsSource).toBe("env");
   });
 
   it("persisted token is surfaced only when required", () => {

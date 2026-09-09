@@ -236,6 +236,7 @@ async function main(): Promise<void> {
   // at startup; the only writer is a person-initiated open that reached
   // "loaded", plus the panel's "Clear recent URLs" action.
   let recentUrls = loadRecentUrls(app.getPath("userData"));
+  let effectiveBlockedDomains: string[] = [];
 
   const tabs = new TabManager(win, {
     onChange: () => send("tabs:changed", { tabs: tabs.list(), activeTabId: tabs.activeTabId }),
@@ -246,13 +247,14 @@ async function main(): Promise<void> {
       saveRecentUrls(app.getPath("userData"), recentUrls);
       send("recent-urls:changed", recentUrls);
     },
-  }, log, resolved.background);
+  }, log, resolved.background, () => effectiveBlockedDomains);
 
   // MCP connection state (feature 007): persisted settings + the environment,
   // folded into one effective view the panel and status line render.
   const loaded = loadSettings(app.getPath("userData"));
   const env = readEnvOverrides();
   let curSettings: ConnectionSettings = secureLegacySettings(loaded.settings, loaded.existed);
+  effectiveBlockedDomains = env.blockedDomains ?? curSettings.blockedDomains ?? [];
   let existed = loaded.existed;
   if (!env.stdio && !env.token && curSettings !== loaded.settings && curSettings.token) {
     saveSettings(app.getPath("userData"), curSettings);
@@ -273,6 +275,8 @@ async function main(): Promise<void> {
     serverStatus,
     instanceLabel,
     serverName,
+    blockedDomains: env.blockedDomains ?? curSettings.blockedDomains ?? [],
+    blockedDomainsSource: env.blockedDomains !== undefined ? "env" : existed ? "persisted" : "default",
     lifecycle: lifecycle.current,
   });
   const computeStdioLaunch = (): StdioLaunch => ({
@@ -439,6 +443,25 @@ async function main(): Promise<void> {
     const token = required ? generateToken() : null;
     httpHandle!.setToken(token);
     curSettings = { ...curSettings, tokenRequired: !!required, token, authConfigured: true };
+    saveSettings(app.getPath("userData"), curSettings);
+    existed = true;
+    pushConnection();
+    return { ok: true, ...currentEffective() };
+  });
+
+  ipcMain.handle("chrome:set-blocked-domains", (_e, value: unknown) => {
+    if (env.blockedDomains !== undefined)
+      return { ok: false, error: "blocked domains are set by HYPPO_BLOCKED_DOMAINS" };
+    if (typeof value !== "string") return { ok: false, error: "blocked domains must be text" };
+    const blockedDomains = value.split(",").map((d) => d.trim()).filter(Boolean);
+    const valid = blockedDomains.filter((d) => {
+      try { const u = new URL(`http://${d}`); return u.hostname === d.toLowerCase().replace(/\.$/, "") && !d.includes("/"); }
+      catch { return false; }
+    }).map((d) => d.toLowerCase().replace(/\.$/, ""));
+    const invalid = blockedDomains.filter((d) => !valid.includes(d.toLowerCase().replace(/\.$/, "")));
+    if (invalid.length) return { ok: false, error: `Invalid domain${invalid.length === 1 ? "" : "s"}: ${invalid.join(", ")}` };
+    curSettings = { ...curSettings, blockedDomains: valid };
+    effectiveBlockedDomains = valid;
     saveSettings(app.getPath("userData"), curSettings);
     existed = true;
     pushConnection();

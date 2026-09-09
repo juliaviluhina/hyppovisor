@@ -53,6 +53,7 @@ export class TabManager {
      *  their timers / rAF at foreground cadence so a page settles before a read
      *  (research.md R7). Applied per tab in wireView via setBackgroundThrottling. */
     private readonly unthrottleTabs = false,
+    private readonly blockedDomains: () => readonly string[] = () => [],
   ) {
     this.win.on("resize", () => this.layout());
     this.win.webContents.session.on("will-download", (event, item) => {
@@ -80,13 +81,26 @@ export class TabManager {
     });
   }
 
+  private recordBlockedNavigation(tabId: string, url: string, reason: string): void {
+    if (!reason.includes("blocked by the blocked domains setting")) return;
+    this.log.record({
+      tabId,
+      url,
+      operation: "navigate",
+      target: null,
+      outcome: "refused",
+      ruleId: "DOMAIN_BLOCKED",
+      error: reason,
+    });
+  }
+
   /** Open a URL in a new tab. Throws HyppoError for policy / load failures. */
   async open(rawUrl: string, openedBy: OpenedBy): Promise<TabSummary> {
     // Resolve a known redirect-interstitial / link-shim URL to its stated
     // destination BEFORE validation and loading (FR-013). Non-shim URLs pass
     // through untouched.
     const resolved = unwrapUrl(rawUrl);
-    const url = validateUrl(resolved.url);
+    const url = validateUrl(resolved.url, this.blockedDomains());
     const id = `tab-${++this.seq}`;
     this.recordUnwrap(id, resolved);
 
@@ -145,7 +159,7 @@ export class TabManager {
    *  given tab in place. Returns the `validateUrl`-normalised URL that was loaded. */
   private async loadInPlace(tab: Tab, rawUrl: string): Promise<string> {
     const resolved = unwrapUrl(rawUrl); // link-shim resolution first (FR-013)
-    const url = validateUrl(resolved.url);
+    const url = validateUrl(resolved.url, this.blockedDomains());
     this.recordUnwrap(tab.id, resolved);
     this.setActive(tab.id);
     this.events.onActivity(tab.id, `navigate → ${url}`);
@@ -261,9 +275,10 @@ export class TabManager {
       event: { preventDefault: () => void },
       url: string,
     ): void => {
-      const decision = decideNavigation(url);
+      const decision = decideNavigation(url, this.blockedDomains());
       if (!decision.allowed) {
         event.preventDefault();
+        this.recordBlockedNavigation(tab.id, url, decision.reason);
         this.events.onBlockedAction("navigation", blockedNavigationDetail(url, decision.reason));
       }
     };
@@ -311,6 +326,12 @@ export class TabManager {
       // behaviour), under the same URL policy as `open_url`. Rate-limited so a
       // scripted `window.open` loop can't flood the tab strip.
       if (/^https?:\/\//i.test(url)) {
+        const decision = decideNavigation(url, this.blockedDomains());
+        if (!decision.allowed) {
+          this.recordBlockedNavigation(tab.id, url, decision.reason);
+          this.events.onBlockedAction("popup", blockedNavigationDetail(url, decision.reason));
+          return { action: "deny" };
+        }
         const now = Date.now();
         if (now - this.lastPopupTabAt < 700) {
           this.events.onBlockedAction("popup", `${url} (too many in a row)`);

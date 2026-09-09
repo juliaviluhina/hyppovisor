@@ -38,6 +38,8 @@ interface EffectiveConnection {
   token: string | null;
   portSource: ConnectionSource;
   tokenSource: ConnectionSource;
+  blockedDomains: string[];
+  blockedDomainsSource: ConnectionSource;
   lastRequest: LastRequestInfo | null;
   /** feature 012 — HTTP bind outcome; `"stdio"` when `transport === "stdio"`. */
   serverStatus: "listening" | "port-unavailable" | "error" | "stdio";
@@ -87,6 +89,7 @@ interface HyppoConnectionApi {
   getConnection(): Promise<GetConnectionReply>;
   setPort(port: number): Promise<OkPort | Failed>;
   setTokenRequired(required: boolean): Promise<Mutated | Failed>;
+  setBlockedDomains(domains: string): Promise<Mutated | Failed>;
   regenerateToken(): Promise<Mutated | Failed>;
   setPanelOpen(open: boolean): Promise<void>;
   onConnectionChanged(cb: (c: EffectiveConnection) => void): void;
@@ -466,6 +469,26 @@ export function mountConnectionPanel(): void {
 
     renderPortSection(c);
     renderTokenSection(c);
+    renderBlockedDomainsSection(c);
+  }
+
+  function renderBlockedDomainsSection(c: EffectiveConnection): void {
+    const s = el("div", { className: "section" }, el("h3", { textContent: "Blocked domains (optional)" }));
+    const input = el("input", { id: "blocked-domains", type: "text" });
+    input.value = c.blockedDomains.join(", ");
+    input.placeholder = "example.com, example.org";
+    const save = el("button", { id: "blocked-domains-save", textContent: "Save" });
+    const notice = el("div", { className: "notice", textContent: c.blockedDomainsSource === "env"
+      ? "Managed by HYPPO_BLOCKED_DOMAINS."
+      : "Optional. Enter bare hostnames separated by commas; subdomains are included. Stored in this instance's settings.json and applied to all connected MCP clients." });
+    if (c.blockedDomainsSource === "env") { input.disabled = true; save.disabled = true; }
+    save.addEventListener("click", async () => {
+      const result = await hyppo.setBlockedDomains(input.value);
+      notice.textContent = result.ok ? "Blocked domains saved." : result.error;
+      if (result.ok && lastConn) render(lastConn);
+    });
+    s.append(input, el("div", { className: "row" }, save), notice);
+    body.append(s);
   }
 
   function renderPortSection(c: EffectiveConnection): void {

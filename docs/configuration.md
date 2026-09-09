@@ -4,7 +4,9 @@
 
 Click the hippo button in the top bar to open the **Connection & MCP** panel.
 Set the **Listening port** (Apply rebinds live) and toggle **Require a bearer
-token** (generated, masked, regenerable). Both persist — see
+token** (generated, masked, regenerable). Optionally set **Blocked domains** as
+comma-separated bare hostnames; matching subdomains are blocked too. These
+settings persist — see
 [settings.json](#settingsjson).
 
 ## Launch flags
@@ -34,10 +36,11 @@ and apply for that run only.
 | `HYPPO_MCP_PORT` | `7357` | HTTP port (always bound to `127.0.0.1`). Panel's port field goes read-only. |
 | `HYPPO_MCP_TOKEN` | _unset_ | Require `Authorization: Bearer <token>`. Panel's token controls go read-only. |
 | `HYPPO_MCP_STDIO` | _unset_ | `1` = stdio instead of HTTP. |
+| `HYPPO_BLOCKED_DOMAINS` | _unset_ | Comma-separated hostnames that HyppoVisor must never navigate to. The panel field is read-only. |
 | `HYPPO_USER_DATA_DIR` | _Electron default_ | Use this exact directory as the profile (settings, recent URLs, interaction log, browser session). Overrides `--instance`'s directory; the display label then comes from `--instance` if given, else this path's last segment. |
 
 ```bash
-HYPPO_MCP_PORT=8080 HYPPO_MCP_TOKEN=s3cret npm start
+HYPPO_MCP_PORT=8080 HYPPO_MCP_TOKEN=s3cret HYPPO_BLOCKED_DOMAINS=example.com,example.org npm start
 ```
 
 ## Precedence
@@ -46,14 +49,26 @@ HYPPO_MCP_PORT=8080 HYPPO_MCP_TOKEN=s3cret npm start
 - **MCP port:** `HYPPO_MCP_PORT` → `--port <n>` → the port in that profile's
   `settings.json` → built-in default (`7357`).
 - **Token:** `HYPPO_MCP_TOKEN` → that profile's `settings.json` → none.
+- **Blocked domains:** `HYPPO_BLOCKED_DOMAINS` → that profile's `settings.json` → empty list.
 
 An env-set value applies for that run only; the persisted value is kept for a
 later launch without the override.
 
 ## settings.json
 
-Port and token set in the panel persist to `settings.json` in the app's
-user-data directory. Plain JSON, safe to delete.
+Port, token, and blocked domains set in the panel persist to `settings.json` in
+the app's user-data directory. Plain JSON, safe to delete. The file contains a
+`blockedDomains` array when the list is configured, for example:
+
+```json
+{
+  "blockedDomains": ["example.com", "example.org"]
+}
+```
+
+Blocked domains are instance-wide: every MCP client connected to that
+HyppoVisor instance uses the same effective list. An environment override is
+used for that run and leaves the saved file unchanged.
 
 ## Recent URLs
 
