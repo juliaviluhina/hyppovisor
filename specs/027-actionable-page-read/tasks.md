@@ -17,8 +17,8 @@
 
 **Purpose**: Align on collector precedents and fixtures before writing code
 
-- [ ] T001 Survey `src/main/page/form-fields.ts` collector + `src/main/safety/blocklist.ts` verdict functions and record reuse points in `specs/027-actionable-page-read/research.md` (append, don't rewrite)
-- [ ] T002 [P] Add local fixture pages for snapshot scenarios in `tests/fixtures/actionable/` (content-heavy page, form with submit + credential controls, pure-article page, oversized page)
+- [X] T001 Survey `src/main/page/form-fields.ts` collector + `src/main/safety/blocklist.ts` verdict functions and record reuse points in `specs/027-actionable-page-read/research.md` (append, don't rewrite)
+- [X] T002 [P] Add local fixture pages for snapshot scenarios in `tests/fixtures/actionable/` (content-heavy page, form with submit + credential controls, pure-article page, oversized page)
 
 ---
 
@@ -28,10 +28,10 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T003 Add `ActionableElement`, `VisibleTextExtract`, `RelevanceRanking`, `RankingStatus`, `OmissionRecord`, `ActionableSnapshot` types in `src/shared/types.ts`
-- [ ] T004 [P] Add env-overridable caps (`HYPPO_ACTIONABLE_ELEMENT_CAP`, `HYPPO_ACTIONABLE_TEXT_BYTES`, `HYPPO_ACTIONABLE_MAX_BYTES`) in `src/main/config.ts`
-- [ ] T005 Implement atomic snapshot generation token (URL + DOM fingerprint) in `src/main/page/actionable.ts` (token helper only; collector follows in US1)
-- [ ] T006 [P] Unit tests for types/caps/token defaults in `tests/unit/actionable.test.ts` (skeleton extended per story)
+- [X] T003 Add `ActionableElement`, `VisibleTextExtract`, `RelevanceRanking`, `RankingStatus`, `OmissionRecord`, `ActionableSnapshot` types in `src/shared/types.ts`
+- [X] T004 [P] Add env-overridable caps (`HYPPO_ACTIONABLE_ELEMENT_CAP`, `HYPPO_ACTIONABLE_TEXT_BYTES`, `HYPPO_ACTIONABLE_MAX_BYTES`) in `src/main/config.ts`
+- [X] T005 Implement atomic snapshot generation token (URL + DOM fingerprint) in `src/main/page/actionable.ts` (token helper only; collector follows in US1)
+- [X] T006 [P] Unit tests for types/caps/token defaults in `tests/unit/actionable.test.ts` (skeleton extended per story)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -45,15 +45,15 @@
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] Contract test for unranked `read_actionable` shape in `tests/unit/mcp-tools.test.ts`
-- [ ] T008 [P] [US1] Unit tests for visibility/viewport filtering, accessible-name labels, omission accounting in `tests/unit/actionable.test.ts`
+- [X] T007 [P] [US1] Contract test for unranked `read_actionable` shape in `tests/unit/mcp-tools.test.ts`
+- [X] T008 [P] [US1] Unit tests for visibility/viewport filtering, accessible-name labels, omission accounting in `tests/unit/actionable.test.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T009 [P] [US1] Implement isolated-world snapshot collector (controls + visible text + omission counts) in `src/main/page/actionable.ts`
-- [ ] T010 [US1] Implement payload assembly (table, text extract, truncation markers, generation token) in `src/main/page/actionable.ts` (depends on T009)
-- [ ] T011 [US1] Register `read_actionable` tool + extend `TOOL_NAMES` in `src/main/mcp/tools.ts` (unranked path only; `goal` rejected as unknown-for-now or ignored per contract)
-- [ ] T012 [US1] Document the tool row in `docs/tools.md` ("Eight" → nine)
+- [X] T009 [P] [US1] Implement isolated-world snapshot collector (controls + visible text + omission counts) in `src/main/page/actionable.ts`
+- [X] T010 [US1] Implement payload assembly (table, text extract, truncation markers, generation token) in `src/main/page/actionable.ts` (depends on T009)
+- [X] T011 [US1] Register `read_actionable` tool + extend `TOOL_NAMES` in `src/main/mcp/tools.ts` (unranked path only; `goal` rejected as unknown-for-now or ignored per contract)
+- [X] T012 [US1] Document the tool row in `docs/tools.md` ("Eight" → nine)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -67,14 +67,14 @@
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] Unit tests for ranking-status mapping (missing key / 401 / 429-then-success / retries-exhausted / malformed response) with stubbed network in `tests/unit/actionable.test.ts`
-- [ ] T014 [P] [US2] No-throw guarantee test (every ranking failure returns a success payload with status) in `tests/unit/actionable.test.ts`
+- [X] T013 [P] [US2] Unit tests for ranking-status mapping (missing key / 401 / 429-then-success / retries-exhausted / malformed response) with stubbed network in `tests/unit/actionable.test.ts`
+- [X] T014 [P] [US2] No-throw guarantee test (every ranking failure returns a success payload with status) in `tests/unit/actionable.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T015 [P] [US2] Implement single-Choice Jev ranking call with bounded 429/529/503 retries in `src/main/ranking/jev.ts`
-- [ ] T016 [US2] Wire `goal` through `read_actionable` to ranking with status mapping in `src/main/mcp/tools.ts` (depends on T015)
-- [ ] T017 [US2] Document `TYPESAFE_API_KEY` in `docs/configuration.md`
+- [X] T015 [P] [US2] Implement single-Choice Jev ranking call with bounded 429/529/503 retries in `src/main/ranking/jev.ts`
+- [X] T016 [US2] Wire `goal` through `read_actionable` to ranking with status mapping in `src/main/mcp/tools.ts` (depends on T015)
+- [X] T017 [US2] Document `TYPESAFE_API_KEY` in `docs/configuration.md`
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -88,13 +88,13 @@
 
 ### Tests for User Story 3
 
-- [ ] T018 [P] [US3] Unit tests for index→target resolution and stale-generation rejection in `tests/unit/interact.test.ts`
-- [ ] T019 [P] [US3] Refused-marker verdict agreement test (snapshot markers vs `interact` verdicts) in `tests/unit/actionable.test.ts`
+- [X] T018 [P] [US3] Unit tests for index→target resolution and stale-generation rejection in `tests/unit/interact.test.ts`
+- [X] T019 [P] [US3] Refused-marker verdict agreement test (snapshot markers vs `interact` verdicts) in `tests/unit/actionable.test.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T020 [US3] Implement index resolution with live re-validation (connected, visible, enabled, same role/label) in `src/main/page/interact.ts` (depends on T005)
-- [ ] T021 [US3] Attach refused markers via shared blocklist verdicts in `src/main/page/actionable.ts` (depends on T009)
+- [X] T020 [US3] Implement index resolution with live re-validation (connected, visible, enabled, same role/label) in `src/main/page/interact.ts` (depends on T005)
+- [X] T021 [US3] Attach refused markers via shared blocklist verdicts in `src/main/page/actionable.ts` (depends on T009)
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -104,10 +104,10 @@
 
 **Purpose**: Contract registration ripple, docs, and end-to-end validation
 
-- [ ] T022 [P] Amend `specs/001-open-any-url/contracts/mcp-tools.md` with the `read_actionable` contract
-- [ ] T023 [P] Update tool list in `skills/hyppovisor/SKILL.md` and connection-panel About text + `tests/unit/connection-snippets.test.ts`
-- [ ] T024 [P] Clarify refused-marker semantics in `docs/safety.md` if the safety review asks for it
-- [ ] T025 Run `npm test`, `npm run lint`, and `quickstart.md` Scenarios 1–4; fix fallout
+- [X] T022 [P] Amend `specs/001-open-any-url/contracts/mcp-tools.md` with the `read_actionable` contract
+- [X] T023 [P] Update tool list in `skills/hyppovisor/SKILL.md` and connection-panel About text + `tests/unit/connection-snippets.test.ts`
+- [X] T024 [P] Clarify refused-marker semantics in `docs/safety.md` if the safety review asks for it
+- [X] T025 Run `npm test`, `npm run lint`, and `quickstart.md` Scenarios 1–4; fix fallout
 - [ ] T026 Manual live-Jev ranking check once (paid API, unrecorded) per research.md R6
 
 ---

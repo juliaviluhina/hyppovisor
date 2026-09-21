@@ -2,9 +2,9 @@
 
 **Feature**: 001-open-any-url | **Transport**: Streamable HTTP on loopback (default) or stdio | **Date**: 2026-08-29
 
-The complete interface HyppoVisor exposes. Eight tools, no others (`read_form_fields`
-was added by feature 005; `screenshot` by feature 008). Entity shapes are in
-[data-model.md](../data-model.md); error codes are defined there too.
+The complete interface HyppoVisor exposes. Nine tools, no others (`read_form_fields`
+was added by feature 005; `screenshot` by feature 008; `read_actionable` by feature 027).
+Entity shapes are in [data-model.md](../data-model.md); error codes are defined there too.
 
 > **Runtime configuration (feature 007).** The HTTP listening port and the optional bearer
 > token are now configurable at runtime from the in-app connection panel (opened via the 🦛
@@ -236,6 +236,52 @@ interaction-audit-log entry. Bounded by `formFieldControlCap` (control count),
 `formFieldOptionCap` (per-record `optionsTruncated`), and a `formFieldReadMaxBytes` byte
 budget (64 KB default) that drops tail records in document order — the single result-level
 `truncated` flag covers all three.
+
+---
+
+## `read_actionable` (feature 027)
+
+Read-only snapshot: one tab's actionable elements as an indexed table plus its meaningful
+visible text, from a single atomic capture. `read_page` / `read_form_fields` / `interact`
+are unchanged.
+
+**Input**: `{ tabId: string, goal?: string }`.
+
+- `goal` — omit for the unranked snapshot (no Jev call, `ranking` / `rankingStatus` null);
+  give it to add Jev relevance ordering over the table.
+
+**Returns**: `ActionableSnapshot` — `{ tabId, url, title, generation, observedAt, elements[],
+text, ranking, rankingStatus, omissions, queueDepth }`. Each entry: snapshot-scoped `index`
+(dense `1..N`, valid for this `generation` only), `role`, verbatim `label`, current `value`
+(**omitted entirely** for a credential field), `actionable` / `refused` `marker` (credential,
+file-upload, consent, and submit controls are listed but `refused`, with empty `operations`),
+and `operations` (`fill` / `click` / `choose_option` / `space`) — empty exactly when
+`refused`. Markers agree with `interact` verdicts by construction. `text` is the verbatim
+visible text within budget with an explicit `truncated` flag. `ranking` (ordering with
+per-candidate probabilities and confidence) is present only when a goal was supplied and
+ranking succeeded; `rankingStatus` (`ok` / `unavailable-missing-key` /
+`unavailable-request-failure`) is present whenever a goal was supplied. Low-confidence
+orderings are returned as-is, never suppressed.
+
+**Addressing entries with `interact`**: `interact` accepts `elementIndex` + `generation`
+instead of `selector` (mutually exclusive — both, or half a reference, → `BATCH_REJECTED`;
+meaningless for `space` / `scroll` → `BATCH_REJECTED`). The index resolves to a private
+selector inside the app and is re-validated live (same tab URL, target still present with
+the same identity); any mismatch → stale `TARGET_NOT_FOUND`, never reinterpretation. Every
+verdict is recomputed live, and the private selector is scrubbed from error text and audit
+entries (shown as `#<index>`) — model output can never become a selector.
+
+**Errors**: `TAB_NOT_FOUND`, `TARGET_NOT_FOUND` (stale snapshot reference), `BATCH_REJECTED`
+(selector+reference, half reference, reference for `space`/`scroll`). Ranking failure is
+**never** an error — it is `rankingStatus` inside a success payload.
+
+**Notes**: performs no interaction, writes nothing to the shared data directory, adds no
+interaction-audit-log entry. Bounded by `actionableElementCap` (250 default),
+`actionableTextBytes` (24 KB default), and an `actionableMaxBytes` byte budget (64 KB
+default) that drops tail entries in document order with dense renumbering — counts land in
+`omissions` (`hiddenNodes`, `overBudgetElements`, `textTruncated`), never silent. Ranking
+needs the user's `TYPESAFE_API_KEY` (env level; never logged or persisted) and retries
+rate-limit/overload responses with bounded backoff before reporting failure.
 
 ---
 

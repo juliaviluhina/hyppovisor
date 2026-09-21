@@ -1,6 +1,6 @@
 # Tools
 
-Eight MCP tools. No others. Every call goes through one action queue; every
+Nine MCP tools. No others. Every call goes through one action queue; every
 error returns a named code.
 
 | Tool | Purpose |
@@ -10,6 +10,7 @@ error returns a named code.
 | `navigate` | Point an existing tab at a new URL. Same link-shim resolution as `open_url`. |
 | `read_page` | One tab's verbatim visible text; DOM only when asked. Nothing stored. |
 | `read_form_fields` | Read-only view of a tab's form controls (see below). |
+| `read_actionable` | Read-only snapshot: indexed table of actionable elements plus budgeted visible text in one call; optional Jev relevance ranking when a `goal` is passed (see below). |
 | `interact` | One bounded action: `click` / `fill` / `scroll` / `space` / `choose_option` / `list_options`. Never submits. |
 | `wait_for_selector` | Wait for an element, up to a timeout. |
 | `screenshot` | Picture of a tab — viewport, element clip, or full page. JPEG, ≤256 KB, inline, never written to disk. Needs a visible window: on a `--background` instance it returns `SCREENSHOT_FAILED` (every other tool still works). |
@@ -43,6 +44,28 @@ verdicts); `includeNonInteractive: true` adds the diagnostic fields
 (`selectorSynthesised`, `duplicateId`, `optionsAvailable`, `optionsTruncated`)
 and every record's `options`. Verdicts are computed after the DOM settles, so a
 re-read of an unchanged page returns the same verdict. `read_page` is unaffected.
+
+## read_actionable
+
+One tab's actionable elements as an indexed table plus its meaningful visible
+text, from a single atomic capture. Per entry: snapshot-scoped `index`, `role`,
+verbatim `label`, current `value` (omitted for credentials), an `actionable` /
+`refused` marker, and the `operations` `interact` could use. Credential,
+file-upload, consent, and submit controls are listed with `refused` markers —
+listed so the agent can see why a visible control has no usable entry, never
+usable. Hidden, disabled, offscreen, and decorative nodes are excluded and
+counted in `omissions`, alongside over-budget drops and text truncation —
+never silent.
+
+Derived and read-only — it acts on nothing and writes no audit entry. Indices
+are valid for the snapshot's `generation` only; using one after the page
+changes fails stale rather than applying elsewhere.
+
+With `goal`, the same call adds Jev relevance `ranking` (ordering with
+per-candidate probabilities and confidence) — advisory only. Ranking needs the
+user's `TYPESAFE_API_KEY`; when ranking is unavailable the snapshot still
+returns with an explicit `rankingStatus` (`unavailable-missing-key` /
+`unavailable-request-failure`), never an error.
 
 ## interact
 

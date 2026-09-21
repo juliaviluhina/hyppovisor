@@ -4,6 +4,12 @@
 
 All Technical Context unknowns are resolved below (no NEEDS CLARIFICATION remained open). Each entry records Decision / Rationale / Alternatives.
 
+## R0. Reuse survey (T001, implementation-time confirmation)
+
+- **Reused as-is**: `domReadyScript` (bounded ready wait), `DESCRIPTOR_BODY` + `ACCESSIBLE_NAME_SOURCES_BODY` (in-page descriptor/label sources), `fillVerdictFor` / `clickVerdictFor` / `chooseVerdictFor` (main-side verdicts), `kindFor` + `operationForKind` (kind → operation mapping), `capList` (count caps), `truncateToBytes` (byte-bounded text with marker), `HyppoError` named codes, `runTabAction` queue wrapper + `ok`/`fail` envelopes, `config.numFromEnv` cap pattern.
+- **Adapted**: visibility check extended with viewport-overlap + `elementFromPoint` occlusion (form-fields checks layout visibility only); label order starts with `aria-labelledby`/`aria-label` and falls back to `innerText` for button/link/select; value extraction adds checkbox `checked` state and `<select>` selected-option labels; new `generation` token (`sha256(url + observedAt + records + text)`) for stale rejection.
+- **Deliberately not reused**: selector synthesis (`synthesizeSelector`) — snapshot indices replace selectors per FR-005; `fields`/`containerSelector` scoping and `includeNonInteractive`/`only` projections — the snapshot is always whole-page with refused markers instead of exclusions.
+
 ## R1. Snapshot collector pattern
 
 - **Decision**: Extend the `read_form_fields` architecture (`src/main/page/form-fields.ts`): one read-only isolated-world DOM walk in document order gathering raw per-control records, with verdict/marker attachment done in the main process through the shared pure functions in `src/main/safety/blocklist.ts` (`fillVerdictFor`, `clickVerdictFor`, `chooseVerdictFor`, `DESCRIPTOR_BODY`, accessible-name sources). Add jev-ultrafast snapshot ideas on top: visibility + viewport filtering (`checkVisibility`, zero-area and offscreen rejection), `fill` vs `click` split for editables, per-`<select>`-option fan-out, omission counting, and a bounded visible-text extract alongside the table.

@@ -37,6 +37,7 @@ and apply for that run only.
 | `HYPPO_MCP_TOKEN` | _unset_ | Require `Authorization: Bearer <token>`. Panel's token controls go read-only. |
 | `HYPPO_MCP_STDIO` | _unset_ | `1` = stdio instead of HTTP. |
 | `HYPPO_BLOCKED_DOMAINS` | _unset_ | Comma-separated hostnames that HyppoVisor must never navigate to. The panel field is read-only. |
+| `TYPESAFE_API_KEY` | _unset_ | Your own TypeSafe account key. Enables Jev relevance ranking for `read_actionable` when a `goal` is passed; without it the tool returns the unranked snapshot with an explicit status. Never logged or persisted. |
 | `HYPPO_USER_DATA_DIR` | _Electron default_ | Use this exact directory as the profile (settings, recent URLs, interaction log, browser session). Overrides `--instance`'s directory; the display label then comes from `--instance` if given, else this path's last segment. |
 
 ```bash
