@@ -7,6 +7,8 @@ All notable changes to HyppoVisor are documented here. This file follows the
 
 <!-- Move reviewed Unreleased notes into a dated version heading when releasing. -->
 
+## [0.6.0] - 2026-09-21
+
 ### Added
 
 - `read_actionable` MCP tool: one read-only call returns a tab's actionable
