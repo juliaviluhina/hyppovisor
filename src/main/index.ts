@@ -143,6 +143,20 @@ async function main(): Promise<void> {
   const instanceStartedAt = new Date().toISOString();
   const instanceMode = resolved.background ? "background" : "foreground";
 
+  // CI runners (notably GitHub Actions' macos-latest) lack a real GPU, and
+  // Electron 44's Viz compositor fails hard there ("UnknownVizError") instead
+  // of falling back the way older Chromium did — hit by the screenshot tool's
+  // capturePage()/CDP capture in e2e. Software rendering is unaffected outside
+  // HYPPO_E2E, so this never touches a real person's session.
+  //
+  // Must run before any `await` — app.disableHardwareAcceleration() throws
+  // once Electron's own (independently-timed) "ready" event has fired, and on
+  // a fast CI machine that can happen while an earlier await (e.g. resolving
+  // TYPESAFE_API_KEY below) is still pending.
+  if (process.env.HYPPO_E2E === "1") {
+    app.disableHardwareAcceleration();
+  }
+
   // A Dock/Finder/`open`-launched process never sees the invoking shell's
   // exported vars (launchd doesn't inherit them); fall back to the OS-user
   // environment so TYPESAFE_API_KEY set once via `launchctl setenv` reaches
@@ -153,15 +167,6 @@ async function main(): Promise<void> {
     process.env["TYPESAFE_API_KEY"] = apiKeyResolution.key;
   }
   console.error(`[hyppovisor] ${describeApiKeySource(apiKeyResolution.source)}`);
-
-  // CI runners (notably GitHub Actions' macos-latest) lack a real GPU, and
-  // Electron 44's Viz compositor fails hard there ("UnknownVizError") instead
-  // of falling back the way older Chromium did — hit by the screenshot tool's
-  // capturePage()/CDP capture in e2e. Software rendering is unaffected outside
-  // HYPPO_E2E, so this never touches a real person's session.
-  if (process.env.HYPPO_E2E === "1") {
-    app.disableHardwareAcceleration();
-  }
 
   await app.whenReady();
   // Apply the same owner-only request to Electron's default profile path as to
