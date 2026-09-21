@@ -8,7 +8,7 @@ reasoning, in one place, for the decisions people ask about most.
 - [Why external acts are hard-excluded](#why-external-acts-are-hard-excluded)
 - [Test layering](#test-layering)
 - [Complexity budget](#complexity-budget)
-- [Why these eight MCP tools](#why-these-eight-mcp-tools)
+- [Why these nine MCP tools](#why-these-nine-mcp-tools)
 
 ---
 
@@ -158,16 +158,19 @@ boundary. `hyppovisor` never imports `hyppograph`.
 
 ---
 
-## Why these eight MCP tools
+## Why these nine MCP tools
 
 [`open_url`, `list_open_tabs`, `navigate`, `read_page`, `read_form_fields`,
-`interact`, `wait_for_selector`, `screenshot`](tools.md) — and no others. The set
-is deliberately closed.
+`read_actionable`, `interact`, `wait_for_selector`, `screenshot`](tools.md) — and no others. The set
+is deliberately closed. `read_actionable` joined the set as a ninth tool without
+an amendment because it is a read-only derivation like `read_form_fields` —
+an indexed table plus text, with advisory relevance ordering. Adding a tool
+that performs an external act still requires a constitution amendment first.
 
 - **It is the constitution's contract, verbatim.** Principles I–II fix the
   surface: navigate, read (page / DOM / visible text), list tabs, scroll,
   wait-for-selector, click-to-reveal, and value entry to prepare a draft. Every
-  tool maps to one of those; nothing maps to "act". Adding a ninth tool that
+  tool maps to one of those; nothing maps to "act". Adding a tenth tool that
   performs an external act requires a constitution amendment first.
 - **One verb per tool, one bounded action per call.** `interact` takes exactly
   one of `click` / `fill` / `scroll` / `space` / `choose_option` / `list_options`
@@ -182,7 +185,10 @@ is deliberately closed.
   `read_form_fields` is *derived and read-only*: it reports each control's
   `fill` / `click` / `choose` verdict and an `operation` hint without acting on
   anything and without writing an audit entry, so an agent can plan a form fill
-  before touching it.
+  before touching it. `read_actionable` extends the same idea to a whole page:
+  one indexed table plus text, with Jev relevance ordering that stays advisory
+  — the agent still chooses, `interact` verdicts still dispose, and a missing
+  key or failed ranking surfaces as payload status, never an error.
 - **Every call goes through the one action queue, every error returns a named
   code.** `REFUSED_EXTERNAL_ACT` and its siblings are part of the contract: a
   refusal names the rule that fired, and tests assert per-rule coverage. A caller
@@ -191,7 +197,7 @@ is deliberately closed.
   256 KB, never written to disk and never audit-logged — it is a supplementary
   visual aid; `read_page` remains the verbatim-text channel.
 
-Transport is orthogonal to the tool set: the same eight tools, the same
+Transport is orthogonal to the tool set: the same nine tools, the same
 blocklist, and the same audit log ship over both **Streamable HTTP on loopback**
 (the default — the app is long-lived, you set it up once, an agent connects
 later) and **stdio** (`HYPPO_MCP_STDIO=1`, no open socket). See
