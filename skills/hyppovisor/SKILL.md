@@ -16,7 +16,7 @@ metadata:
 HyppoVisor is a local Electron app plus an MCP server. It opens URLs in real
 browser tabs that carry the **user's own logins** and exposes them as MCP tools:
 `open_url`, `list_open_tabs`, `navigate`, `read_page`, `read_form_fields`,
-`interact`, `wait_for_selector`, `screenshot`.
+`read_actionable`, `interact`, `wait_for_selector`, `screenshot`.
 
 You use it to read pages behind a login and to prepare drafts. You never complete
 an external action.
@@ -106,7 +106,9 @@ instance — check the port.
 1. `open_url` the target page (or `navigate` an existing tab from `list_open_tabs`).
 2. If a login wall appears → stop, ask the user to sign in, wait, retry.
 3. `read_page` for visible text; `read_form_fields` for a structured control map
-   with per-field `fill` / `click` verdicts and selectors.
+   with per-field `fill` / `click` verdicts and selectors; `read_actionable` for a
+   compact indexed element table plus text in one call (pass `goal` for Jev relevance
+   ranking; address entries via `elementIndex` + `generation`, never as selectors).
 4. `interact` to fill fields, tick plain checkboxes, choose options, or click to
    reveal sections. `wait_for_selector` when content loads async.
 5. `screenshot` to verify what actually rendered (visible-window instances only —

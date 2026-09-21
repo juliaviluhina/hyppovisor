@@ -1,4 +1,4 @@
-// Feature 005 / 008 — the MCP surface is exactly eight tools and
+// Feature 005 / 008 / 027 — the MCP surface is exactly nine tools and
 // `read_form_fields` accepts `{ tabId }` and `{ tabId, containerSelector }`.
 
 import { describe, it, expect } from "vitest";
@@ -26,13 +26,14 @@ describe("MCP tool surface (contracts/mcp-tools.md)", () => {
   const { server, tools } = capture();
   registerTools(server, {} as unknown as ToolDeps);
 
-  it("registers exactly eight tools", () => {
+  it("registers exactly nine tools", () => {
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
         "interact",
         "list_open_tabs",
         "navigate",
         "open_url",
+        "read_actionable",
         "read_form_fields",
         "read_page",
         "screenshot",
@@ -50,5 +51,16 @@ describe("MCP tool surface (contracts/mcp-tools.md)", () => {
     // description states the key guarantees
     expect(t.description.toLowerCase()).toContain("read-only");
     expect(t.description.toLowerCase()).toContain("read_page");
+  });
+
+  it("read_actionable accepts { tabId } and { tabId, goal }, rejects {}", () => {
+    const t = tools.find((x) => x.name === "read_actionable")!;
+    const schema = z.object(t.shape);
+    expect(schema.safeParse({ tabId: "tab-1" }).success).toBe(true);
+    expect(schema.safeParse({ tabId: "tab-1", goal: "fill the destination" }).success).toBe(true);
+    expect(schema.safeParse({}).success).toBe(false);
+    // description states the key guarantees
+    expect(t.description.toLowerCase()).toContain("read-only");
+    expect(t.description.toLowerCase()).toContain("rankingstatus");
   });
 });

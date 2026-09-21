@@ -113,6 +113,7 @@ The assistant can use these tools:
   list_open_tabs      list the open tabs and their state
   read_page           return one tab's visible text (and its DOM only when asked)
   read_form_fields    list a page's form controls, read-only
+  read_actionable     snapshot a tab's actionable elements plus visible text, read-only
   navigate            point an existing tab at another address
   interact            one bounded action: click, fill, scroll, space, choose_option, or list_options
   wait_for_selector   wait until an element appears, up to a timeout

@@ -5,7 +5,13 @@
 //   tests/integration/interaction.spec.ts.
 
 import { describe, it, expect } from "vitest";
-import { writeLanded, fillScript } from "../../src/main/page/interact.js";
+import {
+  writeLanded,
+  fillScript,
+  checkInteractTargetShape,
+  scrubSnapshotError,
+} from "../../src/main/page/interact.js";
+import { HyppoError } from "../../src/main/errors.js";
 
 describe("writeLanded — read-back comparator (feature 011, R2)", () => {
   it("exact match lands", () => {
@@ -65,5 +71,40 @@ describe("fillScript — per-character key events (feature 011, US1 / R1)", () =
 
   it("does not do a bulk one-shot value assignment of v", () => {
     expect(script).not.toContain("__setValue(el, v)");
+  });
+});
+
+describe("checkInteractTargetShape — selector vs snapshot reference (feature 027, US3)", () => {
+  it("accepts selector-only and ref-only shapes", () => {
+    expect(checkInteractTargetShape("click", "#a", undefined, undefined)).toBeNull();
+    expect(checkInteractTargetShape("click", undefined, 2, "gen-1")).toBeNull();
+    expect(checkInteractTargetShape("fill", undefined, 1, "gen-1")).toBeNull();
+  });
+  it("rejects selector+ref, half refs, and ref for space/scroll", () => {
+    expect(checkInteractTargetShape("click", "#a", 2, "gen-1")?.code).toBe("BATCH_REJECTED");
+    expect(checkInteractTargetShape("click", undefined, 2, undefined)?.code).toBe(
+      "BATCH_REJECTED",
+    );
+    expect(checkInteractTargetShape("click", undefined, undefined, "gen-1")?.code).toBe(
+      "BATCH_REJECTED",
+    );
+    expect(checkInteractTargetShape("space", undefined, 1, "gen-1")?.code).toBe("BATCH_REJECTED");
+    expect(checkInteractTargetShape("scroll", undefined, 1, "gen-1")?.code).toBe("BATCH_REJECTED");
+  });
+});
+
+describe("scrubSnapshotError — private selectors never reach the caller (feature 027, FR-005)", () => {
+  it("rewrites the selector to the display reference in HyppoError messages", () => {
+    const e = new HyppoError("TARGET_NOT_FOUND", 'No element matches selector "#to".');
+    const out = scrubSnapshotError(e, "#to", "#1") as HyppoError;
+    expect(out).toBeInstanceOf(HyppoError);
+    expect(out.code).toBe("TARGET_NOT_FOUND");
+    expect(out.message).toBe('No element matches selector "#1".');
+    expect(out.message).not.toContain("#to");
+  });
+  it("leaves unrelated errors untouched", () => {
+    const e = new HyppoError("WAIT_TIMEOUT", "Timed out.");
+    expect(scrubSnapshotError(e, "#to", "#1")).toBe(e);
+    expect(scrubSnapshotError("plain", "#to", "#1")).toBe("plain");
   });
 });

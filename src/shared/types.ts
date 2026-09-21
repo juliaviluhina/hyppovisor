@@ -429,8 +429,7 @@ export interface InstanceSummary {
   startedAt: string;
 }
 
-export interface InteractionLogEntry {
-  at: string;
+export interface InteractionLogEntry {  at: string;
   tabId: string;
   url: string;
   operation: string;
@@ -443,8 +442,83 @@ export interface InteractionLogEntry {
   /** Set only on an `operation: "unwrap"` entry (feature 002 — a link-shim resolution). */
   unwrap?: { hops: number };
   /**
-   * Set only on a non-rule `choose_option` refusal (feature 006) — one of
-   * `ChooseOptionReason`. `ruleId` stays `null` in that case.
-   */
+    * Set only on a non-rule `choose_option` refusal (feature 006) — one of
+    * `ChooseOptionReason`. `ruleId` stays `null` in that case.
+    */
   reason?: string;
+}
+
+// ─── feature 027: actionable page read ─────────────────────────────────────
+
+/** Whether a snapshot entry may be addressed by `interact`. */
+export type ActionableMarker = "actionable" | "refused";
+
+/** `interact` operations that can address a snapshot entry. */
+export type ActionableOperation = "fill" | "click" | "choose_option" | "space";
+
+/** One row of the `read_actionable` element table (data-model.md §1). */
+export interface ActionableElement {
+  /** Dense `1..N` in table order; valid only within its snapshot `generation`. */
+  index: number;
+  /** Normalized control role (`button`, `link`, `combobox`, `textbox`, …). */
+  role: string;
+  /** Verbatim accessible name; the role when no name source exists. */
+  label: string;
+  /**
+    * Current value/state (field text, checked state, selected option).
+    * **Key omitted entirely** for a credential field.
+    */
+  value?: string | null;
+  /** `refused` entries are listed but never usable (credential / file / consent / submit / outward-labelled). */
+  marker: ActionableMarker;
+  /** Empty exactly when `marker` is `refused`. */
+  operations: ActionableOperation[];
+}
+
+/** The visible-text half of a snapshot (data-model.md §2). */
+export interface VisibleTextExtract {
+  /** Verbatim visible text within budget, document order. */
+  text: string;
+  /** `true` iff text was cut — the cut is counted in `OmissionRecord`. */
+  truncated: boolean;
+}
+
+/** Goal-relative ordering over a snapshot's table (data-model.md §3). */
+export interface RelevanceRanking {
+  /** Permutation of table indices, most-relevant first; `[0]` is the top pick. */
+  order: number[];
+  /** Overall 0–1 confidence from the Jev response. */
+  confidence: number;
+  /** Per-candidate probabilities; sum ≈ 1. */
+  probabilities: Record<number, number>;
+}
+
+/** Why a requested ranking is absent (data-model.md §4). */
+export type RankingStatus = "ok" | "unavailable-missing-key" | "unavailable-request-failure";
+
+/** Counts of excluded/cut content (data-model.md §5). */
+export interface OmissionRecord {
+  hiddenNodes: number;
+  overBudgetElements: number;
+  textTruncated: boolean;
+}
+
+/** The result of one `read_actionable` call (data-model.md §6). Not stored. */
+export interface ActionableSnapshot {
+  tabId: string;
+  url: string;
+  title: string;
+  /** Opaque token binding table + text to one atomic capture; consumed for stale rejection. */
+  generation: string;
+  /** ISO 8601, set in the collector script. */
+  observedAt: string;
+  /** Document order; length ≤ element cap. May be empty (pure-article pages). */
+  elements: ActionableElement[];
+  text: VisibleTextExtract;
+  /** Present only when a goal was supplied and ranking succeeded. */
+  ranking: RelevanceRanking | null;
+  /** Present only when a goal was supplied. */
+  rankingStatus: RankingStatus | null;
+  omissions: OmissionRecord;
+  queueDepth: number;
 }

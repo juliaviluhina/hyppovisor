@@ -34,6 +34,10 @@ control unchanged:
 - **address / place autocomplete** — `fill` types the literal text and stops;
   choosing a popped-up suggestion is a human step
 
+`read_actionable` lists every one of the above with a `refused` marker instead of
+excluding it, so the agent can see *why* a visible control has no usable entry —
+the marker changes nothing about what `interact` permits.
+
 ## What `fill` is allowed to do
 
 Type into a plain, non-credential, non-consent field (`text` / `email` / `tel` /
