@@ -14,10 +14,13 @@ import {
   interact,
   fillBatch,
   checkFillInputShape,
+  checkInteractTargetShape,
   waitForSelector,
   type ListOptionsPayload,
 } from "../page/interact.js";
 import { readFormFields } from "../page/form-fields.js";
+import { readActionable } from "../page/actionable.js";
+import { rankRelevance } from "../ranking/jev.js";
 import { takeScreenshot } from "../page/screenshot.js";
 
 export interface ToolDeps {
@@ -51,6 +54,7 @@ export const TOOL_NAMES = [
   "read_form_fields",
   "wait_for_selector",
   "screenshot",
+  "read_actionable",
 ] as const;
 
 function ok(payload: unknown) {
@@ -252,6 +256,18 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       tabId: z.string(),
       operation: z.enum(["click", "fill", "scroll", "space", "choose_option", "list_options"]),
       selector: z.string().optional(),
+      elementIndex: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          "Snapshot entry from read_actionable (with `generation`); mutually exclusive with `selector`",
+        ),
+      generation: z
+        .string()
+        .optional()
+        .describe("Snapshot generation the `elementIndex` belongs to"),
       value: z.string().optional(),
       label: z
         .string()
@@ -262,12 +278,29 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         .optional()
         .describe("Batch fill: ordered { selector, value } pairs (fill only, max 50)"),
     },
-    async ({ tabId, operation, selector, value, label, fields }) => {
+    async ({ tabId, operation, selector, elementIndex, generation, value, label, fields }) => {
       seen("interact");
       try {
         if (operation === "fill") {
           const shapeError = checkFillInputShape(selector, value, fields);
           if (shapeError) throw shapeError;
+        }
+        // Snapshot references (feature 027) address a read_actionable entry
+        // instead of a selector; the private selector never leaves the app.
+        const refError =
+          elementIndex !== undefined || generation !== undefined
+            ? checkInteractTargetShape(operation, selector, elementIndex, generation)
+            : null;
+        if (refError) throw refError;
+        const snapshotRef =
+          elementIndex !== undefined && generation !== undefined
+            ? { generation, index: elementIndex }
+            : undefined;
+        if (snapshotRef !== undefined && fields !== undefined) {
+          throw new HyppoError(
+            "BATCH_REJECTED",
+            "A snapshot reference addresses one entry; batch `fields` takes selectors, not both.",
+          );
         }
 
         if (operation === "fill" && fields) {
@@ -281,7 +314,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         if (operation === "list_options") {
           const { value: result, queueDepth } = await runTabAction(() => {
             const wc = tabs.webContentsFor(tabId);
-            return interact(wc, log, tabId, operation, selector, value, label);
+            return interact(wc, log, tabId, operation, selector, value, label, snapshotRef);
           });
           const r = result as ListOptionsPayload;
           return ok({
@@ -296,7 +329,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
 
         const { value: result, queueDepth } = await runTabAction(() => {
           const wc = tabs.webContentsFor(tabId);
-          return interact(wc, log, tabId, operation, selector, value, label);
+          return interact(wc, log, tabId, operation, selector, value, label, snapshotRef);
         });
         const chosenOption =
           result && typeof result === "object" && "chosenOption" in result
@@ -427,6 +460,51 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           return takeScreenshot(wc, { tabId, selector, fullPage, format, maxBytes });
         });
         return okImage(value.bytes.toString("base64"), value.mimeType, value.meta);
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "read_actionable",
+    "Read-only. Snapshot one tab's actionable elements as an indexed table plus its " +
+      "meaningful visible text, in a single call: each entry carries a snapshot-scoped " +
+      "`index`, `role`, verbatim `label`, current `value` (omitted for credential fields), " +
+      "an `actionable` / `refused` marker, and the `operations` `interact` could use on it. " +
+      "Hidden, disabled, offscreen, and decorative nodes are excluded and counted in " +
+      "`omissions`; table and text are budget-bounded with explicit truncation, never silent. " +
+      "Indices are valid for this snapshot's `generation` only and go stale if the page " +
+      "changes. Pass `goal` to add Jev relevance `ranking` (with per-candidate probabilities " +
+      "and confidence) over the table — advisory only; `interact` verdicts still dispose. " +
+      "Ranking needs the user's `TYPESAFE_API_KEY`; when ranking is unavailable the snapshot " +
+      "still returns with an explicit `rankingStatus` (`unavailable-missing-key` / " +
+      "`unavailable-request-failure`) and `ranking: null` — never an error. Performs no " +
+      "interaction, writes nothing, adds no audit-log entry.",
+    {
+      tabId: z.string(),
+      goal: z
+        .string()
+        .optional()
+        .describe(
+          "Natural-language task for relevance ordering; omitted → unranked snapshot, no Jev call",
+        ),
+    },
+    async ({ tabId, goal }) => {
+      seen("read_actionable");
+      try {
+        const { value } = await runTabAction(async (depth) => {
+          const wc = tabs.webContentsFor(tabId);
+          const snapshot = await readActionable(wc, tabId, depth);
+          if (goal === undefined) return snapshot;
+          const { status, ranking } = await rankRelevance(
+            snapshot.elements,
+            { url: snapshot.url, title: snapshot.title, text: snapshot.text.text },
+            goal,
+          );
+          return { ...snapshot, ranking, rankingStatus: status };
+        });
+        return ok(value);
       } catch (e) {
         return fail(e);
       }

@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Actionable Content Fixture</title>
+  </head>
+  <body>
+    <h1>Search flights</h1>
+    <p>Find your next trip with the form below.</p>
+    <form>
+      <label for="from">From</label>
+      <input id="from" type="text" value="Zurich" />
+      <label for="to">Where to?</label>
+      <input id="to" type="text" value="" />
+      <label for="date">Departure</label>
+      <input id="date" type="text" value="" />
+      <button type="submit" id="search">Search flights</button>
+      <button type="button" id="more">Show more options</button>
+    </form>
+    <nav>
+      <a href="/deals" id="deals">Today's deals</a>
+      <a href="/help" id="help">Help</a>
+    </nav>
+    <label><input type="checkbox" id="direct" /> Direct flights only</label>
+    <span style="display: none" id="hidden">HIDDEN_SENTINEL_SHOULD_NOT_APPEAR</span>
+    <button type="button" disabled id="disabled">Unavailable</button>
+    <footer>Footer boilerplate with lots of words that still count as visible text.</footer>
+  </body>
+</html>

@@ -12,7 +12,7 @@
 
 import type { WebContents } from "electron";
 import { config } from "../config.js";
-import { HyppoError } from "../errors.js";
+import { HyppoError, isHyppoError } from "../errors.js";
 import { InteractionLog } from "../safety/interaction-log.js";
 import {
   matchBlocklist,
@@ -22,6 +22,7 @@ import {
   type TargetDescriptor,
 } from "../safety/blocklist.js";
 import { chooseOption, listOptions } from "./choose-option.js";
+import { resolveSnapshotTarget } from "./actionable.js";
 import { SELECTOR_SYNTAX_HELPER, assertSelectorValid } from "./selector-syntax.js";
 import type {
   InteractOperation,
@@ -289,6 +290,42 @@ async function descriptorOrNull(
   return (d as TargetDescriptor | null) ?? null;
 }
 
+/**
+ * Malformed-call guard (feature 027): a caller addresses a target either by
+ * `selector` or by snapshot reference (`elementIndex` + `generation`), never
+ * both, and never half a reference. Snapshot references are meaningless for
+ * `space` (focused element) and `scroll` (no target). Returns the error to
+ * throw, or `null` when the shape is valid. Shared by the MCP dispatch and
+ * `interact` so a direct call is guarded too.
+ */
+export function checkInteractTargetShape(
+  operation: InteractOperation,
+  selector: string | undefined,
+  elementIndex: number | undefined,
+  generation: string | undefined,
+): HyppoError | null {
+  if (elementIndex === undefined && generation === undefined) return null;
+  if (selector !== undefined) {
+    return new HyppoError(
+      "BATCH_REJECTED",
+      "interact accepts either `selector` or a snapshot reference (`elementIndex` + `generation`), not both.",
+    );
+  }
+  if (elementIndex === undefined || generation === undefined) {
+    return new HyppoError(
+      "BATCH_REJECTED",
+      "A snapshot reference needs both `elementIndex` and `generation`.",
+    );
+  }
+  if (operation === "space" || operation === "scroll") {
+    return new HyppoError(
+      "BATCH_REJECTED",
+      `Operation "${operation}" takes no target: snapshot references address click / fill / choose_option / list_options only.`,
+    );
+  }
+  return null;
+}
+
 export async function interact(
   wc: WebContents,
   log: InteractionLog,
@@ -297,9 +334,73 @@ export async function interact(
   selector: string | undefined,
   value: string | undefined,
   label?: string,
+  snapshotRef?: { generation: string; index: number },
+): Promise<{ chosenOption?: ChosenOption } | ListOptionsPayload | FillResult | void> {
+  // Snapshot indices (feature 027) resolve to a private selector before the
+  // normal flow: the model never sees a selector, and every verdict below is
+  // recomputed live, so safety never trusts the snapshot's marker.
+  let display: string | undefined;
+  if (snapshotRef !== undefined) {
+    const shapeError = checkInteractTargetShape(
+      operation,
+      selector,
+      snapshotRef.index,
+      snapshotRef.generation,
+    );
+    if (shapeError) throw shapeError;
+    selector = await resolveSnapshotTarget(wc, snapshotRef.generation, snapshotRef.index);
+    display = `#${snapshotRef.index}`;
+  }
+  try {
+    return await interactResolved(wc, log, tabId, operation, selector, value, label, display);
+  } catch (e) {
+    // The private selector must never reach the caller: a model that reads it
+    // could replay it as a `selector`, defeating FR-005. Rewrite it to the
+    // snapshot display reference in messages and causes.
+    if (display !== undefined && selector !== undefined) {
+      throw scrubSnapshotError(e, selector, display);
+    }
+    throw e;
+  }
+}
+
+/**
+ * Rewrite an exact private-selector occurrence to its snapshot display
+ * reference, preserving code and details (feature 027, FR-005).
+ */
+export function scrubSnapshotError(e: unknown, selector: string, display: string): unknown {
+  if (isHyppoError(e)) {
+    const causeHit =
+      typeof e.details.cause === "string" && e.details.cause.includes(selector);
+    if (!e.message.includes(selector) && !causeHit) return e;
+    const details = { ...e.details };
+    if (causeHit && typeof details.cause === "string") {
+      details.cause = details.cause.split(selector).join(display);
+    }
+    return new HyppoError(e.code, e.message.split(selector).join(display), details);
+  }
+  if (e instanceof Error && e.message.includes(selector)) {
+    const scrubbed = new Error(e.message.split(selector).join(display));
+    scrubbed.stack = e.stack;
+    return scrubbed;
+  }
+  return e;
+}
+
+async function interactResolved(
+  wc: WebContents,
+  log: InteractionLog,
+  tabId: string,
+  operation: InteractOperation,
+  selector: string | undefined,
+  value: string | undefined,
+  label?: string,
+  display?: string,
 ): Promise<{ chosenOption?: ChosenOption } | ListOptionsPayload | FillResult | void> {
   const url = wc.getURL();
-  const target = selector ?? null;
+  // The audit log names the snapshot entry, not the private selector — the
+  // selector never leaves the main process (feature 027, FR-005).
+  const target = display ?? selector ?? null;
   let logged = false;
   let filledValue: string | undefined;
 

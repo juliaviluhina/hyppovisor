@@ -47,6 +47,18 @@ export const config = {
   /** Chrome height reserved at the top of the window for the renderer UI. */
   chromeHeight: 104,
 
+  // ── feature 027: actionable page read ─────────────────────────────────────
+  /** Max table entries one read_actionable call returns before truncation (FR-004). */
+  actionableElementCap: numFromEnv("HYPPO_ACTIONABLE_ELEMENT_CAP", 250),
+  /** Max bytes of visible text one read_actionable call returns before truncation (FR-004). */
+  actionableTextBytes: numFromEnv("HYPPO_ACTIONABLE_TEXT_BYTES", 24 * 1024),
+  /** Byte budget for one read_actionable payload; tail entries drop past it (FR-004). */
+  actionableMaxBytes: numFromEnv("HYPPO_ACTIONABLE_MAX_BYTES", 64 * 1024),
+  /** Bounded per-attempt timeout for the Jev ranking request in ms (FR-010). */
+  jevRequestTimeoutMs: numFromEnv("HYPPO_JEV_REQUEST_TIMEOUT_MS", 25_000),
+  /** Max attempts for a Jev ranking request incl. the first try (FR-010). */
+  jevRequestMaxAttempts: numFromEnv("HYPPO_JEV_REQUEST_MAX_ATTEMPTS", 3),
+
   // ── feature 014: local instance-management panel ──────────────────────────
   /**
    * SIGTERM → SIGKILL grace window when the panel shuts down another instance
