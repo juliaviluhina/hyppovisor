@@ -109,6 +109,7 @@
 - [X] T024 [P] Clarify refused-marker semantics in `docs/safety.md` if the safety review asks for it
 - [X] T025 Run `npm test`, `npm run lint`, and `quickstart.md` Scenarios 1–4; fix fallout
 - [X] T026 Manual live-Jev ranking check once (paid API, unrecorded) per research.md R6 — done 2026-09-21 vs test-027 instance: status ok, correct top pick (conf 0.95), stale rejection verified
+- [X] T027 Integration spec `tests/integration/actionable.spec.ts` (4 tests: atomic snapshot, sensitive markers, edge pages, index addressing + stale) plus `readActionable`/`snapshotRef` e2e handles in `src/main/index.ts`; fixed content-addressed generation (SC-003) found by the determinism test
 
 ---
 

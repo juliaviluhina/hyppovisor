@@ -214,20 +214,19 @@ export function actionableScript(): string {
   } catch (e) { return { __collectorFailed: true, message: String((e && e.message) || e) }; }
   })()`;
 }
-
 /**
  * Opaque token binding one table + text capture together (research.md R2).
- * Any difference in page identity or observed content yields another token,
- * so a stale snapshot can never validate against a changed page.
+ * Content-addressed (URL + records + text) — deliberately NOT time-addressed,
+ * so re-reading an unchanged page yields the same generation (SC-003). Any
+ * difference in identity or observed content yields another token, so a stale
+ * snapshot can never validate against a changed page.
  */
-export function generationFor(  url: string,
-  observedAt: string,
+export function generationFor(
+  url: string,
   records: Pick<ActionableRawRecord, "role" | "label" | "value">[],
   text: string,
 ): string {
-  return createHash("sha256")
-    .update(JSON.stringify({ url, observedAt, records, text }))
-    .digest("hex");
+  return createHash("sha256").update(JSON.stringify({ url, records, text })).digest("hex");
 }
 
 /**
@@ -419,7 +418,7 @@ export async function readActionable(
 
   // Renumber after trimming so indices stay dense 1..N.
   const renumbered = kept.map((e, i) => ({ ...e, index: i + 1 }));
-  const generation = generationFor(url, raw.observedAt, raw.records, raw.text);
+  const generation = generationFor(url, raw.records, raw.text);
 
   storeSnapshotEntry(generation, {
     url,

@@ -56,22 +56,18 @@ const rec = (o: Partial<ActionableRawRecord>): ActionableRawRecord => ({
   },
   ...o,
 });
-
-describe("generationFor — snapshot binding token (research.md R2)", () => {  const records = [rec({})];
-  it("is deterministic for the same capture", () => {
-    expect(generationFor("https://x.test", "2026-09-21T00:00:00.000Z", records, "hi")).toBe(
-      generationFor("https://x.test", "2026-09-21T00:00:00.000Z", records, "hi"),
+describe("generationFor — snapshot binding token (research.md R2)", () => {
+  const records = [rec({})];
+  it("is deterministic for the same capture, even at different times", () => {
+    expect(generationFor("https://x.test", records, "hi")).toBe(
+      generationFor("https://x.test", records, "hi"),
     );
   });
-  it("changes when any bound input changes", () => {
-    const base = generationFor("https://x.test", "2026-09-21T00:00:00.000Z", records, "hi");
-    expect(generationFor("https://y.test", "2026-09-21T00:00:00.000Z", records, "hi")).not.toBe(base);
-    expect(
-      generationFor("https://x.test", "2026-09-21T00:00:00.000Z", [rec({ label: "Other" })], "hi"),
-    ).not.toBe(base);
-    expect(generationFor("https://x.test", "2026-09-21T00:00:00.000Z", records, "bye")).not.toBe(
-      base,
-    );
+  it("changes when identity or content changes", () => {
+    const base = generationFor("https://x.test", records, "hi");
+    expect(generationFor("https://y.test", records, "hi")).not.toBe(base);
+    expect(generationFor("https://x.test", [rec({ label: "Other" })], "hi")).not.toBe(base);
+    expect(generationFor("https://x.test", records, "bye")).not.toBe(base);
   });
 });
 

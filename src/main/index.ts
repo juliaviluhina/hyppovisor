@@ -44,6 +44,7 @@ import {
 import { readPage } from "./page/read.js";
 import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { readFormFields } from "./page/form-fields.js";
+import { readActionable } from "./page/actionable.js";
 import { takeScreenshot } from "./page/screenshot.js";
 import { listBlocklistRules } from "./safety/blocklist.js";
 import { restrictDirectoryPermissions } from "./security/file-permissions.js";
@@ -631,11 +632,21 @@ async function main(): Promise<void> {
         selector?: string,
         value?: string,
         label?: string,
+        snapshotRef?: { generation: string; index: number },
       ) =>
         withCode(() =>
           queue
             .run(() =>
-              interact(tabs.webContentsFor(tabId), log, tabId, operation, selector, value, label),
+              interact(
+                tabs.webContentsFor(tabId),
+                log,
+                tabId,
+                operation,
+                selector,
+                value,
+                label,
+                snapshotRef,
+              ),
             )
             .then((r) => {
               // list_options returns an option enumeration, not a permitted-action ack.
@@ -693,6 +704,14 @@ async function main(): Promise<void> {
             .run((d) =>
               readFormFields(tabs.webContentsFor(tabId), tabId, containerSelector, d, opts ?? {}),
             )
+            .then((r) => r.value),
+        ),
+      // Feature 027: unranked snapshot only — ranking needs TYPESAFE_API_KEY
+      // and stays a unit + manual concern (research.md R6).
+      readActionable: (tabId: string) =>
+        withCode(() =>
+          queue
+            .run((d) => readActionable(tabs.webContentsFor(tabId), tabId, d))
             .then((r) => r.value),
         ),
       waitFor: (tabId: string, selector: string, timeoutMs?: number) =>
