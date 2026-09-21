@@ -1,6 +1,6 @@
 {
   "name": "hyppovisor",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Electron companion app that opens any URL in an authenticated tab and exposes it over MCP",
   "license": "Apache-2.0",
   "type": "module",
