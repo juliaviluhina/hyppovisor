@@ -197,6 +197,15 @@ call in flight against that instance fails cleanly for its caller — the shutdo
 does not wait for it. An instance that exits or crashes on its own (or is closed
 from another instance's panel) drops off every list within a few seconds.
 
+**Copy** on any row — including your own — copies that instance's MCP connection
+settings: the same ready-to-paste `claude mcp add` command and JSON config block
+the Connection panel shows, parameterized with the row's server name, port, and
+bearer token. That is how you connect an agent to a `--background` instance you
+cannot see: copy from the list, paste into the agent client, done. Rows for
+instances that stopped responding offer their last-known settings marked as
+such; rows whose files cannot be read offer no copy rather than guessed values.
+Copying changes nothing on any instance.
+
 How discovery works: each instance writes a small `runtime.json` (`pid`, `port`,
 `mode`, `label`, `startedAt`) into its **own** profile directory once its MCP
 server has bound, and removes it on quit; the panel reads those sibling files,

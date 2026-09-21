@@ -7,6 +7,30 @@ All notable changes to HyppoVisor are documented here. This file follows the
 
 <!-- Move reviewed Unreleased notes into a dated version heading when releasing. -->
 
+### Added
+
+- `read_actionable` MCP tool: one read-only call returns a tab's actionable
+  elements as an indexed table plus its meaningful visible text, with omission
+  counts and explicit truncation instead of silent cuts.
+- `read_actionable` accepts a `goal` for Jev relevance ordering over the table
+  (needs the user's `TYPESAFE_API_KEY`); a missing key or failed request
+  returns the unranked snapshot with an explicit ranking status, never an
+  error. Snapshot indices address `interact` targets with stale rejection;
+  every refusal still applies unchanged.
+- Every instance-list row offers copy of that instance's MCP connection
+  settings — the same `claude mcp add` command and JSON config block as the
+  Connection panel, parameterized per instance — so an agent can be connected
+  to a `--background` instance without digging through profile files.
+  Unreachable rows offer marked last-known settings; unreadable rows offer no
+  copy rather than guessed values. Copying changes nothing on any instance.
+- `TYPESAFE_API_KEY` environment configuration for Jev ranking; the key is
+  never logged or persisted.
+
+### Changed
+
+- The MCP tool surface grows from eight to nine tools (docs, panel About
+  text, and skill list updated accordingly).
+
 ## [0.5.2] - 2026-09-09
 
 ### Changed

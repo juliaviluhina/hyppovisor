@@ -72,7 +72,7 @@ Cutting a release: [PACKAGING.md](PACKAGING.md).
 | [Packaging](PACKAGING.md) | `npm run dist`, the license gate, LGPL swap, signing |
 | [Connect an agent](docs/connect-an-agent.md) | HTTP + panel, stdio, verifying |
 | [Configuration](docs/configuration.md) | env vars, precedence, `settings.json` |
-| [Tools](docs/tools.md) | the eight MCP tools |
+| [Tools](docs/tools.md) | the nine MCP tools |
 | [Safety](docs/safety.md) | what it refuses, and the nuances |
 | [Security](docs/security.md) | the loopback threat model |
 | [Development](docs/development.md) | tests and the e2e suite |
