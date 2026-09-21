@@ -58,6 +58,8 @@ export const config = {
   jevRequestTimeoutMs: numFromEnv("HYPPO_JEV_REQUEST_TIMEOUT_MS", 25_000),
   /** Max attempts for a Jev ranking request incl. the first try (FR-010). */
   jevRequestMaxAttempts: numFromEnv("HYPPO_JEV_REQUEST_MAX_ATTEMPTS", 3),
+  /** Bounded wait for `launchctl getenv` when resolving TYPESAFE_API_KEY from the OS user environment. */
+  launchctlGetenvTimeoutMs: numFromEnv("HYPPO_LAUNCHCTL_GETENV_TIMEOUT_MS", 2000),
 
   // ── feature 014: local instance-management panel ──────────────────────────
   /**

@@ -47,6 +47,7 @@ import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { readFormFields } from "./page/form-fields.js";
 import { readActionable } from "./page/actionable.js";
 import { takeScreenshot } from "./page/screenshot.js";
+import { resolveTypeSafeApiKey, describeApiKeySource } from "./ranking/api-key.js";
 import { listBlocklistRules } from "./safety/blocklist.js";
 import { restrictDirectoryPermissions } from "./security/file-permissions.js";
 import type {
@@ -147,9 +148,25 @@ async function main(): Promise<void> {
   // of falling back the way older Chromium did — hit by the screenshot tool's
   // capturePage()/CDP capture in e2e. Software rendering is unaffected outside
   // HYPPO_E2E, so this never touches a real person's session.
+  //
+  // Must run before any `await` — app.disableHardwareAcceleration() throws
+  // once Electron's own (independently-timed) "ready" event has fired, and on
+  // a fast CI machine that can happen while an earlier await (e.g. resolving
+  // TYPESAFE_API_KEY below) is still pending.
   if (process.env.HYPPO_E2E === "1") {
     app.disableHardwareAcceleration();
   }
+
+  // A Dock/Finder/`open`-launched process never sees the invoking shell's
+  // exported vars (launchd doesn't inherit them); fall back to the OS-user
+  // environment so TYPESAFE_API_KEY set once via `launchctl setenv` reaches
+  // Jev ranking (feature 027) regardless of launch method. An explicit value
+  // already in this process's own environment always wins.
+  const apiKeyResolution = await resolveTypeSafeApiKey(process.env, process.platform);
+  if (apiKeyResolution.source === "launchctl" && apiKeyResolution.key) {
+    process.env["TYPESAFE_API_KEY"] = apiKeyResolution.key;
+  }
+  console.error(`[hyppovisor] ${describeApiKeySource(apiKeyResolution.source)}`);
 
   await app.whenReady();
   // Apply the same owner-only request to Electron's default profile path as to
