@@ -47,6 +47,7 @@ import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { readFormFields } from "./page/form-fields.js";
 import { readActionable } from "./page/actionable.js";
 import { takeScreenshot } from "./page/screenshot.js";
+import { resolveTypeSafeApiKey, describeApiKeySource } from "./ranking/api-key.js";
 import { listBlocklistRules } from "./safety/blocklist.js";
 import { restrictDirectoryPermissions } from "./security/file-permissions.js";
 import type {
@@ -141,6 +142,17 @@ async function main(): Promise<void> {
   // and echoed by chrome:list-instances so the panel can show an "up for …" hint.
   const instanceStartedAt = new Date().toISOString();
   const instanceMode = resolved.background ? "background" : "foreground";
+
+  // A Dock/Finder/`open`-launched process never sees the invoking shell's
+  // exported vars (launchd doesn't inherit them); fall back to the OS-user
+  // environment so TYPESAFE_API_KEY set once via `launchctl setenv` reaches
+  // Jev ranking (feature 027) regardless of launch method. An explicit value
+  // already in this process's own environment always wins.
+  const apiKeyResolution = await resolveTypeSafeApiKey(process.env, process.platform);
+  if (apiKeyResolution.source === "launchctl" && apiKeyResolution.key) {
+    process.env["TYPESAFE_API_KEY"] = apiKeyResolution.key;
+  }
+  console.error(`[hyppovisor] ${describeApiKeySource(apiKeyResolution.source)}`);
 
   // CI runners (notably GitHub Actions' macos-latest) lack a real GPU, and
   // Electron 44's Viz compositor fails hard there ("UnknownVizError") instead
