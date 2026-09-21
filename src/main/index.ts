@@ -142,6 +142,15 @@ async function main(): Promise<void> {
   const instanceStartedAt = new Date().toISOString();
   const instanceMode = resolved.background ? "background" : "foreground";
 
+  // CI runners (notably GitHub Actions' macos-latest) lack a real GPU, and
+  // Electron 44's Viz compositor fails hard there ("UnknownVizError") instead
+  // of falling back the way older Chromium did — hit by the screenshot tool's
+  // capturePage()/CDP capture in e2e. Software rendering is unaffected outside
+  // HYPPO_E2E, so this never touches a real person's session.
+  if (process.env.HYPPO_E2E === "1") {
+    app.disableHardwareAcceleration();
+  }
+
   await app.whenReady();
   // Apply the same owner-only request to Electron's default profile path as to
   // explicitly selected instance directories.

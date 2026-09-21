@@ -62,11 +62,20 @@ test("US1: panel shows the endpoint, a claude mcp add command, and a JSON block;
       await page.locator(`[data-copy="${kind}"]`).click();
       await expect(page.locator(`[data-copy="${kind}"]`)).toHaveClass(/\bok\b/);
       await expect(page.locator(`[data-copy="${kind}"]`)).toHaveAttribute("title", "Copied");
-      expect(await readClip()).toBe(expected);
+      // The renderer's writeText() promise resolves before the OS pasteboard
+      // is guaranteed to reflect it, so poll rather than reading once.
+      await expect.poll(readClip).toBe(expected);
     }
     await page.locator('[data-copy="json"]').click();
-    const copiedJson = JSON.parse(await readClip());
-    expect(copiedJson.mcpServers[E2E_SERVER_NAME].headers.Authorization).toBe(`Bearer ${token}`);
+    await expect
+      .poll(async () => {
+        try {
+          return JSON.parse(await readClip()).mcpServers[E2E_SERVER_NAME].headers.Authorization;
+        } catch {
+          return undefined;
+        }
+      })
+      .toBe(`Bearer ${token}`);
 
     await page.keyboard.press("Escape");
     await expect(page.locator("#panel")).toBeHidden();
@@ -199,7 +208,9 @@ test("US3: toggle a bearer token — masked, enforced, revealable, regenerable, 
     // Copy while masked → real bearer string on the clipboard.
     await app.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.locator('[data-copy="command"]').click();
-    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toContain(`Bearer ${token}`);
+    await expect
+      .poll(() => app.evaluate(({ clipboard }) => clipboard.readText()))
+      .toContain(`Bearer ${token}`);
 
     // Reveal → the 32-hex value is now in the field and the snippets.
     await page.locator("#token-reveal").click();
@@ -265,12 +276,12 @@ test("US4: the About block names the app, every tool, and the guarantees; Copy i
     expect(about).not.toMatch(/Bearer|HyppoGraph|orchestrator|dashboard|queue|pipeline/i);
 
     await page.locator('[data-copy="about"]').click();
-    const clip = (await app.evaluate(({ clipboard }) => clipboard.readText())).replace(
-      /\r\n/g,
-      "\n",
-    );
-    expect(clip).toBe(about);
-    expect(clip).not.toContain("Apache-2.0");
+    const readAboutClip = () =>
+      app
+        .evaluate(({ clipboard }) => clipboard.readText())
+        .then((s) => s.replace(/\r\n/g, "\n"));
+    await expect.poll(readAboutClip).toBe(about);
+    expect(await readAboutClip()).not.toContain("Apache-2.0");
 
     const appVersion = (await getConn(page)).appVersion as string;
     await expect(page.locator("#panel-body")).toContainText(`Version ${appVersion} · Apache-2.0`);

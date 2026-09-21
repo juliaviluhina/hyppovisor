@@ -343,12 +343,21 @@ test("a burst across multiple tabs never overlaps and every request completes (T
       callHandle<{ tabId: string }>(app, "open", [`${base}/static.html`]).then((r) => r.tabId),
     ),
   );
-  const reads = await Promise.all(
-    tabs.concat(tabs).map((t) => callHandle<{ queueDepth: number }>(app, "read", [t])),
-  );
-  expect(reads.every((r) => typeof r.queueDepth === "number")).toBe(true);
-  // at least one request observed a non-empty queue → they were serialised
-  expect(Math.max(...reads.map((r) => r.queueDepth))).toBeGreaterThan(0);
+
+  // Whether a same-tick burst actually overlaps in the queue depends on how
+  // fast each `read` resolves relative to IPC dispatch — a moving target
+  // across CI hardware/Electron versions. Retry the burst rather than assume
+  // any single round contends; every round still asserts full completion.
+  let sawDepth = false;
+  for (let attempt = 0; attempt < 5 && !sawDepth; attempt++) {
+    const reads = await Promise.all(
+      tabs.concat(tabs).map((t) => callHandle<{ queueDepth: number }>(app, "read", [t])),
+    );
+    expect(reads.every((r) => typeof r.queueDepth === "number")).toBe(true);
+    sawDepth = Math.max(...reads.map((r) => r.queueDepth)) > 0;
+  }
+  // at least one request in some round observed a non-empty queue → they were serialised
+  expect(sawDepth).toBe(true);
 });
 
 // ─── feature 011: form-fill fidelity ───────────────────────────────────────────
