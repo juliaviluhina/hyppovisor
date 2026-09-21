@@ -7,6 +7,16 @@ All notable changes to HyppoVisor are documented here. This file follows the
 
 <!-- Move reviewed Unreleased notes into a dated version heading when releasing. -->
 
+## [0.6.1] - 2026-09-21
+
+### Fixed
+
+- Pasting a URL into the address bar (Cmd+V or the context-menu Paste item)
+  could crash the app with a native `SIGSEGV`. The underlying cause is a
+  macOS 26/27 ("Tahoe") text-input compatibility bug in the Chromium version
+  bundled with Electron 33; upgraded Electron to 44.4.3, which includes
+  Apple/Electron's upstream fix.
+
 ## [0.6.0] - 2026-09-21
 
 ### Added
