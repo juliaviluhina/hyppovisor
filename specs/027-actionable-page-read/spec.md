@@ -8,6 +8,14 @@
 
 **Input**: User description: "Add one more Jev-based MCP tool to HyppoVisor that returns only actionable elements and meaningful content — a compact, ranked page snapshot reusing jev-ultrafast ideas (atomic DOM snapshot, indexed element table, visible-text budget, single-round-trip Jev ranking). Jev proposes, interact disposes; no autonomous execution, no text generation."
 
+## Clarifications
+
+### Session 2026-09-21
+
+- Q: How should the snapshot treat credential, file-upload, consent, and submit controls — list them with a refused marker, or exclude them entirely? → A: List with refused marker.
+- Q: Should a failed Jev ranking request be retried before reporting the in-payload request-failure status, or attempted exactly once? → A: Bounded retries (back off on rate-limit/overload, then report failure).
+- Q: When ranking succeeds but confidence is low across all candidates, return the ordering anyway or report no confident match? → A: Return the ordering with confidence values; the caller decides what to trust.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Compact actionable snapshot (Priority: P1)
@@ -63,15 +71,15 @@ The agent uses the snapshot to prepare a draft (fill a plain field, tick a plain
 - How does the tool handle pages with no actionable elements (pure article text)?
 - How does the tool handle very large pages where the element table or text exceeds the budget? (Explicit omission counts and truncation markers, never silent drops.)
 - What happens when two snapshots of the "same" page disagree because async content settled between them?
-- How does the tool treat credential, file-upload, and consent controls — listed with a refused marker, or excluded entirely?
-- What happens when the ranking service returns low confidence across all candidates?
+- Credential, file-upload, and consent controls are listed with a refused marker and never actionable (see FR-002); their values are omitted where sensitive.
+- Low-confidence rankings are returned as-is with their confidence values; the tool never suppresses an ordering for being uncertain — the caller decides what to trust.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: System MUST expose one new read-only MCP tool that returns, in a single call, an indexed table of a tab's actionable elements (visible, enabled, in-viewport controls) plus the tab's meaningful visible text.
-- **FR-002**: System MUST exclude non-actionable nodes from the table: hidden/`aria-hidden` content, disabled controls, offscreen elements, scripts, styles, and decorative nodes.
+- **FR-002**: System MUST exclude non-actionable nodes from the table: hidden/`aria-hidden` content, disabled controls, offscreen elements, scripts, styles, and decorative nodes. Credential, file-upload, consent, and submit controls MUST be listed with an explicit refused/unactionable marker (never actionable, values omitted for credentials) so the agent can see why a visible control has no usable entry.
 - **FR-003**: Each table entry MUST carry at minimum a stable-within-snapshot index, the element's role, its human-readable label (accessible name), and its current value/state where applicable.
 - **FR-004**: System MUST bound both the element table and the text extract by explicit budgets, and MUST report omission counts and truncation markers whenever content is cut — never silently.
 - **FR-005**: Element references in the payload MUST be snapshot-scoped, not reusable selectors or addresses: using them after the page changes MUST fail safe (stale rejection), and model output MUST never become executable input (no selectors, coordinates, or scripts generated from rankings).
@@ -79,7 +87,7 @@ The agent uses the snapshot to prepare a draft (fill a plain field, tick a plain
 - **FR-007**: Text scope MUST be the full meaningful visible text of the page within the stated budget (read_page-style), so one call replaces the read_page + read_form_fields pair.
 - **FR-008**: System MUST treat the tool as a pure derivation: it acts on nothing, submits nothing, writes no audit entry for the read itself, and persists no page content.
 - **FR-009**: System MUST keep every existing `interact` refusal and safety verdict unchanged for actions addressed via the new snapshot — the snapshot grants no new capability to act.
-- **FR-010**: When ranking is requested but unavailable (missing `TYPESAFE_API_KEY` or Jev request error), the tool MUST return the unranked snapshot PLUS an explicit machine-readable ranking status (e.g. `ranking: unavailable`, with a reason distinguishing missing key from request failure) so the caller can see what happened. The tool MUST NOT throw or return a transport-level error in this case.
+- **FR-010**: When ranking is requested but unavailable (missing `TYPESAFE_API_KEY` or Jev request error after bounded retries with backoff on rate-limit/overload responses), the tool MUST return the unranked snapshot PLUS an explicit machine-readable ranking status (e.g. `ranking: unavailable`, with a reason distinguishing missing key from request failure) so the caller can see what happened. The tool MUST NOT throw or return a transport-level error in this case.
 
 ### Key Entities *(include if feature involves data)*
 
