@@ -108,7 +108,7 @@
 - [X] T023 [P] Update tool list in `skills/hyppovisor/SKILL.md` and connection-panel About text + `tests/unit/connection-snippets.test.ts`
 - [X] T024 [P] Clarify refused-marker semantics in `docs/safety.md` if the safety review asks for it
 - [X] T025 Run `npm test`, `npm run lint`, and `quickstart.md` Scenarios 1–4; fix fallout
-- [ ] T026 Manual live-Jev ranking check once (paid API, unrecorded) per research.md R6
+- [X] T026 Manual live-Jev ranking check once (paid API, unrecorded) per research.md R6 — done 2026-09-21 vs test-027 instance: status ok, correct top pick (conf 0.95), stale rejection verified
 
 ---
 
