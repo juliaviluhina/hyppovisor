@@ -116,7 +116,12 @@ test("US1: switching tabs cancels pending new-tab mode", async () => {
     await page.locator("#address").press("Enter");
     await expect(page.locator("#address")).toHaveValue(`${base}/form.html`);
     await expect.poll(() => listUrls(page)).toHaveLength(2);
-    expect(await listUrls(page)).toContain(`${base}/form.html`);
+    // #address updates as soon as the navigate is submitted; the tab-list
+    // model's own url field can lag a beat behind on slower CI, so poll here
+    // too rather than assuming it's already settled.
+    await expect
+      .poll(() => listUrls(page).then((urls) => urls.includes(`${base}/form.html`)))
+      .toBe(true);
   });
 });
 
