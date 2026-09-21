@@ -34,5 +34,7 @@ contextBridge.exposeInMainWorld("hyppo", {
   // Local instance-management panel (feature 014).
   listInstances: () => ipcRenderer.invoke("chrome:list-instances"),
   closeInstance: (pid) => ipcRenderer.invoke("chrome:close-instance", pid),
+  // Per-row settings copy (feature 028).
+  instanceSettings: (pid) => ipcRenderer.invoke("chrome:instance-settings", pid),
   closeAllTabs: () => ipcRenderer.invoke("chrome:close-all-tabs"),
 });

@@ -53,8 +53,7 @@ const validDomain = (value: unknown): value is string => typeof value === "strin
 const normalizedDomain = (value: string): string => normalizeHost(value) as string;
 
 /** Validate a parsed object against the settings schema (contracts/settings-file.md). */
-function validate(raw: unknown): ConnectionSettings | null {
-  if (typeof raw !== "object" || raw === null) return null;
+function validate(raw: unknown): ConnectionSettings | null {  if (typeof raw !== "object" || raw === null) return null;
   const o = raw as Record<string, unknown>;
   if (!isPort(o.port)) return null;
   if (typeof o.tokenRequired !== "boolean") return null;
@@ -72,6 +71,22 @@ function validate(raw: unknown): ConnectionSettings | null {
       ? { blockedDomains: o.blockedDomains.filter(validDomain).map(normalizedDomain) }
       : {}),
   };
+}
+
+/**
+ * Strictly parse settings file content (feature 028): returns the validated
+ * settings, or `null` when absent, unreadable, non-JSON, or schema-invalid —
+ * with NO defaults substitution, so callers can distinguish "no settings"
+ * from "default settings" (a sibling copy must never fabricate).
+ */
+export function parseSettingsContent(text: string): ConnectionSettings | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  return validate(parsed);
 }
 
 /** Upgrade profiles created before bearer authentication became the default. */

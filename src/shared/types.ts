@@ -522,3 +522,29 @@ export interface ActionableSnapshot {
   omissions: OmissionRecord;
   queueDepth: number;
 }
+
+// ─── feature 028: per-instance settings copy ─────────────────────────────────
+
+export type RowSettingsState = "live" | "unreachable" | "unavailable";
+
+/** Per-list-row connection data for the settings-copy actions (data-model.md §1). */
+export interface RowSettings {
+  serverName: string;
+  transport: "http" | "stdio";
+  /** Effective port from the runtime file; `null` for stdio rows. */
+  port: number | null;
+  tokenRequired: boolean;
+  /** The profile's persisted token; `null` when auth is off or unreadable. */
+  token: string | null;
+  state: RowSettingsState;
+  /** Human note when auth is off; `null` otherwise. */
+  authNote: string | null;
+}
+
+/** The copyable per-row output (data-model.md §2). Absent when unavailable. */
+export interface SettingsBlocks {
+  command: string;
+  /** Valid `mcpServers` JSON block; parses without edits. */
+  json: string;
+  authNote: string | null;
+}
