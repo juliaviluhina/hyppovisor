@@ -37,7 +37,7 @@ and apply for that run only.
 | `HYPPO_MCP_TOKEN` | _unset_ | Require `Authorization: Bearer <token>`. Panel's token controls go read-only. |
 | `HYPPO_MCP_STDIO` | _unset_ | `1` = stdio instead of HTTP. |
 | `HYPPO_BLOCKED_DOMAINS` | _unset_ | Comma-separated hostnames that HyppoVisor must never navigate to. The panel field is read-only. |
-| `TYPESAFE_API_KEY` | _unset_ | Your own TypeSafe account key. Enables Jev relevance ranking for `read_actionable` when a `goal` is passed; without it the tool returns the unranked snapshot with an explicit status. Never logged or persisted. |
+| `TYPESAFE_API_KEY` | _unset_ | Your own TypeSafe account key. Enables Jev relevance ranking for `read_actionable` when a `goal` is passed; without it the tool returns the unranked snapshot with an explicit status. Never logged or persisted. See [TYPESAFE_API_KEY resolution](#typesafe_api_key-resolution) below — a plain shell `export` does **not** reach a Dock/Finder-launched instance. |
 | `HYPPO_USER_DATA_DIR` | _Electron default_ | Use this exact directory as the profile (settings, recent URLs, interaction log, browser session). Overrides `--instance`'s directory; the display label then comes from `--instance` if given, else this path's last segment. |
 
 ```bash
@@ -54,6 +54,32 @@ HYPPO_MCP_PORT=8080 HYPPO_MCP_TOKEN=s3cret HYPPO_BLOCKED_DOMAINS=example.com,exa
 
 An env-set value applies for that run only; the persisted value is kept for a
 later launch without the override.
+
+## TYPESAFE_API_KEY resolution
+
+`TYPESAFE_API_KEY` is resolved once at startup, in order:
+
+1. **This process's own environment.** Only reached by launching HyppoVisor
+   directly from a shell that has it exported (`TYPESAFE_API_KEY=... ./HyppoVisor`),
+   or a wrapper script / CI job that sets it the same way. A plain `export` in
+   `.zshrc`/`.zprofile` does **not** put it here for a Dock/Finder/`open`-launched
+   instance — launchd-started GUI processes never inherit a shell's exported
+   variables, no matter what your login shell's profile sets.
+2. **macOS only — the OS-user environment, via `launchctl getenv TYPESAFE_API_KEY`.**
+   This is the store Dock/Finder/`open`-launched processes actually see. Set it
+   once with:
+   ```bash
+   launchctl setenv TYPESAFE_API_KEY sk-...
+   ```
+   then (re)start HyppoVisor. This does **not** survive a reboot or logout on
+   its own — repeat it each session, or wrap it in a login item / LaunchAgent
+   for something durable.
+3. **Unresolved.** `read_actionable`'s `rankingStatus` reports
+   `unavailable-missing-key` rather than erroring; every other tool is
+   unaffected.
+
+The app logs which source won (never the key value) on every startup, e.g.
+`[hyppovisor] TYPESAFE_API_KEY found in the OS user environment (launchctl getenv)`.
 
 ## settings.json
 
