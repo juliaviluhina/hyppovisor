@@ -157,8 +157,11 @@ test("US1: closing a non-current instance frees its MCP port and drops it from e
     const initechPid = await pidOf(trio.apps.initech);
 
     await expect.poll(async () => (await listFrom(acmePage)).length, { timeout: 3000 }).toBe(3);
-    // initech is serving MCP before the shutdown.
-    expect((await mcpPost(trio.ports.initech, init(1), AUTH)).status).toBe(200);
+    // initech is serving MCP before the shutdown — its row can appear in the
+    // instance list slightly before its HTTP listener is bound, so poll.
+    await expect
+      .poll(() => mcpPost(trio.ports.initech, init(1), AUTH).then((r) => r.status), { timeout: 3000 })
+      .toBe(200);
 
     // Shut it down from acme's panel path (no confirmation prompt in the IPC —
     // that is the renderer's job; here we exercise the mechanism).
