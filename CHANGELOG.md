@@ -7,6 +7,17 @@ All notable changes to HyppoVisor are documented here. This file follows the
 
 <!-- Move reviewed Unreleased notes into a dated version heading when releasing. -->
 
+## [0.6.2] - 2026-09-21
+
+### Added
+
+- `TYPESAFE_API_KEY` (for Jev ranking) is now also resolved from the OS user
+  environment (`launchctl getenv`, macOS) when it isn't already set in
+  HyppoVisor's own process. Dock, Finder, and `open`-launched instances never
+  inherited a shell-exported key before; a key set once with
+  `launchctl setenv TYPESAFE_API_KEY ...` now reaches every launch method. An
+  explicit value already in the process's own environment still wins.
+
 ## [0.6.1] - 2026-09-21
 
 ### Fixed
