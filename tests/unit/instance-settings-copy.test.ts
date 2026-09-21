@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
 import {
   serverNameForLabel,
   findProfileDirByPid,
@@ -83,9 +84,20 @@ describe("findProfileDirByPid / readPersistedAuth — strict file reads", () => 
 });
 
 describe("readInstanceSettings — row assembly (data-model.md §1)", () => {
-  // pid 1 (launchd) is alive but foreign: its port never responds, so rows
-  // using it are deterministically "not-responding" without live processes.
-  const FOREIGN_PID = 1;
+  // A real spawned sleeper stands in for the foreign instance: its pid is
+  // alive on every platform (pid 1 is not, on Windows), while its closed port
+  // never responds — so rows using it are deterministically "not-responding".
+  let sleeper: ChildProcess | null = null;
+  beforeEach(() => {
+    sleeper = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], {
+      stdio: "ignore",
+    });
+  });
+  afterEach(() => {
+    sleeper?.kill();
+    sleeper = null;
+  });
+  const FOREIGN_PID = () => sleeper!.pid!;
 
   it("returns null for a pid with no listed row", async () => {
     await expect(
@@ -105,8 +117,8 @@ describe("readInstanceSettings — row assembly (data-model.md §1)", () => {
     });
   });
   it("marks unreachable rows last-known with persisted token (FR-005)", async () => {
-    profile("hid", { pid: FOREIGN_PID, port: 7358, mode: "background", label: "hid", startedAt: "t" }, settingsDoc(true));
-    const out = await readInstanceSettings(root, self(), selfAuth, { probeTimeoutMs: 50 }, FOREIGN_PID);
+    profile("hid", { pid: FOREIGN_PID(), port: 7358, mode: "background", label: "hid", startedAt: "t" }, settingsDoc(true));
+    const out = await readInstanceSettings(root, self(), selfAuth, { probeTimeoutMs: 50 }, FOREIGN_PID());
     expect(out).toMatchObject({
       serverName: "hyppovisor-hid",
       transport: "http",
@@ -117,26 +129,26 @@ describe("readInstanceSettings — row assembly (data-model.md §1)", () => {
     });
   });
   it("omits the token with a note when auth is off (clarify Q1)", async () => {
-    profile("open", { pid: FOREIGN_PID, port: 7359, mode: "foreground", label: "open", startedAt: "t" }, settingsDoc(false));
-    const out = await readInstanceSettings(root, self(), selfAuth, { probeTimeoutMs: 50 }, FOREIGN_PID);
+    profile("open", { pid: FOREIGN_PID(), port: 7359, mode: "foreground", label: "open", startedAt: "t" }, settingsDoc(false));
+    const out = await readInstanceSettings(root, self(), selfAuth, { probeTimeoutMs: 50 }, FOREIGN_PID());
     expect(out?.state).toBe("unreachable");
     expect(out?.tokenRequired).toBe(false);
     expect(out?.token).toBeNull();
     expect(out?.authNote).toMatch(/auth is off/);
   });
   it("yields unavailable — never fabricated — for unreadable settings (clarify Q2)", async () => {
-    profile("bad", { pid: FOREIGN_PID, port: 7360, mode: "background", label: "bad", startedAt: "t" }, null);
-    const out = await readInstanceSettings(root, self(), selfAuth, { probeTimeoutMs: 50 }, FOREIGN_PID);
+    profile("bad", { pid: FOREIGN_PID(), port: 7360, mode: "background", label: "bad", startedAt: "t" }, null);
+    const out = await readInstanceSettings(root, self(), selfAuth, { probeTimeoutMs: 50 }, FOREIGN_PID());
     expect(out?.state).toBe("unavailable");
     expect(out?.token).toBeNull();
   });
   it("serves stdio rows as live with null port and no token (bearer is HTTP-scoped)", async () => {
     profile(
       "std",
-      { pid: FOREIGN_PID, port: null, mode: "background", label: "std", startedAt: "t" },
+      { pid: FOREIGN_PID(), port: null, mode: "background", label: "std", startedAt: "t" },
       settingsDoc(true),
     );
-    const out = await readInstanceSettings(root, self(), selfAuth, { probeTimeoutMs: 50 }, FOREIGN_PID);
+    const out = await readInstanceSettings(root, self(), selfAuth, { probeTimeoutMs: 50 }, FOREIGN_PID());
     // stdio rows skip the TCP probe; pid 1 is alive so the row is live.
     expect(out).toMatchObject({
       transport: "stdio",

@@ -6,7 +6,7 @@
 // connection-snippets.test.ts.
 
 import { test, expect, _electron as electron, type Page } from "@playwright/test";
-import { readFileSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -197,13 +197,19 @@ test("US3: unreadable sibling settings yield unavailable, never fabricated", asy
         await new Promise((r) => setTimeout(r, 100));
       }
     }
-    chmodSync(settingsPath, 0o000);
+    // Make the file unreadable in a cross-platform way: POSIX chmod semantics
+    // do not exist on Windows (the owner keeps read access), but replacing the
+    // file with a directory fails the read everywhere.
+    const original = readFileSync(settingsPath, "utf8");
+    rmSync(settingsPath);
+    mkdirSync(settingsPath);
     try {
       const rs = await rowSettings(pageA, rowB.pid);
       expect(rs?.state).toBe("unavailable");
       expect(rs?.token).toBeNull();
     } finally {
-      chmodSync(settingsPath, 0o600);
+      rmSync(settingsPath, { recursive: true, force: true });
+      writeFileSync(settingsPath, original);
     }
     // Restored files read again — the row recovers without relaunch.
     const rs = await rowSettings(pageA, rowB.pid);
