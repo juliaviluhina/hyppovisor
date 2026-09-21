@@ -9,6 +9,7 @@ import {
   mcpAddCommand,
   mcpJsonConfig,
   stdioJsonConfig,
+  blocksForRow,
   type SnippetState,
 } from "../../src/renderer/snippets.js";
 
@@ -120,5 +121,62 @@ describe("serverName threading (feature 012)", () => {
     expect(mcpAddCommand(noToken)).toContain(" hyppovisor http://");
     expect(Object.keys(JSON.parse(mcpJsonConfig(noToken)).mcpServers)).toEqual(["hyppovisor"]);
     expect(Object.keys(JSON.parse(stdioJsonConfig({ command: "e", args: [], env: { HYPPO_MCP_STDIO: "1" } })).mcpServers)).toEqual(["hyppovisor"]);
+  });
+});
+
+// ── feature 028 — per-row settings copy ──────────────────────────────────────
+describe("blocksForRow (feature 028)", () => {
+  const launch = { command: "/x/electron", args: ["/x/index.js"], env: { HYPPO_MCP_STDIO: "1" } as const };
+  const live = {
+    serverName: "hyppovisor-hid",
+    transport: "http" as const,
+    port: 7358,
+    tokenRequired: true,
+    token: "tok123",
+    state: "live" as const,
+  };
+
+  it("live HTTP rows reuse the panel builders byte-for-byte (FR-007)", () => {
+    const out = blocksForRow(live)!;
+    expect(out.command).toBe(mcpAddCommand({ port: 7358, tokenRequired: true, token: "tok123", serverName: "hyppovisor-hid" }));
+    expect(out.json).toBe(mcpJsonConfig({ port: 7358, tokenRequired: true, token: "tok123", serverName: "hyppovisor-hid" }));
+    expect(out.command).toContain("hyppovisor-hid http://127.0.0.1:7358/mcp");
+    expect(JSON.parse(out.json).mcpServers["hyppovisor-hid"].headers.Authorization).toBe("Bearer tok123");
+  });
+
+  it("auth-off rows omit the header (clarify Q1)", () => {
+    const out = blocksForRow({ ...live, tokenRequired: false, token: null })!;
+    expect(out.command).not.toContain("Authorization");
+    expect(JSON.parse(out.json).mcpServers["hyppovisor-hid"].headers).toBeUndefined();
+  });
+
+  it("unreachable rows carry a marker that survives pasting", () => {
+    const out = blocksForRow({ ...live, state: "unreachable" })!;
+    expect(out.command.startsWith("#")).toBe(true);
+    expect(out.command).toContain("hyppovisor-hid http://127.0.0.1:7358/mcp");
+    const obj = JSON.parse(out.json);
+    expect(obj.mcpServers["hyppovisor-hid"].headers.Authorization).toBe("Bearer tok123");
+    expect(typeof obj._note).toBe("string");
+  });
+
+  it("unavailable rows and HTTP rows without a port offer nothing", () => {
+    expect(blocksForRow({ ...live, state: "unavailable" })).toBeNull();
+    expect(blocksForRow({ ...live, port: null })).toBeNull();
+  });
+
+  it("stdio rows get the stdio launch command and JSON (clarify Q3)", () => {
+    const out = blocksForRow(
+      { serverName: "hyppovisor-std", transport: "stdio", port: null, tokenRequired: false, token: null, state: "live" },
+      launch,
+    )!;
+    expect(out.command).toBe("HYPPO_MCP_STDIO=1 /x/electron /x/index.js");
+    const obj = JSON.parse(out.json);
+    expect(obj.mcpServers["hyppovisor-std"].env).toEqual({ HYPPO_MCP_STDIO: "1" });
+  });
+
+  it("stdio rows without launch coordinates offer nothing", () => {
+    expect(
+      blocksForRow({ serverName: "hyppovisor-std", transport: "stdio", port: null, tokenRequired: false, token: null, state: "live" }),
+    ).toBeNull();
   });
 });

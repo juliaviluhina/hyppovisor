@@ -57,6 +57,69 @@ export function stdioJsonConfig(launch: StdioLaunchLike, serverName = "hyppoviso
   );
 }
 
+/** Runnable stdio launch line for a row running in stdio mode (feature 028).
+ *  The `HYPPO_MCP_STDIO=1` prefix is load-bearing, not decoration. */
+export function stdioCommandText(launch: StdioLaunchLike): string {
+  return `HYPPO_MCP_STDIO=1 ${[launch.command, ...launch.args].join(" ")}`;
+}
+
+// ── feature 028: per-instance settings copy ─────────────────────────────────
+
+/** Marker prefixed (as a shell comment) to command blocks for unreachable rows. */
+export const UNREACHABLE_COMMAND_NOTE = "# Unreachable instance — last-known settings, may fail to connect.";
+/** Key carrying the unreachable marker in JSON blocks (valid JSON preserved). */
+export const UNREACHABLE_JSON_NOTE = "Unreachable instance — last-known settings, may fail to connect.";
+
+/** The subset of a list row the block assembler needs (mirrors shared `RowSettings`). */
+export interface RowBlockInput {
+  serverName: string;
+  transport: "http" | "stdio";
+  port: number | null;
+  tokenRequired: boolean;
+  token: string | null;
+  state: "live" | "unreachable" | "unavailable";
+}
+
+/**
+ * Assemble a row's copyable blocks (feature 028, contract instance-settings-copy.md).
+ * Returns `null` when the row offers no copy (unavailable files, or an HTTP row
+ * with no port). Live HTTP rows reuse `mcpAddCommand` / `mcpJsonConfig` verbatim
+ * so the own row matches the panel byte-for-byte (FR-007); unreachable rows get
+ * the same content plus a marker that survives pasting (shell comment / `_note`).
+ * Auth-off rows omit the header (clarify Q1); the auth note itself is UI-side.
+ */
+export function blocksForRow(
+  rs: RowBlockInput,
+  stdioLaunch?: StdioLaunchLike,
+): { command: string; json: string } | null {
+  if (rs.state === "unavailable") return null;
+  if (rs.transport === "stdio") {
+    if (!stdioLaunch) return null;
+    return {
+      command: stdioCommandText(stdioLaunch),
+      json: stdioJsonConfig(stdioLaunch, rs.serverName),
+    };
+  }
+  if (rs.port === null) return null;
+  const state: SnippetState = {
+    port: rs.port,
+    tokenRequired: rs.tokenRequired,
+    token: rs.token,
+    serverName: rs.serverName,
+  };
+  const command = mcpAddCommand(state);
+  const json = mcpJsonConfig(state);
+  if (rs.state === "live") return { command, json };
+  return {
+    command: `${UNREACHABLE_COMMAND_NOTE}\n${command}`,
+    json: JSON.stringify(
+      { _note: UNREACHABLE_JSON_NOTE, ...JSON.parse(json) },
+      null,
+      2,
+    ),
+  };
+}
+
 /**
  * Plain-language "how it works" content for the connection panel, shown right
  * under the About section. DOM-free so it stays testable; panel.ts turns the

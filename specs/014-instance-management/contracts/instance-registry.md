@@ -3,6 +3,14 @@
 The discovery half of User Story 1. Consumed by `src/main/instances/registry.ts` and one
 IPC handler in `src/main/index.ts`. No network beyond a loopback TCP `connect`.
 
+> Amendment (feature 028): a second read-only IPC, `chrome:instance-settings`,
+> returns one listed row's copyable connection data (`RowSettings`: server name,
+> transport, effective port, persisted token auth state + token, liveness;
+> `null` for unknown pids). It reads the row's `<profile>/settings.json` with
+> strict validation — missing/invalid yields `state: "unavailable"` (no copy
+> offered), never fabricated values. Full block formats live in
+> `specs/028-copy-instance-settings/contracts/instance-settings-copy.md`.
+
 ## The file — `<profile>/runtime.json`
 
 One per running instance, in that instance's own profile directory:

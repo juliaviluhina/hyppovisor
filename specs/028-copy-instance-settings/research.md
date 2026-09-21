@@ -33,3 +33,11 @@ All Technical Context unknowns are resolved below. Each entry records Decision /
 - **Decision**: Unit (`vitest`): per-row `SnippetState` assembly (HTTP + auth, auth-off omission, stdio rows, server-name derivation), sibling settings-file parsing incl. corrupt/unreadable handling, unreachable marking. Integration (`playwright`, e2e): two launched instances — copy the sibling row's blocks in the visible panel, then prove the copied JSON reaches the sibling (handshake server name + a `list_open_tabs`-equivalent through it). Live agent clients (Claude Code/Desktop) stay manual-only.
 - **Rationale**: Mirrors the repo's test layering; keeps tokens out of CI (e2e generates throwaway tokens in temp profiles); satisfies the user's no-manual-verification rule for everything automatable.
 - **Alternatives considered**: Manual two-client verification as the primary check (rejected per standing user requirement).
+
+## R0. Reuse survey (T001/T002, implementation-time confirmation)
+
+- **Panel list rendering** (`src/renderer/panel.ts` `renderInstancesList`, `#inst-list-mount` repaint, 2s poll): per-row copy buttons mount here; existing `copyButton(kind, getReal)` helper (clipboard + ok/fail states) is reused verbatim for the new buttons.
+- **Snippet builders** (`src/renderer/snippets.ts` `mcpAddCommand` / `mcpJsonConfig` / `stdioJsonConfig`, pure, already unit-tested): fed per-row state, unchanged. A small `serverNameFor(label)` derivation helper joins them if no single source exists.
+- **Discovery** (`src/main/instances/registry.ts` `listInstances`, Electron-free, unit-tested): enumeration + liveness stay untouched; sibling settings read (runtime port + settings token) lives alongside it in the same filesystem-only module.
+- **Settings shape** (`src/main/settings.ts` `ConnectionSettings` + validation): sibling `settings.json` parsing reuses the same validation; no new format.
+- **Bridge pattern** (`hyppo.listInstances()` / `closeInstance(pid)` preload IPC): one new read-only IPC (per-row settings by pid) follows the same request/reply shape; panel reuses its existing poll/repaint cycle, so no new timers.

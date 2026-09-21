@@ -19,6 +19,7 @@ import {
   mcpAddCommand,
   mcpJsonConfig,
   stdioJsonConfig,
+  blocksForRow,
   type StdioLaunchLike,
 } from "./snippets.js";
 
@@ -85,6 +86,18 @@ type CloseInstanceReply =
   | { ok: true; forced?: boolean; alreadyGone?: boolean }
   | { ok: false; error: string };
 
+// Feature 028 — per-row connection data (mirrors shared `RowSettings`; the
+// renderer tsconfig compiles in isolation, so the shape is redeclared here).
+interface RowSettings {
+  serverName: string;
+  transport: "http" | "stdio";
+  port: number | null;
+  tokenRequired: boolean;
+  token: string | null;
+  state: "live" | "unreachable" | "unavailable";
+  authNote: string | null;
+}
+
 interface HyppoConnectionApi {
   getConnection(): Promise<GetConnectionReply>;
   setPort(port: number): Promise<OkPort | Failed>;
@@ -98,6 +111,7 @@ interface HyppoConnectionApi {
   onRecentUrlsChanged(cb: (list: string[]) => void): void;
   listInstances(): Promise<InstanceSummary[]>;
   closeInstance(pid: number): Promise<CloseInstanceReply>;
+  instanceSettings(pid: number): Promise<RowSettings | null>;
 }
 
 const MASK = "••••••••••••";
@@ -323,6 +337,42 @@ export function mountConnectionPanel(): void {
           el("span", { className: "inst-sub", textContent: `${portTxt} · ${inst.mode} · ${inst.state}` }),
         ),
       );
+      // Feature 028 — per-row settings copy. Fetched on demand (not on the
+      // 2 s poll) and copied via the clipboard; the block builders are the
+      // same pure functions the Connection panel uses (FR-007).
+      const copyRow = (kind: "command" | "json", label: string): HTMLButtonElement => {
+        const btn = el("button", { className: "inst-copy", textContent: label });
+        btn.title = `Copy ${kind} for this instance`;
+        btn.setAttribute("aria-label", `Copy ${kind} for this instance`);
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          try {
+            const rs = await hyppo.instanceSettings(inst.pid);
+            const blocks = rs ? blocksForRow(rs, extras?.stdioLaunch) : null;
+            if (!blocks) {
+              instNoticeText = `Settings unavailable for "${inst.label || "(default)"}" — nothing copied.`;
+              paintInstances();
+              return;
+            }
+            await navigator.clipboard.writeText(kind === "command" ? blocks.command : blocks.json);
+            btn.className = "inst-copy ok";
+            setTimeout(() => {
+              btn.className = "inst-copy";
+              btn.disabled = false;
+            }, 1200);
+          } catch {
+            btn.className = "inst-copy fail";
+            btn.title = "Copy failed — select and ⌘C";
+            setTimeout(() => {
+              btn.className = "inst-copy";
+              btn.title = `Copy ${kind} for this instance`;
+              btn.disabled = false;
+            }, 1500);
+          }
+        });
+        return btn;
+      };
+      row.append(copyRow("command", "Copy cmd"), copyRow("json", "Copy JSON"));
       if (inst.isCurrent) {
         row.append(el("span", { className: "inst-tag", textContent: "this instance" }));
         row.append(
@@ -333,8 +383,7 @@ export function mountConnectionPanel(): void {
             title: "the instance you're viewing",
           }),
         );
-      } else {
-        const btn = el("button", { className: "inst-close", textContent: "Close" });
+      } else {        const btn = el("button", { className: "inst-close", textContent: "Close" });
         btn.addEventListener("click", () => {
           pendingClose = { pid: inst.pid, label: inst.label, port: inst.port };
           instNoticeText = "";

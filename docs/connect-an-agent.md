@@ -68,6 +68,11 @@ you need to sign in or take a screenshot (`npx electron . --instance <name>`),
 close the window, and it drops back to the background. See
 [Background instances](./configuration.md#background-instances).
 
+To connect an agent to an instance whose panel you cannot see (a background
+instance, for example), open the instance list in any visible instance: every
+row offers the same ready-to-paste command and JSON config, parameterized for
+that instance. No file digging, no hand-editing.
+
 ## Then
 
 ```bash

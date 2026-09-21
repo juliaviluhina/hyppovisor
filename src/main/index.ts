@@ -41,6 +41,7 @@ import {
   closeInstance,
   type SelfRecord,
 } from "./instances/registry.js";
+import { readInstanceSettings } from "./instances/settings-copy.js";
 import { readPage } from "./page/read.js";
 import { interact, fillBatch, waitForSelector } from "./page/interact.js";
 import { readFormFields } from "./page/form-fields.js";
@@ -341,6 +342,25 @@ async function main(): Promise<void> {
     if (pid === process.pid)
       return { ok: false, error: "can't close the current instance" };
     return closeInstance(pid, { graceMs: config.instanceShutdownGraceMs });
+  });
+  // Feature 028 — per-row connection settings for the copy actions. Read-only:
+  // same files the list view already reads, no instance disturbed. `null` for
+  // an unknown pid; `state: "unavailable"` when the files are unreadable.
+  ipcMain.handle("chrome:instance-settings", (_e, pid: unknown) => {
+    if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0)
+      return null;
+    const self: SelfRecord = {
+      pid: process.pid,
+      label: instanceLabel,
+      port: env.stdio ? null : (httpHandle?.port ?? currentEffective().port),
+      mode: instanceMode,
+      startedAt: instanceStartedAt,
+    };
+    const eff = currentEffective();
+    return readInstanceSettings(appSupportRoot, self, {
+      tokenRequired: eff.tokenRequired,
+      token: eff.token,
+    }, { probeTimeoutMs: config.instanceProbeTimeoutMs }, pid);
   });
   ipcMain.handle("chrome:close-all-tabs", () => {
     const closed = tabs.list().length;
